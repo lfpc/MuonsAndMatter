@@ -21,6 +21,7 @@ def run(muons,
         return_weight = False,
         fSC_mag:bool = True,
         sensitive_film_params:dict = {'dz': 0.01, 'dx': 10, 'dy': 11,'position':57},
+        return_nan:bool = False,
         seed:int = None,
         draw_magnet = False,
         kwargs_plot = {}):
@@ -61,6 +62,7 @@ def run(muons,
         z_pos = detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz']-input_dist
         z = z_pos*np.ones_like(z)
     else:
+        z = z/100 + 70.845 - 68.685 + 66.34
         z = detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz'] + z
     muon_data_s = []
     for i in range(len(px)):
@@ -69,12 +71,14 @@ def run(muons,
         data_s = collect_from_sensitive()
         #muon_data += [[data['px'][-1], data['py'][-1], data['pz'][-1],data['x'][-1], data['y'][-1], data['z'][-1]]]
         if len(data_s['px'])>0 and 13 in np.abs(data_s['pdg_id']): 
-               j = 0
-               while int(abs(data_s['pdg_id'][j])) != 13:
-                   j += 1
-               output_s = [data_s['px'][j], data_s['py'][j], data_s['pz'][j],data_s['x'][j], data_s['y'][j], data_s['z'][j],data_s['pdg_id'][j]]
-               if muons.shape[-1] == 8: output_s.append(W[i])
-               muon_data_s += [output_s]
+            j = 0
+            while int(abs(data_s['pdg_id'][j])) != 13:
+                j += 1
+            output_s = [data_s['px'][j], data_s['py'][j], data_s['pz'][j],data_s['x'][j], data_s['y'][j], data_s['z'][j],data_s['pdg_id'][j]]
+            if muons.shape[-1] == 8: output_s.append(W[i])
+            muon_data_s += [output_s]
+        elif return_nan:
+            muon_data_s += [[0]*muons.shape[-1]]
     #muon_data = np.asarray(muon_data)
     muon_data_s = np.asarray(muon_data_s)
     if draw_magnet: 
@@ -108,6 +112,7 @@ if __name__ == '__main__':
     parser.add_argument("--sens_plane", type=float, default=57)
     parser.add_argument("-shuffle_input", action = 'store_true')
     parser.add_argument("-plot_magnet", action = 'store_true')
+    parser.add_argument("-return_nan", action = 'store_true')
     
 
     args = parser.parse_args()
@@ -133,7 +138,8 @@ if __name__ == '__main__':
     workloads = split_array(data,cores)
     t1 = time.time()
     with mp.Pool(cores) as pool:
-        result = pool.starmap(run, [(workload,params,z_bias,input_dist,True,True,sensitive_film_params,args.seed, args.plot_magnet) for workload in workloads])
+        result = pool.starmap(run, [(workload,params,z_bias,input_dist,True,True,sensitive_film_params,
+                                     args.return_nan,args.seed, args.plot_magnet) for workload in workloads])
     t2 = time.time()
 
     all_results = []

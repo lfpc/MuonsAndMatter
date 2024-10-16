@@ -408,7 +408,7 @@ def get_design_from_params(params, z_bias=50., force_remove_magnetic_field=False
         mag['fieldZ'] = 0.
         magnets_2.append(mag)
 
-        new_mz = mag['dz'] / 2 + mag['z_center'] + 0.05#limit in 31.5
+        new_mz = mag['dz'] + mag['z_center'] + 0.05#limit in 31.5
         if max_z is None or new_mz > max_z:
             max_z = new_mz
 

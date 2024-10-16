@@ -3,12 +3,49 @@ import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from lib.ship_muon_shield import get_design_from_params
 
-def plot_magnet(detector, output_file='plots/detector_visualization.png',
-                muon_data = [], z_bias =50,sensitive_film_position = None,
-                fixed_zlim:bool = False, azim = 126):
+def plot_magnet(detector, 
+                output_file='plots/detector_visualization.png',
+                muon_data = [], 
+                z_bias =50,
+                sensitive_film_position = None,
+                fixed_zlim:bool = False, 
+                azim = 126,
+                format = 'png'):
     magnets = detector['magnets']
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
+    if "sensitive_film" in detector  and sensitive_film_position is not None:
+        cz, cx, cy = detector["sensitive_film"]["z_center"], 0, 0
+        if sensitive_film_position is not None: cz = sensitive_film_position+detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz']
+
+        # Calculate the half-sizes
+        hw = detector["sensitive_film"]["dx"] / 2
+        hl = detector["sensitive_film"]["dy"] / 2
+        hh = detector["sensitive_film"]["dz"] / 2
+
+        # Define the vertices of the box
+        vertices = np.array([
+            [cz - hh, cx - hw, cy - hl, ],
+            [cz - hh, cx + hw, cy - hl, ],
+            [cz - hh, cx + hw, cy + hl, ],
+            [cz - hh, cx - hw, cy + hl, ],
+            [cz + hh, cx - hw, cy - hl, ],
+            [cz + hh, cx + hw, cy - hl, ],
+            [cz + hh, cx + hw, cy + hl, ],
+            [cz + hh, cx - hw, cy + hl, ],
+        ])
+
+        # Define the edges of the box
+        edges = [
+            [vertices[j] for j in [0, 1, 2, 3]],  # bottom face
+            [vertices[j] for j in [4, 5, 6, 7]],  # top face
+            [vertices[j] for j in [0, 1, 5, 4]],  # front face
+            [vertices[j] for j in [2, 3, 7, 6]],  # back face
+            [vertices[j] for j in [1, 2, 6, 5]],  # right face
+            [vertices[j] for j in [0, 3, 7, 4]],  # left face
+        ]
+        box = Poly3DCollection(edges, facecolors='cyan', linewidths=1, edgecolors='orange', alpha=.15)
+        ax.add_collection3d(box)
     for mag in magnets:
         z1 = -mag['dz']
         z2 = +mag['dz']
@@ -52,39 +89,6 @@ def plot_magnet(detector, output_file='plots/detector_visualization.png',
             # # Scatter plot of the corners
             # ax.scatter3D(corners[:, 0], corners[:, 1], corners[:, 2], color='b', s=0.04)
 
-    if "sensitive_film" in detector  and sensitive_film_position is not None:
-        cz, cx, cy = detector["sensitive_film"]["z_center"], 0, 0
-        if sensitive_film_position is not None: cz = sensitive_film_position+detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz']
-
-        # Calculate the half-sizes
-        hw = detector["sensitive_film"]["dx"] / 2
-        hl = detector["sensitive_film"]["dy"] / 2
-        hh = detector["sensitive_film"]["dz"] / 2
-
-        # Define the vertices of the box
-        vertices = np.array([
-            [cz - hh, cx - hw, cy - hl, ],
-            [cz - hh, cx + hw, cy - hl, ],
-            [cz - hh, cx + hw, cy + hl, ],
-            [cz - hh, cx - hw, cy + hl, ],
-            [cz + hh, cx - hw, cy - hl, ],
-            [cz + hh, cx + hw, cy - hl, ],
-            [cz + hh, cx + hw, cy + hl, ],
-            [cz + hh, cx - hw, cy + hl, ],
-        ])
-
-        # Define the edges of the box
-        edges = [
-            [vertices[j] for j in [0, 1, 2, 3]],  # bottom face
-            [vertices[j] for j in [4, 5, 6, 7]],  # top face
-            [vertices[j] for j in [0, 1, 5, 4]],  # front face
-            [vertices[j] for j in [2, 3, 7, 6]],  # back face
-            [vertices[j] for j in [1, 2, 6, 5]],  # right face
-            [vertices[j] for j in [0, 3, 7, 4]],  # left face
-        ]
-        box = Poly3DCollection(edges, facecolors='cyan', linewidths=1, edgecolors='r', alpha=.25)
-        ax.add_collection3d(box)
-
     colors = plt.cm.get_cmap('tab10', 10)  # Get a colormap with 10 colors
     #total_sensitive_hits = 0
     for i, data in enumerate(muon_data):
@@ -101,9 +105,8 @@ def plot_magnet(detector, output_file='plots/detector_visualization.png',
             if sensitive_film_position is not None: z = sensitive_film_position*np.ones_like(z)+detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz']
         
         #total_sensitive_hits += 1
-
-        ax.scatter(z[particle>0], x[particle>0], y[particle>0], color='blue', label=f'Muon {i + 1}', s=2)
-        ax.scatter(z[particle<0], x[particle<0], y[particle<0], color='orange', label=f'AntiMuon {i + 1}', s=2)
+        ax.scatter(z[particle>0], x[particle>0], y[particle>0], color='blue', label=f'Muon {i + 1}', s=0.5)
+        ax.scatter(z[particle<0], x[particle<0], y[particle<0], color='orange', label=f'AntiMuon {i + 1}', s=0.5)
 
     if fixed_zlim: ax.set_xlim(-30+z_bias+sensitive_film_position, detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz']-5)
     else: ax.set_xlim(30, -15)
@@ -123,7 +126,7 @@ def plot_magnet(detector, output_file='plots/detector_visualization.png',
     fig.subplots_adjust(left=0, bottom=0, right=1, top=1, wspace=None, hspace=None)
 
     if output_file is not None and output_file != '':
-        fig.savefig(output_file, dpi=600, bbox_inches='tight', pad_inches=0,format = 'pdf', transparent=True)
+        fig.savefig(output_file, dpi=600, bbox_inches='tight', pad_inches=0,format = format, transparent=False)
 
     #print("Total sensitive hits plotted", total_sensitive_hits)
     plt.close()

@@ -14,6 +14,18 @@ def extract_number_from_string(s):
             number_str += char
     return int(number_str)
 
+def concatenate_files(dir, file_number):
+    all_data = []
+    for file in os.listdir(dir):
+        if f'_{file_number}_' not in file: continue
+        with gzip.open(os.path.join(dir,file),'rb') as f:
+            all_data.append(pickle.load(f))
+        os.remove(os.path.join(dir,file))
+    all_data = np.concatenate(all_data,axis=1)
+    with gzip.open(os.path.join(dir,f'muons_data_{file_number}.pkl'),'wb') as f:
+        pickle.dump(all_data,f)
+
+
 def get_total_hits(phi,inputs_dir:str,
         outputs_dir:str, 
         cores:int = 384,
@@ -29,19 +41,23 @@ def get_total_hits(phi,inputs_dir:str,
     n_hits_total = 0
     all_results = {}
     for name in os.listdir(inputs_dir):
+
         n_name = extract_number_from_string(name)
         print('FILE:', name)
+        t1 = time.time()
         with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:
             factor = pickle.load(f)[:,-1]
         SHIP.n_samples = factor.shape[0]
         n_muons = factor.sum()
         n_muons_total += n_muons
         n_hits = SHIP(phi,file = n_name).item()
+        concatenate_files('/home/hep/lprate/projects/cluster/outputs', n_name)
         n_hits_total += n_hits
         n_muons_unweighted += len(factor)
         all_results[n_name] = (n_muons,n_hits)
         with gzip.open(os.path.join(outputs_dir,f'num_muons_hits_{tag}.pkl'), "wb") as f:
             pickle.dump(all_results, f)
+        print('TIME:', time.time()-t1)
         print('N EVENTS: ', len(factor))
         print('N MUONS: ', n_muons)
         print('N_HITS: ', n_hits)
@@ -63,6 +79,7 @@ def get_loss(phi,inputs_dir:str,
     for name in os.listdir(inputs_dir):
         n_name = extract_number_from_string(name)
         print('FILE:', name)
+        t1 = time.time()
         with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:
             factor = pickle.load(f)[:,-1]
         SHIP.n_samples = factor.shape[0]
@@ -71,14 +88,23 @@ def get_loss(phi,inputs_dir:str,
         all_results[n_name] = loss
         with gzip.open(os.path.join(outputs_dir,f'total_loss_{tag}.pkl'), "wb") as f:
             pickle.dump(all_results, f)
+        print('TIME:', time.time()-t1)
         print('MUONS LOSS: ', loss)
     return total_loss
+
+
 
 sc_v6 = [0,353.078,125.083,184.834,150.193,186.812,72,51,29,46,10,7,45.6888,
          45.6888,22.1839,22.1839,27.0063,16.2448,10,31,35,31,51,11,24.7961,48.7639,8,104.732,15.7991,16.7793,3,100,192,192,2,
          4.8004,3,100,8,172.729,46.8285,2]
+optimal_oliver =  [208.0, 207.0, 281.0, 248.0, 305.0, 242.0, 72.0, 51.0, 29.0, 46.0, 10.0, 7.0, 54.0,
+                         38.0, 46.0, 192.0, 14.0, 9.0, 10.0, 31.0, 35.0, 31.0, 51.0, 11.0, 3.0, 32.0, 54.0, 
+                         24.0, 8.0, 8.0, 22.0, 32.0, 209.0, 35.0, 8.0, 13.0, 33.0, 77.0, 85.0, 241.0, 9.0, 26.0]
+
+
 INPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/full_sample'
 OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs'
+
 if __name__ == '__main__':
     import argparse
     import gzip
@@ -86,11 +112,11 @@ if __name__ == '__main__':
     import time
     parser = argparse.ArgumentParser()
     parser.add_argument("-tag", type=str, default='')
-    parser.add_argument("-n_tasks", type=int, default=480)
+    parser.add_argument("-n_tasks", type=int, default=512)
     parser.add_argument("-seed", type=int, default=None)
     parser.add_argument("-inputs_dir", type=str, default=INPUTS_DIR)
     parser.add_argument("-outputs_dir", type=str, default=OUTPUTS_DIR)
-    parser.add_argument("-params", type=str, default=sc_v6)
+    parser.add_argument("-params", type=str, default=optimal_oliver)
     #parser.add_argument("--z", type=float, default=0.1)
     #parser.add_argument("--sens_plane", type=float, default=57)
     parser.add_argument("-calc_loss", action = 'store_true')
