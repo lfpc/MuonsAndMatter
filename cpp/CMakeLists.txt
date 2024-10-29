@@ -33,6 +33,7 @@ set(SOURCE_FILES
         GDetectorConstruction.cc
         SlimFilm.cc
         SlimFilmSensitiveDetector.cc
+        CustomMagneticField.cc
         )
 
 
