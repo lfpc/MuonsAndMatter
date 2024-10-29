@@ -9,8 +9,10 @@ def plot_magnet(detector,
                 z_bias =50,
                 sensitive_film_position = None,
                 fixed_zlim:bool = False, 
-                azim = 126,
-                format = 'png'):
+                format = 'png',
+                azim:float = 126,
+                elev:float = 17,
+                ignore_magnets = []):
     magnets = detector['magnets']
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -46,7 +48,9 @@ def plot_magnet(detector,
         ]
         box = Poly3DCollection(edges, facecolors='cyan', linewidths=1, edgecolors='orange', alpha=.15)
         ax.add_collection3d(box)
-    for mag in magnets:
+    for i,mag in enumerate(magnets):
+        if i in ignore_magnets: continue
+        #print(f'MAG {i}' , mag)
         z1 = -mag['dz']
         z2 = +mag['dz']
 
@@ -121,7 +125,7 @@ def plot_magnet(detector,
     ax.set_ylabel('X (m)')
     ax.set_zlabel('Y (m)')
     #ax.view_init(elev=17., azim=126)
-    ax.view_init(elev=17., azim=azim)
+    ax.view_init(elev=elev, azim=azim)
     fig.tight_layout()
     fig.subplots_adjust(left=0, bottom=0, right=1, top=1, wspace=None, hspace=None)
 

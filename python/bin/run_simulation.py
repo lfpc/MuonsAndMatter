@@ -16,7 +16,7 @@ def split_array(arr, K):
 
 def run(muons, 
         phi, 
-        z_bias=50, 
+        z_bias:float=50, 
         input_dist:float = 0.1,
         return_weight = False,
         fSC_mag:bool = True,

@@ -93,9 +93,8 @@ def main(n_muons:int,
         muon_data += [data]
     for i in range(n_muons):
         simulate_muon_(muon_data, muon_data_sensitive, px[i], py[i], pz[i],charge[i], x[i], y[i], z[i])
-    print('PARTICLES', muon_data[-1])
     dz = 0
-    for n,i in enumerate(detector['magnets']):
+    '''for n,i in enumerate(detector['magnets']):
         #print('components', i['components'])
         print('Magnet ', n)
         print('DZ = ', i['dz']*2)
@@ -103,13 +102,15 @@ def main(n_muons:int,
         print('Z in ', [i['z_center']-i['dz'],i['z_center']+i['dz']])
         dz+=i['dz']*2
     print('Total Magnets Length:', dz)
-    print('Total Magnets Length real:', detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz'] - (detector['magnets'][0]['z_center']-detector['magnets'][0]['dz']))
+    print('Total Magnets Length real:', detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz'] - (detector['magnets'][0]['z_center']-detector['magnets'][0]['dz']))'''
     plot_magnet(detector, 
                 output_file,
                 muon_data, 
                 z_bias,
                 sensitive_film_position, 
-                azim = args.angle)
+                azim = args.angle,
+                elev = args.elev,
+                ignore_magnets=[0,2,3,4,5,6,7])
     return output_data['weight_total']
 
 
@@ -117,17 +118,27 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-n",type=int,default = 1)
+    parser.add_argument("-input_file", type=str, default = None)
     parser.add_argument("-sens",type=float,default = None)
     parser.add_argument("-params",type=str,default = 'sc_v6')
     parser.add_argument("-angle",type=float,default = 126)
+    parser.add_argument("-elev",type=float,default = 17)
+    parser.add_argument("-params_test", nargs='+', default=None)
     parser.add_argument("-warm", dest = 'SC', action='store_false')
-    parser.add_argument("-input_file", type=str, default = None)
     args = parser.parse_args()
     if args.params == 'sc_v6': params = sc_v6
     elif args.params == 'oliver': params = optimal_oliver
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
-        
+    if args.params_test is not None:
+        assert len(args.params_test) % 2 == 0
+        for i in range(0, len(args.params_test), 2):
+            params[int(args.params_test[i])] = float(args.params_test[i + 1])
+        params[13] = params[12]
+        params[15] = params[14]
+        params[17] = params[16]
+
+        print('PARAMS: ',np.array(params)[np.array([1, 12,13,14,15,16,17])])
     main(n_muons = args.n,params=params,sensitive_film_position=args.sens, fSC_mag=args.SC)
 
