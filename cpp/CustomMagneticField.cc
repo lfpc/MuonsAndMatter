@@ -1,4 +1,5 @@
 #include "CustomMagneticField.hh"
+#include "G4SystemOfUnits.hh"
 #include <cmath>
 #include <limits>
 #include <algorithm>
@@ -36,9 +37,9 @@ void CustomMagneticField::GetFieldValueNearestNeighbor(const G4double Point[4], 
             Bfield[2] = fFields[i].z();
         }
     }
-    std::cout << "Evaluated B field: (" << Bfield[0] << ", " << Bfield[1] << ", " << Bfield[2] << ")\n";
-    std::cout << "Position: (" << Point[0] << ", " << Point[1] << ", " << Point[2] << ")\n";
-    std::cout << "Nearest neighbor position: (" << fPoints[nearestIndex].x() << ", " << fPoints[nearestIndex].y() << ", " << fPoints[nearestIndex].z() << ")\n";
+    //std::cout << "Evaluated B field: (" << Bfield[0]/tesla << ", " << Bfield[1]/tesla << ", " << Bfield[2]/tesla << ")\n";
+    //std::cout << "Position: (" << Point[0]/m << ", " << Point[1]/m << ", " << Point[2]/m << ")\n";
+    //std::cout << "Nearest neighbor position: (" << fPoints[nearestIndex].x()/m << ", " << fPoints[nearestIndex].y()/m << ", " << fPoints[nearestIndex].z()/m << ")\n";
 }
 
 void CustomMagneticField::GetFieldValueLinear(const G4double Point[4], G4double *Bfield) const {
@@ -90,10 +91,10 @@ void CustomMagneticField::GetFieldValueLinear(const G4double Point[4], G4double 
     Bfield[2] = B.z();
 
     // Print the evaluated B field and positions
-    std::cout << "Evaluated B field: (" << Bfield[0] << ", " << Bfield[1] << ", " << Bfield[2] << ")\n";
-    std::cout << "Position: (" << Point[0] << ", " << Point[1] << ", " << Point[2] << ")\n";
-    std::cout << "Bounding box min position: (" << pMin.x() << ", " << pMin.y() << ", " << pMin.z() << ")\n";
-    std::cout << "Bounding box max position: (" << pMax.x() << ", " << pMax.y() << ", " << pMax.z() << ")\n";
-    std::cout << "B field at min position: (" << B000.x() << ", " << B000.y() << ", " << B000.z() << ")\n";
-    std::cout << "B field at max position: (" << B111.x() << ", " << B111.y() << ", " << B111.z() << ")\n";
+    //std::cout << "Evaluated B field: (" << Bfield[0]/tesla << ", " << Bfield[1]/tesla << ", " << Bfield[2]/tesla << ")\n";
+    //std::cout << "Position: (" << Point[0] << ", " << Point[1] << ", " << Point[2] << ")\n";
+    //std::cout << "Bounding box min position: (" << pMin.x() << ", " << pMin.y() << ", " << pMin.z() << ")\n";
+    //std::cout << "Bounding box max position: (" << pMax.x() << ", " << pMax.y() << ", " << pMax.z() << ")\n";
+    //std::cout << "B field at min position: (" << B000.x() << ", " << B000.y() << ", " << B000.z() << ")\n";
+    //std::cout << "B field at max position: (" << B111.x() << ", " << B111.y() << ", " << B111.z() << ")\n";
 }

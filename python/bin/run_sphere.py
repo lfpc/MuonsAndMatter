@@ -12,6 +12,7 @@ def split_array(arr, K):
     return splits
 
 def generate_random_magnetic_field_in_sphere(radius=500, num_points=1000):
+    tesla = 10
     phi = np.random.uniform(0, 2 * np.pi, num_points)
     costheta = np.random.uniform(-1, 1, num_points)
     u = np.random.uniform(0, 1, num_points)
@@ -25,9 +26,11 @@ def generate_random_magnetic_field_in_sphere(radius=500, num_points=1000):
 
     points = np.vstack((x, y, z)).T
 
-    Bx = np.random.uniform(-1, 1, num_points)*10
-    By = np.random.uniform(-1, 1, num_points)*10
-    Bz = np.random.uniform(-1, 1, num_points)*10
+    B = 1.7
+    Bx = tesla*B*np.ones(num_points)#np.random.uniform(-1, 1, num_points)*10
+    By = tesla*B*np.ones(num_points)#np.random.uniform(-1, 1, num_points)*10
+    Bz = tesla*B*np.ones(num_points)#np.random.uniform(-1, 1, num_points)*10
+
 
     B = np.vstack((Bx, By, Bz)).T
 

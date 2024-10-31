@@ -128,6 +128,8 @@ G4VPhysicalVolume* DetectorConstruction::Construct() {
     for (Json::ArrayIndex i = 0; i < pointsData.size(); ++i) {
         points.emplace_back(pointsData[i][0].asDouble() * m, pointsData[i][1].asDouble() * m, pointsData[i][2].asDouble() * m);
         fields.emplace_back(fieldsData[i][0].asDouble() * tesla, fieldsData[i][1].asDouble() * tesla, fieldsData[i][2].asDouble() * tesla);
+        //std::cout << "Evaluated B field: (" << fieldsData[i][0].asDouble() << ", " << fieldsData[i][0].asDouble() << ", " << fieldsData[i][0].asDouble() << ")\n";
+        //std::cout << "Evaluated B field *TESLA: (" << fieldsData[i][0].asDouble()*tesla << ", " << fieldsData[i][0].asDouble()*tesla << ", " << fieldsData[i][0].asDouble()*tesla << ")\n";
     }
     // Determine the interpolation type
     CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
