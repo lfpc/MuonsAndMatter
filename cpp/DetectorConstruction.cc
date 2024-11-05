@@ -133,7 +133,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct() {
     }
     // Determine the interpolation type
     CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
-    if (magFieldData.isMember("interpolation") && magFieldData["interpolation"].asString() == "linear") {
+    if (magFieldData["interpolation"].asString() == "linear") {
         interpType = CustomMagneticField::LINEAR;
     }
     // Define the custom magnetic field

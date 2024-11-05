@@ -18,7 +18,10 @@ def plot_magnet(detector,
     ax = fig.add_subplot(111, projection='3d')
     if "sensitive_film" in detector  and sensitive_film_position is not None:
         cz, cx, cy = detector["sensitive_film"]["z_center"], 0, 0
-        if sensitive_film_position is not None: cz = sensitive_film_position+detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz']
+        if sensitive_film_position is not None: 
+            if isinstance(sensitive_film_position,tuple):
+                cz = sensitive_film_position[1]+detector['magnets'][sensitive_film_position[0]]['z_center']+detector['magnets'][sensitive_film_position[0]]['dz']
+            else: cz = sensitive_film_position+detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz']
 
         # Calculate the half-sizes
         hw = detector["sensitive_film"]["dx"] / 2

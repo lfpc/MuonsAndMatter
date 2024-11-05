@@ -1,25 +1,23 @@
 import json
-import time
-
 import numpy as np
 
 
-def CreateArb8(arbName, medium, dZ, corners, color, magField, tShield, x_translation, y_translation, z_translation, stepGeo):
+def CreateArb8(arbName, medium, dZ, corners, color, magField, field_profile,
+               tShield, x_translation, y_translation, z_translation, stepGeo):
     assert stepGeo == False
 
     tShield['components'].append({
-        'corners' : corners,
+        'corners' : corners/100,
+        'field_profile' : field_profile, #interpolation type
         'field' : magField,
-        'field_profile' : "uniform",
         'name': arbName,
-        'dz' : dZ,
-        "z_center" : z_translation,
+        'dz' : dZ/100,
+        "z_center" : z_translation/100,
     })
-
 
 # fields should be 4x3 np array
 def create_magnet(magnetName, medium, tShield,
-                  fields, fieldDirection, dX,
+                  fields,field_profile, fieldDirection, dX,
                   dY, dX2, dY2, dZ, middleGap,
                   middleGap2, HmainSideMag, HmainSideMag2, gap,
                   gap2, Z, NotMagnet, stepGeo, SC_key=False):
@@ -67,22 +65,12 @@ def create_magnet(magnetName, medium, tShield,
                               dX2 + middleGap2 + coil_gap2,
                               dY2))
 
-        if fDesign == 7:
-            cornersMainSideL = np.array((dX + middleGap + gap, -HmainSideMag,
-                                         dX + middleGap + gap, HmainSideMag,
-                                         2 * dX + middleGap + gap, HmainSideMag,
-                                         2 * dX + middleGap + gap, -HmainSideMag,
-                                         dX2 + middleGap2 + gap2, -HmainSideMag2,
-                                         dX2 + middleGap2 + gap2, HmainSideMag2,
-                                         2 * dX2 + middleGap2 + gap2, HmainSideMag2,
-                                         2 * dX2 + middleGap2 + gap2, -HmainSideMag2))
-        else:
-            cornersMainSideL = np.array((dX + middleGap + gap, -(dY - anti_overlap), dX + middleGap + gap,
-                                         dY - anti_overlap, 2 * dX + middleGap + gap, dY + dX - anti_overlap,
-                                         2 * dX + middleGap + gap, -(dY + dX - anti_overlap), dX2 + middleGap2 + gap2,
-                                         -(dY2 - anti_overlap), dX2 + middleGap2 + gap2, dY2 - anti_overlap,
-                                         2 * dX2 + middleGap2 + gap2, dY2 + dX2 - anti_overlap, 2 * dX2 + middleGap2 + gap2,
-                                         -(dY2 + dX2 - anti_overlap)))
+        cornersMainSideL = np.array((dX + middleGap + gap, -(dY - anti_overlap), dX + middleGap + gap,
+                                    dY - anti_overlap, 2 * dX + middleGap + gap, dY + dX - anti_overlap,
+                                    2 * dX + middleGap + gap, -(dY + dX - anti_overlap), dX2 + middleGap2 + gap2,
+                                    -(dY2 - anti_overlap), dX2 + middleGap2 + gap2, dY2 - anti_overlap,
+                                    2 * dX2 + middleGap2 + gap2, dY2 + dX2 - anti_overlap, 2 * dX2 + middleGap2 + gap2,
+                                    -(dY2 + dX2 - anti_overlap)))
 
     else:
         cornersMainL = np.array([middleGap,        -(dY + 3 * dX - anti_overlap),
@@ -110,24 +98,14 @@ def create_magnet(magnetName, medium, tShield,
                    dX2 + middleGap2 + coil_gap2,
                    dY2])
 
-        if fDesign == 7:
-            cornersMainSideL = np.array([dX + middleGap + gap,        -HmainSideMag,
-                                                       dX + middleGap + gap,        HmainSideMag,
-                                                       4 * dX + middleGap + gap,    HmainSideMag,
-                                                       4 * dX + middleGap + gap,    -HmainSideMag,
-                                                       dX2 + middleGap2 + gap2,     -HmainSideMag2,
-                                                       dX2 + middleGap2 + gap2,     HmainSideMag2,
-                                                       4 * dX2 + middleGap2 + gap2, HmainSideMag2,
-                                                       4 * dX2 + middleGap2 + gap2, -HmainSideMag2])
-        else:
-            cornersMainSideL = np.array([dX + middleGap + gap,        -(dY - anti_overlap),
-                                                       dX + middleGap + gap,        dY - anti_overlap,
-                                                       4 * dX + middleGap + gap,    dY + 3 * dX - anti_overlap,
-                                                       4 * dX + middleGap + gap,    -(dY + 3 * dX - anti_overlap),
-                                                       dX2 + middleGap2 + gap2,     -(dY2 - anti_overlap),
-                                                       dX2 + middleGap2 + gap2,     dY2 - anti_overlap,
-                                                       4 * dX2 + middleGap2 + gap2, dY2 + 3 * dX2 - anti_overlap,
-                                                       4 * dX2 + middleGap2 + gap2, -(dY2 + 3 * dX2 - anti_overlap)])
+        cornersMainSideL = np.array([dX + middleGap + gap,        -(dY - anti_overlap),
+                                    dX + middleGap + gap,        dY - anti_overlap,
+                                    4 * dX + middleGap + gap,    dY + 3 * dX - anti_overlap,
+                                    4 * dX + middleGap + gap,    -(dY + 3 * dX - anti_overlap),
+                                    dX2 + middleGap2 + gap2,     -(dY2 - anti_overlap),
+                                    dX2 + middleGap2 + gap2,     dY2 - anti_overlap,
+                                    4 * dX2 + middleGap2 + gap2, dY2 + 3 * dX2 - anti_overlap,
+                                    4 * dX2 + middleGap2 + gap2, -(dY2 + 3 * dX2 - anti_overlap)])
 
     cornersMainR = np.zeros(16, np.float64)
     cornersCLBA = np.zeros(16, np.float64)
@@ -140,23 +118,6 @@ def create_magnet(magnetName, medium, tShield,
     cornersBL = np.zeros(16, np.float64)
     cornersBR = np.zeros(16, np.float64)
 
-    if (fDesign == 7):
-        cornersCLBA = np.array([dX + middleGap + gap,
-                                -HmainSideMag,
-                                2 * dX + middleGap + gap,
-                                -HmainSideMag,
-                                2 * dX + middleGap + coil_gap,
-                                -(dY + dX - anti_overlap),
-                                dX + middleGap + coil_gap,
-                                -(dY - anti_overlap),
-                                dX2 + middleGap2 + gap2,
-                                -HmainSideMag2,
-                                2 * dX2 + middleGap2 + gap2,
-                                -HmainSideMag2,
-                                2 * dX2 + middleGap2 + coil_gap2,
-                                -(dY2 + dX2 - anti_overlap),
-                                dX2 + middleGap2 + coil_gap2,
-                                -(dY2 - anti_overlap)])
 
     # Use symmetries to define remaining magnets
     for i in range(16):
@@ -197,50 +158,48 @@ def create_magnet(magnetName, medium, tShield,
     }
 
     color = [0, 1, 2, 3]
-    if fieldDirection == "up":
-        CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, color[0], fields[0], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, color[0], fields[0], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, color[1], fields[1], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, color[1], fields[1], theMagnet, 0, 0, Z, stepGeo)
-        if fDesign==7:
-            CreateArb8(magnetName + str4, medium, dZ, cornersCLBA, color[1], fields[1], theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str5, medium, dZ, cornersCLTA, color[1], fields[1], theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str6, medium, dZ, cornersCRTA, color[1], fields[1], theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str7, medium, dZ, cornersCRBA, color[1], fields[1], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str8, medium, dZ, cornersTL, color[3], fields[3], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str9, medium, dZ, cornersTR, color[2], fields[2], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str10, medium, dZ, cornersBL, color[2], fields[2], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str11, medium, dZ, cornersBR, color[3], fields[3], theMagnet, 0, 0, Z, stepGeo)
+    if field_profile == 'uniform':
+        if fieldDirection == "up":
+            CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, color[0], fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, color[0], fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, color[1], fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, color[1], fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str8, medium, dZ, cornersTL, color[3], fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str9, medium, dZ, cornersTR, color[2], fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str10, medium, dZ, cornersBL, color[2], fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str11, medium, dZ, cornersBR, color[3], fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
 
-    elif fieldDirection == "down":
-        CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, color[1], fields[1], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, color[1], fields[1], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, color[0], fields[0], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, color[0], fields[0], theMagnet, 0, 0, Z, stepGeo)
-        if fDesign==7:
-            CreateArb8(magnetName + str4, medium, dZ, cornersCLBA, color[0], fields[0], theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str5, medium, dZ, cornersCLTA, color[0], fields[0], theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str6, medium, dZ, cornersCRTA, color[0], fields[0], theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str7, medium, dZ, cornersCRBA, color[0], fields[0], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str8, medium, dZ, cornersTL, color[2], fields[2], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str9, medium, dZ, cornersTR, color[3], fields[3], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str10, medium, dZ, cornersBL, color[3], fields[3], theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str11, medium, dZ, cornersBR, color[2], fields[2], theMagnet, 0, 0, Z, stepGeo)
+        elif fieldDirection == "down":
+            CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, color[1], fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, color[1], fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, color[0], fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, color[0], fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str8, medium, dZ, cornersTL, color[2], fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str9, medium, dZ, cornersTR, color[3], fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str10, medium, dZ, cornersBL, color[3], fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
+            CreateArb8(magnetName + str11, medium, dZ, cornersBR, color[2], fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
     else:
-        raise RuntimeError("File direction value not recognized.")
+        CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, color[0], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, color[0], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, color[1], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, color[1], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str8, medium, dZ, cornersTL, color[3], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str9, medium, dZ, cornersTR, color[2], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str10, medium, dZ, cornersBL, color[2], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str11, medium, dZ, cornersBR, color[3], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
 
-    theMagnet['dz'] = dZ
-    theMagnet['z_center'] = Z
+    theMagnet['dz'] = dZ/100
+    theMagnet['z_center'] = Z/100
 
     tShield['magnets'].append(theMagnet)
 
 
-def design_muon_shield(params,fSC_mag = True):
+def design_muon_shield(params,fSC_mag = True, use_simulated_fields = False):
     n_magnets = 9
     cm = 1
     mm = 0.1 * cm
     m = 100 * cm
-    tesla = 10
+    tesla = 1
     fField = 1.7
 
     magnetName = ["MagnAbsorb1", "MagnAbsorb2", "Magn1", "Magn2", "Magn3", "Magn4", "Magn5", "Magn6", "Magn7"]
@@ -350,7 +309,7 @@ def design_muon_shield(params,fSC_mag = True):
     tShield = {
         'magnets':[]
     }
-    create_magnet(magnetName[nM], "G4_Fe", tShield, fieldsAbsorber, fieldDirection[nM], dXIn[nM], dYIn[nM], dXOut[nM],
+    create_magnet(magnetName[nM], "G4_Fe", tShield, fieldsAbsorber, 'uniform', fieldDirection[nM], dXIn[nM], dYIn[nM], dXOut[nM],
                  dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM], HmainSideMagIn[nM], HmainSideMagOut[nM],
                  gapIn[nM], gapOut[nM], Z[nM], True, False)
 
@@ -358,50 +317,59 @@ def design_muon_shield(params,fSC_mag = True):
     for nM in range(2, n_magnets):
         if (dZf[nM] < 1e-5 or nM == 4) and fSC_mag:
             continue
-        ironField_s_SC = fField * fieldScale[nM] * tesla
         SC_key = False
+        ironField_s = fField * fieldScale[nM] * tesla
         if nM == 3 and fSC_mag:
             SC_FIELD = 5.1
-            ironField_s_SC = SC_FIELD * fieldScale[nM] * tesla
+            ironField_s_coil = SC_FIELD * fieldScale[nM] * tesla
             SC_key = True
-        ironField_s = fField * fieldScale[nM] * tesla
-        magFieldIron_s = [0., ironField_s_SC, 0.]
-        RetField_s = [0., -ironField_s, 0.]
-        ConRField_s = [-ironField_s, 0., 0.]
-        ConLField_s = [ironField_s, 0., 0.]
-        fields_s = np.array([magFieldIron_s, RetField_s, ConRField_s, ConLField_s])
+            if use_simulated_fields:
+                field_profile = 'nearest'#'linear_interpolation'
+                fields_s = get_field()
+            else:
+                field_profile = 'uniform'
+                magFieldIron_s = [0., ironField_s_coil, 0.]
+                RetField_s = [0., -ironField_s, 0.]
+                ConRField_s = [-ironField_s, 0., 0.]
+                ConLField_s = [ironField_s, 0., 0.]
+                fields_s = [magFieldIron_s, RetField_s, ConRField_s, ConLField_s]
+        else: 
+            field_profile = 'uniform'
+            magFieldIron_s = [0., ironField_s, 0.]
+            RetField_s = [0., -ironField_s, 0.]
+            ConRField_s = [-ironField_s, 0., 0.]
+            ConLField_s = [ironField_s, 0., 0.]
+            fields_s = [magFieldIron_s, RetField_s, ConRField_s, ConLField_s]
 
-        create_magnet(magnetName[nM], "G4_Fe", tShield, fields_s, fieldDirection[nM], dXIn[nM], dYIn[nM], dXOut[nM],
+        create_magnet(magnetName[nM], "G4_Fe", tShield, fields_s, field_profile, fieldDirection[nM], dXIn[nM], dYIn[nM], dXOut[nM],
                   dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM], HmainSideMagIn[nM], HmainSideMagOut[nM],
                   gapIn[nM], gapOut[nM], Z[nM], nM == 8, False, SC_key)
 
     return tShield
 
+import pickle
+import gzip
+def get_field():
+    with gzip.open('/home/hep/lprate/projects/roxie_ship/outputs/points.pkl', 'rb') as f:
+        field_s = pickle.load(f)
+    return [field_s['points'].tolist(),field_s['B'].tolist()]
 
-def get_design_from_params(params, z_bias=50., force_remove_magnetic_field=False, fSC_mag:bool = True):
-    mag_unit =  10.000000
+
+def get_design_from_params(params, z_bias=50., force_remove_magnetic_field=False, fSC_mag:bool = True, use_simulated_fields = False):
     # nMagnets 9
 
-    shield = design_muon_shield(params, fSC_mag)
+    shield = design_muon_shield(params, fSC_mag, use_simulated_fields = use_simulated_fields)
     # print(shield)
 
     magnets_2 = []
 
     max_z = None
     for mag in shield['magnets']:
-        mag['dz'] = mag['dz'] / 100.
-        mag['z_center'] = mag['z_center'] / 100. + z_bias
+        mag['z_center'] = mag['z_center'] + z_bias
         components_2 = mag['components']
-        # print(components_2)
-
-        if force_remove_magnetic_field:
-            multiplier = 0
-        else:
-            multiplier = 1/mag_unit
-
-        components_2 = [{'corners': (np.array(x['corners']) / 100.).tolist(),
-                         'field_profile': x['field_profile'],
-                         'field': (x['field'][0] * multiplier, x['field'][1] *multiplier, x['field'][2] *multiplier)} for x
+        components_2 = [{'corners': (np.array(x['corners'])).tolist(),
+                         'field_profile': x['field_profile'] if (not force_remove_magnetic_field) else 'uniform',
+                         'field': x['field'] if (not force_remove_magnetic_field) else (0., 0., 0.)} for x
                         in components_2]
         mag['components'] = components_2
         mag['material'] = 'G4_Fe'

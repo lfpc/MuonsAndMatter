@@ -6,6 +6,7 @@ import sys
 PROJECTS_DIR = os.getenv('PROJECTS_DIR')
 sys.path.insert(1, os.path.join(PROJECTS_DIR,'BlackBoxOptimization/src'))
 from problems import ShipMuonShieldCluster
+from time import time
 
 def extract_number_from_string(s):
     number_str = ''
@@ -25,10 +26,50 @@ def concatenate_files(dir, file_number):
     with gzip.open(os.path.join(dir,f'muons_data_{file_number}.pkl'),'wb') as f:
         pickle.dump(all_data,f)
 
+def test(phi,inputs_dir:str,
+        outputs_dir:str, 
+        cores:int = 512,
+        seed = 1,
+        tag = ''):
+    SHIP = ShipMuonShieldCluster(cores = cores,
+                 loss_with_weight = False,
+                 manager_ip='34.65.198.159',
+                 port=444,
+                 seed = seed)
+    time1 = time()
+    SHIP(phi).item()
+    print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
+    print('saved new file')
+    print('TIME:', time.time()-t1)
+
+def get_files(phi,inputs_dir:str,
+        outputs_dir:str, 
+        cores:int = 384,
+        seed = 1,
+        tag = ''):
+    SHIP = ShipMuonShieldCluster(cores = cores,
+                 loss_with_weight = False,
+                 manager_ip='34.65.198.159',
+                 port=444,
+                 seed = seed)
+
+    for name in os.listdir(inputs_dir):
+        n_name = extract_number_from_string(name)
+        print('FILE:', name)
+        t1 = time()
+        with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:
+            factor = pickle.load(f)[:,-1]
+        SHIP.n_samples = factor.shape[0]
+        time1 = time()
+        SHIP(phi,file = n_name).item()
+        print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
+        concatenate_files('/home/hep/lprate/projects/cluster/outputs', n_name)
+        print('saved new file')
+        print('TIME:', time()-t1)
 
 def get_total_hits(phi,inputs_dir:str,
         outputs_dir:str, 
-        cores:int = 384,
+        cores:int = 512,
         seed = 1,
         tag = ''):
     SHIP = ShipMuonShieldCluster(cores = cores,
@@ -44,13 +85,15 @@ def get_total_hits(phi,inputs_dir:str,
 
         n_name = extract_number_from_string(name)
         print('FILE:', name)
-        t1 = time.time()
+        t1 = time()
         with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:
             factor = pickle.load(f)[:,-1]
         SHIP.n_samples = factor.shape[0]
         n_muons = factor.sum()
         n_muons_total += n_muons
+        time1 = time()
         n_hits = SHIP(phi,file = n_name).item()
+        print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
         concatenate_files('/home/hep/lprate/projects/cluster/outputs', n_name)
         n_hits_total += n_hits
         n_muons_unweighted += len(factor)
@@ -66,7 +109,7 @@ def get_total_hits(phi,inputs_dir:str,
 
 def get_loss(phi,inputs_dir:str,
         outputs_dir:str, 
-        cores:int = 384,
+        cores:int = 512,
         seed = 1,
         tag = ''):
     SHIP = ShipMuonShieldCluster(cores = cores,
@@ -109,7 +152,6 @@ if __name__ == '__main__':
     import argparse
     import gzip
     import pickle
-    import time
     parser = argparse.ArgumentParser()
     parser.add_argument("-tag", type=str, default='')
     parser.add_argument("-n_tasks", type=int, default=512)
@@ -120,6 +162,7 @@ if __name__ == '__main__':
     #parser.add_argument("--z", type=float, default=0.1)
     #parser.add_argument("--sens_plane", type=float, default=57)
     parser.add_argument("-calc_loss", action = 'store_true')
+    parser.add_argument("-only_files", action = 'store_true')
     args = parser.parse_args()
     
     if isinstance(args.params,str):
@@ -135,13 +178,19 @@ if __name__ == '__main__':
     #input_dist = args.z
     #sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':args.sens_plane}
 
-    t1 = time.time()
+    t1 = time()
     if args.calc_loss:
         loss = get_loss(params,args.inputs_dir,args.outputs_dir, 
         cores = args.n_tasks,
         seed = args.seed,
         tag = args.tag)
         print(f'TOTAL MUONS LOSS: {loss}')
+    elif args.only_files:
+        t2 = time()
+        get_files(params,args.inputs_dir,args.outputs_dir, 
+        cores = args.n_tasks,#sensitive_film_params = sensitive_film_params,
+        seed = args.seed, #input_dist=args.z,
+        tag = args.tag)
     else:
         n_muons,n_hits, n_un = get_total_hits(params,args.inputs_dir,args.outputs_dir, 
         cores = args.n_tasks,#sensitive_film_params = sensitive_film_params,
@@ -151,7 +200,7 @@ if __name__ == '__main__':
         print(f'INPUT MUONS: {n_muons}')
         print(f'HITS: {n_hits}')
         print(f'Muons survival rate: {n_hits/n_muons}')
-    t2 = time.time()
+    t2 = time()
     
     print(f'TOTAL TIME: {(t2-t1):.3f}')
     

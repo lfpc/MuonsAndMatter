@@ -6,13 +6,14 @@ import numpy as np
 import csv
 
 def get_roxie_params(params, 
-                     SC_mag:bool = True):
-    params = np.round(np.asarray(params) / 100, 2) #convert to meters
+                     SC_mag:bool = True,
+                     Xmgap:float = 0.0,
+                     Ymgap:float = 0.05,
+                     B_goal:float = 5.1):
+    params = np.asarray(params) / 100 #convert to meters
     if len(params) == 42:
         idx = np.array([1,12,13,14,15,16,17])
         params = params[idx] #params for superconducting magnet
-    Ymgap = 0.05
-    Xmgap = 0
     ratio_yoke = 3 if SC_mag else 1
     d = {'yoke_type': ['Mag2'],
         'coil_type': ['Racetrack'],
@@ -23,7 +24,7 @@ def get_roxie_params(params,
         'J(A/mm2)': [50],
         'N1': [3],
         'N2': [10],
-        'B_goal(T)': [5.1],
+        'B_goal(T)': [B_goal],
         'delta_x(mm)': [1],
         'delta_y(mm)': [1],
         'Z_pos(m)': [0.02],
@@ -49,48 +50,6 @@ def get_roxie_params(params,
     #    w.writerow(d)
     return d
 
-from scipy.interpolate import RegularGridInterpolator, griddata
-def interpolate_B(old_points,new_points,B, method):
-    Bx, By, Bz = B  # Split B into three components
-    #x, y, z = old_points  # Unpack the original grid points
-    print(old_points.shape)
-    print(Bx.shape)
-    print(new_points.shape)
-
-    Bx_new = griddata(old_points, Bx, new_points, method=method)
-    By_new = griddata(old_points, By, new_points, method=method)
-    Bz_new = griddata(old_points, Bz, new_points, method=method)
-
-    return np.stack((Bx_new, By_new, Bz_new), axis=0)  # Shape will be (3, Mx, My, Mz)
-
-
-
-
-def interpolate_B(old_points,new_points,B, method):
-    x,y,z = old_points.T
-    x = np.sort(np.unique(x))
-    y = np.sort(np.unique(y))
-    z = np.sort(np.unique(z))
-    Nx, Ny, Nz = len(np.unique(x)), len(np.unique(y)), len(np.unique(z))
-    Mx, My, Mz = len(np.unique(new_points[:,0])), len(np.unique(new_points[:,1])), len(np.unique(new_points[:,2]))
-
-    # Separate B into its components along each axis
-    Bx, By, Bz = B.T
-
-    # Interpolators for each component
-    print(x)
-    Bx_interpolator = RegularGridInterpolator((x, y, z), Bx.reshape(Nx, Ny, Nz))
-    By_interpolator = RegularGridInterpolator((x, y, z), By.reshape(Nx, Ny, Nz))
-    Bz_interpolator = RegularGridInterpolator((x, y, z), Bz.reshape(Nx, Ny, Nz))
-
-    # Interpolate each component of B at the new points
-    Bx_new = Bx_interpolator(new_points).reshape(Mx, My, Mz)
-    By_new = By_interpolator(new_points).reshape(Mx, My, Mz)
-    Bz_new = Bz_interpolator(new_points).reshape(Mx, My, Mz)
-
-    # Combine interpolated components back into a single array
-    return np.array([Bx_new, By_new, Bz_new])
-
 if __name__ == '__main__':
     import sys
     import pathlib
@@ -110,40 +69,13 @@ if __name__ == '__main__':
 
     input_df = get_roxie_params(sc_v6, SC_mag=True)
     
-    #generate_datafiles(input_df, input_dir, output_dir/"datafiles", container_dir)
-    command = ["apptainer", "exec", "--bind",DIR.resolve(),container_dir/"roxie_evaluator.sif", "python3", "/home/hep/lprate/projects/roxie_ship/roxie_evaluator/scripts/SHiP_sc_magnet_get_map.py"]
+    generate_datafiles(input_df, input_dir, output_dir/"datafiles", container_dir)
+    command = ["$APPTAINER_CMD", "exec", "--bind",DIR.resolve(),container_dir/"roxie_evaluator.sif", "python3", "/home/hep/lprate/projects/roxie_ship/roxie_evaluator/scripts/SHiP_sc_magnet_get_map.py"]
     #try:
     #    result = subprocess.run(command, check=True, text=True, capture_output=True)
     #    print("Output:", result.stdout)
     #except subprocess.CalledProcessError as e:
     #    print("Error:", e.stderr)
 
-    import gzip
-    import pickle
-    with gzip.open(output_dir/'points.pkl', 'rb') as f:
-        data = pickle.load(f)
-    points = data['points']
-    B = data['B']
 
-    B = np.split(B, 4, axis=0)[0]
-    points = points[:B.shape[0], :]
-    # Sort the x component and keep the relationship with B values
-    points_new = np.array(np.meshgrid(
-        np.linspace(points[:, 0].min(), points[:, 0].max(), 40),
-        np.linspace(points[:, 1].min(), points[:, 1].max(), 40),
-        np.linspace(points[:, 2].min(), points[:, 2].max(), 70),
-        indexing='ij'
-    )).reshape(-1,3)
-
-    from time import time
-    all_B = []
-    for method in ["nearest", "linear", "cubic"]:
-        t1 = time()
-        B_new = interpolate_B(points, points_new, B, method)
-        print(f"Method: {method}, Time: {time() - t1}")
-        print('SHAPE', B_new.shape)
-        all_B.append(B_new)
-    print('difference linear nearest', np.abs(all_B[1] - all_B[0]).mean())
-    print('difference cubic linear', np.abs(all_B[2] - all_B[1]).mean())
-    print('difference cubic nearest', np.abs(all_B[2] - all_B[0]).mean())
     

@@ -114,55 +114,46 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         for (auto arb8: arb8s) {
             std::vector<G4TwoVector> corners_two;
 //            G4ThreeVector corners[8];
+
             Json::Value corners = arb8["corners"];
 
             for (int i = 0; i < 8; ++i) {
                 corners_two.push_back(G4TwoVector (corners[i*2].asDouble() * m, corners[i*2+1].asDouble() * m));
             }
+
             Json::Value field_value = arb8["field"];
-            G4double fieldX;
-            G4double fieldY;
-            G4double fieldZ;
-            G4ThreeVector fieldValue;
-            G4MagneticField* magField = nullptr;
-            if (arb8["field_profile"].asString() == "uniform"){
-                fieldX = field_value[0].asDouble();
-                fieldY = field_value[1].asDouble();
-                fieldZ = field_value[2].asDouble();
-                fieldValue = G4ThreeVector(fieldX * tesla, fieldY * tesla, fieldZ * tesla);
+            //(arb8["field_profile"].asString() == "uniform")
+                std::cout<<"USING Uniform field\n";
+                G4double fieldX = field_value[0].asDouble();
+                G4double fieldY = field_value[1].asDouble();
+                G4double fieldZ = field_value[2].asDouble();
+                G4ThreeVector fieldValue = G4ThreeVector(fieldX * tesla, fieldY * tesla, fieldZ * tesla);
                 // Create and set the uniform magnetic field for the box
-                magField = new G4UniformMagField(fieldValue);
-            } else {
-                //std::cout<<"USING Custom field !!!!!\n";
-                // Extract magnetic field data from detectorData
-                std::vector<G4ThreeVector> points;
-                std::vector<G4ThreeVector> fields;
-                const Json::Value& pointsData = field_value[0];
-                const Json::Value& fieldsData = field_value[1];
+                
 
-                for (Json::ArrayIndex i = 0; i < pointsData.size(); ++i) {
-                    points.emplace_back(pointsData[i][0].asDouble() * m, pointsData[i][1].asDouble() * m, pointsData[i][2].asDouble() * m + z_center);
-                    fields.emplace_back(fieldsData[i][0].asDouble() * tesla, fieldsData[i][1].asDouble() * tesla, fieldsData[i][2].asDouble() * tesla);
-                }
-                // Determine the interpolation type
-                CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
-                if (arb8["field_profile"].asString() == "linear_interpolation") {
-                    interpType = CustomMagneticField::LINEAR;
-                } //add cubic too?
-                // Define the custom magnetic field
-                magField = new CustomMagneticField(points, fields, interpType);
-            }
+            // Create and set the magnetic field for the box
+            auto thingMagField = new G4UniformMagField(fieldValue);
+            auto thingFieldManager = new G4FieldManager();
+            thingFieldManager->SetDetectorField(thingMagField);
 
-            auto FieldManager = new G4FieldManager();
-            FieldManager->SetDetectorField(magField);
-            FieldManager->CreateChordFinder(magField);
+            // Create the equation of motion and the stepper for the thing
+    //        G4Mag_UsualEqRhs* equationOfMotion = new G4Mag_UsualEqRhs(thingMagField);
+    //        G4MagIntegratorStepper* stepper = new G4ClassicalRK4(equationOfMotion);
+
+            // Create the chord finder for the thing
+            thingFieldManager->CreateChordFinder(thingMagField);
+
+//            logicBox->SetFieldManager(boxFieldManager, true);
+
+
+
             // Continue with your existing code
             auto genericV = new G4GenericTrap(G4String("sdf"), dz, corners_two);
             auto logicG = new G4LogicalVolume(genericV, boxMaterial, "gggvl");
             double volArb = boxMaterial->GetDensity() /(kg/m3)  * genericV->GetCubicVolume()/(m3);
 //            std::cout<<"Density "<< boxMaterial->GetDensity()/(g/m3) << " | cubic vol "<<genericV->GetCubicVolume()/(m3)<<std::endl;
             totalWeight += volArb;
-            logicG->SetFieldManager(FieldManager, true);
+            logicG->SetFieldManager(thingFieldManager, true);
             new G4PVPlacement(0, G4ThreeVector(0, 0, z_center), logicG, "BoxZ", logicWorld, false, 0, true);
             logicG->SetUserLimits(userLimits2);
 
@@ -253,4 +244,3 @@ void GDetectorConstruction::ConstructSDandField() {
     }
 
 }
-

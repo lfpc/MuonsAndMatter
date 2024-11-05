@@ -56,10 +56,14 @@ def main(n_muons:int,
 
     sensitive_film_params:dict = {'dz': 0.01, 'dx': 30, 'dy': 30, 'position':sensitive_film_position}
     for k,v in sensitive_film_params.items():
-        if k=='position' and v is not None: detector['sensitive_film']['z_center'] += v
+        if k=='position': 
+            if isinstance(v,tuple): #if it is a tuple, the first value indicates the magnet number and the second the position to its end
+                detector['sensitive_film']['z_center'] = v[1] + detector['magnets'][v[0]]['z_center'] + detector['magnets'][v[0]]['dz']
+            else: detector['sensitive_film']['z_center'] += v
         else: detector['sensitive_film'][k] = v
 
     # detector["store_all"] = True
+    json.dumps(detector)
     output_data = initialize(np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256), json.dumps(detector))
     output_data = json.loads(output_data)
     print("Detector weight: %f kilograms or %f tonnes "%(output_data['weight_total'], output_data['weight_total'] / 1E3))
@@ -94,7 +98,7 @@ def main(n_muons:int,
     for i in range(n_muons):
         simulate_muon_(muon_data, muon_data_sensitive, px[i], py[i], pz[i],charge[i], x[i], y[i], z[i])
     dz = 0
-    '''for n,i in enumerate(detector['magnets']):
+    for n,i in enumerate(detector['magnets']):
         #print('components', i['components'])
         print('Magnet ', n)
         print('DZ = ', i['dz']*2)
@@ -102,7 +106,8 @@ def main(n_muons:int,
         print('Z in ', [i['z_center']-i['dz'],i['z_center']+i['dz']])
         dz+=i['dz']*2
     print('Total Magnets Length:', dz)
-    print('Total Magnets Length real:', detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz'] - (detector['magnets'][0]['z_center']-detector['magnets'][0]['dz']))'''
+    print('Total Magnets Length real:', detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz'] - (detector['magnets'][0]['z_center']-detector['magnets'][0]['dz']))
+    print('Sensitive Film Position:', detector['sensitive_film']['z_center'])
     plot_magnet(detector, 
                 output_file,
                 muon_data, 
@@ -110,7 +115,8 @@ def main(n_muons:int,
                 sensitive_film_position, 
                 azim = args.angle,
                 elev = args.elev,
-                ignore_magnets=[0,2,3,4,5,6,7])
+                #ignore_magnets=[0,2,3,4,5,6,7],
+                )
     return output_data['weight_total']
 
 
@@ -140,5 +146,6 @@ if __name__ == '__main__':
         params[17] = params[16]
 
         print('PARAMS: ',np.array(params)[np.array([1, 12,13,14,15,16,17])])
-    main(n_muons = args.n,params=params,sensitive_film_position=args.sens, fSC_mag=args.SC)
+    sensitive_film = (-4,3.0)
+    main(n_muons = args.n,params=params,sensitive_film_position=sensitive_film, fSC_mag=args.SC)
 

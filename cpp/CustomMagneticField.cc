@@ -90,11 +90,10 @@ void CustomMagneticField::GetFieldValueLinear(const G4double Point[4], G4double 
     Bfield[1] = B.y();
     Bfield[2] = B.z();
 
-    // Print the evaluated B field and positions
-    //std::cout << "Evaluated B field: (" << Bfield[0]/tesla << ", " << Bfield[1]/tesla << ", " << Bfield[2]/tesla << ")\n";
-    //std::cout << "Position: (" << Point[0] << ", " << Point[1] << ", " << Point[2] << ")\n";
-    //std::cout << "Bounding box min position: (" << pMin.x() << ", " << pMin.y() << ", " << pMin.z() << ")\n";
-    //std::cout << "Bounding box max position: (" << pMax.x() << ", " << pMax.y() << ", " << pMax.z() << ")\n";
-    //std::cout << "B field at min position: (" << B000.x() << ", " << B000.y() << ", " << B000.z() << ")\n";
-    //std::cout << "B field at max position: (" << B111.x() << ", " << B111.y() << ", " << B111.z() << ")\n";
+    std::cout << "Evaluated B field: (" << Bfield[0]/tesla << ", " << Bfield[1]/tesla << ", " << Bfield[2]/tesla << ")\n";
+    std::cout << "Position: (" << Point[0] << ", " << Point[1] << ", " << Point[2] << ")\n";
+    std::cout << "Bounding box min position: (" << pMin.x() << ", " << pMin.y() << ", " << pMin.z() << ")\n";
+    std::cout << "Bounding box max position: (" << pMax.x() << ", " << pMax.y() << ", " << pMax.z() << ")\n";
+    std::cout << "B field at min position: (" << B000.x() << ", " << B000.y() << ", " << B000.z() << ")\n";
+    std::cout << "B field at max position: (" << B111.x() << ", " << B111.y() << ", " << B111.z() << ")\n";
 }
