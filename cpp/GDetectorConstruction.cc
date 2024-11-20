@@ -111,6 +111,8 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
 
         Json::Value arb8s = magnet["components"];
+        G4MagneticField* GlobalmagField = nullptr;
+        
         for (auto arb8: arb8s) {
             std::vector<G4TwoVector> corners_two;
 //            G4ThreeVector corners[8];
@@ -125,6 +127,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
             G4double fieldZ;
             G4ThreeVector fieldValue;
             G4MagneticField* magField = nullptr;
+
             if (arb8["field_profile"].asString() == "uniform"){
                 fieldX = field_value[0].asDouble();
                 fieldY = field_value[1].asDouble();
@@ -150,6 +153,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
                     interpType = CustomMagneticField::LINEAR;
                 } //add cubic too?
                 // Define the custom magnetic field
+                
                 magField = new CustomMagneticField(points, fields, interpType);
             }
 
@@ -169,29 +173,8 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
 //            break;
         }
-//        break;
-
-
-//        // Get the magnetic field vector for the box
-//        G4double fieldX = magnet["fieldX"].asDouble();
-//        G4double fieldY = magnet["fieldY"].asDouble();
-//        G4double fieldZ = magnet["fieldZ"].asDouble();
-//        G4ThreeVector fieldValue = G4ThreeVector(fieldX * tesla, fieldY * tesla, fieldZ * tesla);
-//
-//        // Create and set the magnetic field for the box
-//        G4UniformMagField* boxMagField = new G4UniformMagField(fieldValue);
-//        G4FieldManager* boxFieldManager = new G4FieldManager();
-//        boxFieldManager->SetDetectorField(boxMagField);
-//
-//        // Create the equation of motion and the stepper for the box
-////        G4Mag_UsualEqRhs* equationOfMotion = new G4Mag_UsualEqRhs(boxMagField);
-////        G4MagIntegratorStepper* stepper = new G4ClassicalRK4(equationOfMotion);
-//
-//        // Create the chord finder for the box
-//        boxFieldManager->CreateChordFinder(boxMagField);
-//
-//        logicBox->SetFieldManager(boxFieldManager, true);
     }
+
 
     sensitiveLogical = nullptr;
     if (detectorData.isMember("sensitive_film")) {

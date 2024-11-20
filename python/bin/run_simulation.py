@@ -14,6 +14,26 @@ def split_array(arr, K):
     splits = np.split(arr, np.cumsum(sizes)[:-1])
     return splits
 
+def adjust_params(phi):
+    if len(phi)==21: #insert sc_v6 SC mag
+        phi = np.insert(phi,0,[0.,353.0780, 125.0830])
+        phi = np.insert(phi,6,[72.0000, 51.0000, 29.0000, 46.0000, 10.0000,  7.0000, 45.6888, 45.6888,22.1839, 22.1839, 27.0063, 16.2448, 10.0000, 31.0000, 35.0000, 31.0000,51.0000, 11.0000])
+    elif len(phi) == 24:
+        phi = np.insert(phi,0,[0.,353.0780, 125.0830])
+        phi = np.insert(phi,6,[72.0000, 51.0000, 29.0000, 46.0000, 10.0000,  7.0000,1.0,
+                                45.6888, 45.6888,22.1839, 22.1839, 27.0063, 16.2448,3.0,
+                                  10.0000, 31.0000, 35.0000, 31.0000,51.0000, 11.0000, 1.0])
+    if len(phi)==42:
+        phi = np.insert(phi,0,[40.0, 231.0]) #np.insert(phi,0,[70.0, 170.0])
+        phi = np.insert(phi,8,[40.0, 40.0, 150.0, 150.0, 1.0, 1.0, 50.0, 50.0, 130.0, 130.0, 2.0, 2.0])#np.insert(phi,8,[40.0, 40.0, 150.0, 150.0, 2.0, 2.0, 80.0, 80.0, 150.0, 150.0, 2.0, 2.0])
+    elif len(phi)==48:
+        phi = np.insert(phi,0,[40.0, 231.0])
+        phi = np.insert(phi,8,[40.0, 40.0, 150.0, 150.0, 1.0, 1.0,1.0, 
+                               50.0, 50.0, 130.0, 130.0, 2.0, 2.0,1.0])
+    if len(phi)==56:
+        phi = np.insert(phi,[13,19,25,31,37,43,49,55],[1.0, 1.0, 1.0, 3.0, 1.0, 1.0,1.0,1.0])
+    return phi
+
 def run(muons, 
         phi, 
         z_bias:float=50, 
@@ -30,9 +50,7 @@ def run(muons,
     if type(muons) is tuple:
         muons = muons[0]
 
-    if len(phi)==42: #shield might have 14 fixed parameters
-        phi = np.insert(phi,0,[70.0, 170.0])
-        phi = np.insert(phi,8,[40.0, 40.0, 150.0, 150.0, 2.0, 2.0, 80.0, 80.0, 150.0, 150.0, 2.0, 2.0])
+    phi = adjust_params(phi)
 
     detector = get_design_from_params(params = phi,z_bias=z_bias,force_remove_magnetic_field=False,fSC_mag = fSC_mag, use_simulated_fields=use_simulated_fields)
 
@@ -126,6 +144,7 @@ if __name__ == '__main__':
     with open('/home/hep/lprate/projects/BlackBoxOptimization/outputs/complete_57_SC_new/phi_optm.txt', "r") as txt_file:
         data = [float(line.strip()) for line in txt_file]
     params = params=list(args.params)#np.array(data)
+    #aaaaaaa
     n_muons = args.n
     input_file = args.f
     z_bias = 50
@@ -135,24 +154,31 @@ if __name__ == '__main__':
     with gzip.open(input_file, 'rb') as f:
         data = pickle.load(f)
     if args.shuffle_input: np.random.shuffle(data)
-    if 0<n_muons<=data.shape[0]:
-        data = data[:n_muons]
-        cores = min(cores,n_muons)
+    from collections import defaultdict
+    d = defaultdict(list)
+    for n_muons in np.r_[np.arange(1, 1000, 100),np.arange(1000,450000,1000)]:
+        print('n_muons:', n_muons)
+        for i in range(0, 5):
+            print(i)
+            if 0<n_muons<=data.shape[0]:
+                data_n = data[:n_muons]
+                cores = min(cores,n_muons)
 
-    workloads = split_array(data,cores)
-    t1 = time.time()
-    with mp.Pool(cores) as pool:
-        result = pool.starmap(run, [(workload,params,z_bias,input_dist,True,True,sensitive_film_params, args.real_fields,
-                                     args.return_nan,args.seed, args.plot_magnet) for workload in workloads])
-    t2 = time.time()
-
+            workloads = split_array(data_n,cores)
+            t1 = time.time()
+            with mp.Pool(cores) as pool:
+                result = pool.starmap(run, [(workload,params,z_bias,input_dist,True,True,sensitive_film_params, args.real_fields,
+                                            args.return_nan,args.seed, args.plot_magnet) for workload in workloads])
+            t2 = time.time()
+            print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")
+            d[n_muons].append(t2-t1)
+    with open('/home/hep/lprate/projects/MuonsAndMatter/data/outputs/time_analysis.pkl','wb') as f:
+        pickle.dump(d,f)
     all_results = []
     for rr in result:
         resulting_data,weight = rr
         if len(resulting_data)==0: continue
         all_results += [resulting_data]
-
-    print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")
     print(f"Weight = {weight} kg")
     all_results = np.concatenate(all_results, axis=0)
     #with gzip.open(f'data/outputs/outputs_{tag}.pkl', "wb") as f:

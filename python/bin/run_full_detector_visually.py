@@ -7,9 +7,38 @@ from lib.reference_designs.params_design_9 import get_design as get_design_9
 from lib.reference_designs.params_design_8 import get_design as get_design_8
 from lib.reference_designs.params import *
 import time
-from lib.ship_muon_shield import get_design_from_params
+from lib.ship_muon_shield_customfield import get_design_from_params
 import pickle
 from plot_magnet import plot_magnet
+
+def add_fixed_params(phi: np.ndarray):
+    if len(phi) == 21:  # insert sc_v6 SC mag
+        phi = np.concatenate([np.array([0., 353.0780, 125.0830]), phi])
+        phi = np.concatenate([phi[:6], np.array([72.0000, 51.0000, 29.0000, 46.0000, 10.0000, 7.0000, 
+                                                45.6888, 45.6888, 22.1839, 22.1839, 27.0063, 16.2448, 
+                                                10.0000, 31.0000, 35.0000, 31.0000, 51.0000, 11.0000]), phi[6:]])
+    elif len(phi) == 24:
+        phi = np.concatenate([np.array([0., 353.0780, 125.0830]), phi])
+        phi = np.concatenate([phi[:6], np.array([72.0000, 51.0000, 29.0000, 46.0000, 10.0000, 7.0000, 1.0, 
+                                                45.6888, 45.6888, 22.1839, 22.1839, 27.0063, 16.2448, 3.0, 
+                                                10.0000, 31.0000, 35.0000, 31.0000, 51.0000, 11.0000, 1.0]), phi[6:]])
+    if len(phi) == 42:  # insert hadron absorber and other (?)
+        phi = np.concatenate([np.array([40.0, 231.0]), phi])
+        phi = np.concatenate([phi[:8], np.array([40.0, 40.0, 150.0, 150.0, 1.0, 1.0, 50.0, 50.0, 130.0, 
+                                                130.0, 2.0, 2.0]), phi[8:]])
+    elif len(phi) == 48:
+        phi = np.concatenate([np.array([40.0, 231.0]), phi])
+        phi = np.concatenate([phi[:8], np.array([40.0, 40.0, 150.0, 150.0, 1.0, 1.0, 1.0, 
+                                                50.0, 50.0, 130.0, 130.0, 2.0, 2.0, 1.0]), phi[8:]])
+    if len(phi) == 56:
+        # Insert specific values at given indices
+        insert_indices = [13, 19, 25, 31, 37, 43, 49, 55]
+        insert_values = np.array([1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0])
+        for idx, val in zip(insert_indices, insert_values):
+            phi = np.concatenate([phi[:idx], np.array([val]), phi[idx:]])
+    
+    return phi
+
 
 def main(n_muons:int,
         design = 100, 
@@ -38,7 +67,7 @@ def main(n_muons:int,
             params = np.insert(params,8,[40.0, 40.0, 150.0, 150.0, 2.0, 2.0, 80.0, 80.0, 150.0, 150.0, 2.0, 2.0])
     
 
-        detector = get_design_from_params(params, z_bias=z_bias, force_remove_magnetic_field=False, fSC_mag=fSC_mag)
+        detector = get_design_from_params(params, z_bias=z_bias, force_remove_magnetic_field=False, fSC_mag=fSC_mag, use_simulated_fields=False)
     elif design == 9:
         detector = get_design_9(z_bias=z_bias, force_remove_magnetic_field=False)
     elif design == 8:
@@ -137,15 +166,13 @@ if __name__ == '__main__':
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
+    params = add_fixed_params(params)
     if args.params_test is not None:
         assert len(args.params_test) % 2 == 0
         for i in range(0, len(args.params_test), 2):
             params[int(args.params_test[i])] = float(args.params_test[i + 1])
-        params[13] = params[12]
-        params[15] = params[14]
-        params[17] = params[16]
 
         print('PARAMS: ',np.array(params)[np.array([1, 12,13,14,15,16,17])])
-    sensitive_film = (-4,3.0)
+    sensitive_film = 57
     main(n_muons = args.n,params=params,sensitive_film_position=sensitive_film, fSC_mag=args.SC)
 

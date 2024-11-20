@@ -1,15 +1,26 @@
 
 import numpy as np
-#from lib.ship_muon_shield import get_design_from_params
-#from muon_slabs import simulate_muon, initialize, collect, kill_secondary_tracks, collect_from_sensitive
-#from plot_magnet import plot_magnet, construct_and_plot
 import csv
+import subprocess
+import sys
+import pathlib
+sys.path.append("/home/hep/lprate/projects/roxie_ship/scripts")
+sys.path.append("/home/hep/lprate/projects/roxie_ship/roxie_evaluator/scripts")
+from os import environ
+apptainer_cmd = environ.get('APPTAINER_CMD', 'apptainer') #when using this script in a container, 'apptainer' might not have the path defined
+from generate_datafiles import main as generate_datafiles
+from time import time
+
+
+DIR = pathlib.Path('/home/hep/lprate/projects/roxie_ship')
 
 def get_roxie_params(params, 
                      SC_mag:bool = True,
                      Xmgap:float = 0.0,
                      Ymgap:float = 0.05,
-                     B_goal:float = 5.1):
+                     z_gap:float = 0.1,
+                     B_goal:float = 5.1,
+                     save_dir:pathlib.Path = None):
     params = np.asarray(params) / 100 #convert to meters
     if len(params) == 42:
         idx = np.array([1,12,13,14,15,16,17])
@@ -27,11 +38,11 @@ def get_roxie_params(params,
         'B_goal(T)': [B_goal],
         'delta_x(mm)': [1],
         'delta_y(mm)': [1],
-        'Z_pos(m)': [0.02],
+        'Z_pos(m)': [0.00],#[0.02],
         'Xmgap1(m)': [Xmgap],
         'Xmgap2(m)': [Xmgap],
 
-        'Z_len(m)': [2 * params[0]],
+        'Z_len(m)': [2 * params[0] - z_gap],
         'Xcore1(m)': [params[1] + Xmgap],
         'Xvoid1(m)': [params[1] + params[5] + Xmgap],
         'Xyoke1(m)': [params[1] + params[5] + ratio_yoke * params[1] + Xmgap],
@@ -44,38 +55,42 @@ def get_roxie_params(params,
         'Ycore2(m)': [params[4]],
         'Yvoid2(m)': [params[4] + Ymgap],
         'Yyoke2(m)': [params[4] + ratio_yoke * params[2] + Ymgap]}
-    #with open("/home/hep/lprate/projects/roxie_ship/inputs/parameters.csv", "w", newline="") as f:
-    #    w = csv.DictWriter(f, d.keys())
-    #    w.writeheader()
-    #    w.writerow(d)
+    if save_dir is not None:
+        with open(save_dir/"parameters.csv", "w", newline="") as f:
+            w = csv.DictWriter(f, d.keys())
+            w.writeheader()
+            w.writerow(d)
     return d
 
+def run_roxie(params, input_dir, output_dir, container_dir):
+    d = get_roxie_params(params, SC_mag=True)
+    with open(input_dir/"parameters.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, d.keys())
+        w.writeheader()
+        w.writerow(d)
+    generate_datafiles(d, input_dir, output_dir/"datafiles", container_dir)
+    command = [apptainer_cmd, "exec", "--bind",DIR.resolve(),container_dir/"roxie_evaluator.sif", "python3", DIR/"roxie_evaluator/scripts/SHiP_sc_magnet_get_map.py"]
+    try:
+        result = subprocess.run(command, check=True, text=True, capture_output=True)
+        print("Magnet simulation successfull; output:", result.stdout)
+    except subprocess.CalledProcessError as e:
+        print("Error:", e.stderr)
+
+
 if __name__ == '__main__':
-    import sys
-    import pathlib
-    import subprocess
-    sys.path.append("/home/hep/lprate/projects/roxie_ship/scripts")
-    sys.path.append("/home/hep/lprate/projects/roxie_ship/roxie_evaluator/scripts")
-    from generate_datafiles import main as generate_datafiles
     #from lib.reference_designs.params import sc_v6
     sc_v6 = [0,353.078,125.083,184.834,150.193,186.812,72,51,29,46,10,7,45.6888,
          45.6888,22.1839,22.1839,27.0063,16.2448,10,31,35,31,51,11,24.7961,48.7639,8,104.732,15.7991,16.7793,3,100,192,192,2,
          4.8004,3,100,8,172.729,46.8285,2]
+    #sc_v6 = np.array([3.53078 , 0.456888, 0.456888, 0.221839, 0.221839, 0.270063,
+    #   0.270063])*100
 
-    DIR = pathlib.Path('/home/hep/lprate/projects/roxie_ship')
     output_dir = DIR/'outputs'
     input_dir = DIR/'inputs'    
     container_dir=DIR/'containers'
-
-    input_df = get_roxie_params(sc_v6, SC_mag=True)
-    
-    generate_datafiles(input_df, input_dir, output_dir/"datafiles", container_dir)
-    command = ["$APPTAINER_CMD", "exec", "--bind",DIR.resolve(),container_dir/"roxie_evaluator.sif", "python3", "/home/hep/lprate/projects/roxie_ship/roxie_evaluator/scripts/SHiP_sc_magnet_get_map.py"]
-    #try:
-    #    result = subprocess.run(command, check=True, text=True, capture_output=True)
-    #    print("Output:", result.stdout)
-    #except subprocess.CalledProcessError as e:
-    #    print("Error:", e.stderr)
+    t1 = time()
+    run_roxie(sc_v6, input_dir, output_dir, container_dir)
+    print("Time:", time()-t1)
 
 
     

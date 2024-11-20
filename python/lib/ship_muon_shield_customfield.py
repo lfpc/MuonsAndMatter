@@ -1,111 +1,93 @@
 import json
 import numpy as np
 
+import pickle
+import gzip
+from matplotlib.path import Path as polygon_path
 
-def CreateArb8(arbName, medium, dZ, corners, color, magField, field_profile,
+def get_field():
+    with gzip.open('/home/hep/lprate/projects/roxie_ship/outputs/points.pkl', 'rb') as f:
+        field_s = pickle.load(f)
+    B = field_s['B']
+    B[:, 0] *= -1
+    B[:, 1] *= -1
+    return [field_s['points'],B]
+def filter_fields(points,fields,corners, dZ):
+    corners = np.array(corners).reshape(-1, 2)
+    polygon = polygon_path(corners)
+    inside = polygon.contains_points(points[:,:2])
+    inside = np.logical_and(inside, points[:,2] > -dZ, points[:,2] < dZ)
+    return [points[inside].tolist(),fields[inside].tolist()]
+
+
+def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
                tShield, x_translation, y_translation, z_translation, stepGeo):
     assert stepGeo == False
+    corners /= 100
+    dZ /= 100
+    z_translation /= 100
+
+    if field_profile != 'uniform': magField = filter_fields(magField[0],magField[1],corners, dZ)
 
     tShield['components'].append({
-        'corners' : corners/100,
+        'corners' : corners,
         'field_profile' : field_profile, #interpolation type
         'field' : magField,
         'name': arbName,
-        'dz' : dZ/100,
-        "z_center" : z_translation/100,
+        'dz' : dZ,
+        "z_center" : z_translation,
     })
 
 # fields should be 4x3 np array
 def create_magnet(magnetName, medium, tShield,
-                  fields,field_profile, fieldDirection, dX,
+                  fields,field_profile, dX,
                   dY, dX2, dY2, dZ, middleGap,
-                  middleGap2, HmainSideMag, HmainSideMag2, gap,
-                  gap2, Z, NotMagnet, stepGeo, SC_key=False):
+                  middleGap2,ratio_yoke, gap,
+                  gap2, Z, stepGeo, Ymgap = 5):
     fDesign = 8
-
-    if NotMagnet:
-        coil_gap = gap
-        coil_gap2 = gap2
-    elif fDesign > 7:
-        # Assuming 0.5A / mm ^ 2 and 10000At needed, about 200cm ^ 2 gaps are necessary
-        # Current design safely above this.Will consult with MISiS to get a better minimum.
-        gap = np.ceil(max(100. / dY, gap))
-        gap2 = np.ceil(max(100. / dY2, gap2))
-        coil_gap = gap
-        coil_gap2 = gap2
-    else:
-        raise NotImplementedError("Design value is wrong.")
+    dY += Ymgap
+    # Assuming 0.5A / mm ^ 2 and 10000At needed, about 200cm ^ 2 gaps are necessary
+    # Current design safely above this.Will consult with MISiS to get a better minimum.
+    gap = np.ceil(max(100. / dY, gap))
+    gap2 = np.ceil(max(100. / dY2, gap2))
+    coil_gap = gap
+    coil_gap2 = gap2
 
     anti_overlap = 0.1 # gap between fields in the corners for mitred joints (Geant goes crazy when
     # they touch each other)
 
-    if not SC_key:
-        cornersMainL = np.array([
-            middleGap, -(dY + dX - anti_overlap), middleGap, dY + dX - anti_overlap,
-            dX + middleGap, dY - anti_overlap, dX + middleGap,
-            -(dY - anti_overlap),
-            middleGap2, -(dY2 + dX2 - anti_overlap), middleGap2, dY2 + dX2 - anti_overlap,
-            dX2 + middleGap2, dY2 - anti_overlap, dX2 + middleGap2,
-            -(dY2 - anti_overlap)])
 
-        cornersTL = np.array((middleGap + dX,
-                              dY,
-                              middleGap,
-                              dY + dX,
-                              2 * dX + middleGap + coil_gap,
-                              dY + dX,
-                              dX + middleGap + coil_gap,
-                              dY,
-                              middleGap2 + dX2,
-                              dY2,
-                              middleGap2,
-                              dY2 + dX2,
-                              2 * dX2 + middleGap2 + coil_gap2,
-                              dY2 + dX2,
-                              dX2 + middleGap2 + coil_gap2,
-                              dY2))
+    cornersMainL = np.array([
+        middleGap, -(dY + ratio_yoke*dX - anti_overlap), middleGap, dY + ratio_yoke*dX - anti_overlap,
+        dX + middleGap, dY - anti_overlap, dX + middleGap,
+        -(dY - anti_overlap),
+        middleGap2, -(dY2 + dX2*ratio_yoke - anti_overlap), middleGap2, dY2 + dX2*ratio_yoke - anti_overlap,
+        dX2 + middleGap2, dY2 - anti_overlap, dX2 + middleGap2,
+        -(dY2 - anti_overlap)])
 
-        cornersMainSideL = np.array((dX + middleGap + gap, -(dY - anti_overlap), dX + middleGap + gap,
-                                    dY - anti_overlap, 2 * dX + middleGap + gap, dY + dX - anti_overlap,
-                                    2 * dX + middleGap + gap, -(dY + dX - anti_overlap), dX2 + middleGap2 + gap2,
-                                    -(dY2 - anti_overlap), dX2 + middleGap2 + gap2, dY2 - anti_overlap,
-                                    2 * dX2 + middleGap2 + gap2, dY2 + dX2 - anti_overlap, 2 * dX2 + middleGap2 + gap2,
-                                    -(dY2 + dX2 - anti_overlap)))
+    cornersTL = np.array((middleGap + dX,
+                            dY,
+                            middleGap,
+                            dY + dX*ratio_yoke,
+                            dX + ratio_yoke*dX + middleGap + coil_gap,
+                            dY + dX*ratio_yoke,
+                            dX + middleGap + coil_gap,
+                            dY,
+                            middleGap2 + dX2,
+                            dY2,
+                            middleGap2,
+                            dY2 + dX2*ratio_yoke,
+                            dX2 + ratio_yoke*dX2 + middleGap2 + coil_gap2,
+                            dY2 + dX2*ratio_yoke,
+                            dX2 + middleGap2 + coil_gap2,
+                            dY2))
 
-    else:
-        cornersMainL = np.array([middleGap,        -(dY + 3 * dX - anti_overlap),
-                      middleGap,        dY + 3 * dX - anti_overlap,
-                      dX + middleGap,   dY - anti_overlap,
-                      dX + middleGap,   -(dY - anti_overlap),
-                      middleGap2,       -(dY2 + 3 * dX2 - anti_overlap),
-                      middleGap2,       dY2 + 3 * dX2 - anti_overlap,
-                      dX2 + middleGap2, dY2 - anti_overlap,
-                      dX2 + middleGap2, -(dY2 - anti_overlap)])
-        cornersTL = np.array([middleGap + dX,
-                   dY,
-                   middleGap,
-                   dY + 3 * dX,
-                   4 * dX + middleGap + coil_gap,
-                   dY + 3 * dX,
-                   dX + middleGap + coil_gap,
-                   dY,
-                   middleGap2 + dX2,
-                   dY2,
-                   middleGap2,
-                   dY2 + 3 * dX2,
-                   4 * dX2 + middleGap2 + coil_gap2,
-                   dY2 + 3 * dX2,
-                   dX2 + middleGap2 + coil_gap2,
-                   dY2])
-
-        cornersMainSideL = np.array([dX + middleGap + gap,        -(dY - anti_overlap),
-                                    dX + middleGap + gap,        dY - anti_overlap,
-                                    4 * dX + middleGap + gap,    dY + 3 * dX - anti_overlap,
-                                    4 * dX + middleGap + gap,    -(dY + 3 * dX - anti_overlap),
-                                    dX2 + middleGap2 + gap2,     -(dY2 - anti_overlap),
-                                    dX2 + middleGap2 + gap2,     dY2 - anti_overlap,
-                                    4 * dX2 + middleGap2 + gap2, dY2 + 3 * dX2 - anti_overlap,
-                                    4 * dX2 + middleGap2 + gap2, -(dY2 + 3 * dX2 - anti_overlap)])
+    cornersMainSideL = np.array((dX + middleGap + gap, -(dY - anti_overlap), dX + middleGap + gap,
+                                dY - anti_overlap, dX + ratio_yoke*dX + middleGap + gap, dY + ratio_yoke*dX - anti_overlap,
+                                dX + ratio_yoke*dX + middleGap + gap, -(dY + ratio_yoke*dX - anti_overlap), dX2 + middleGap2 + gap2,
+                                -(dY2 - anti_overlap), dX2 + middleGap2 + gap2, dY2 - anti_overlap,
+                                dX2 + ratio_yoke*dX2 + middleGap2 + gap2, dY2 + ratio_yoke*dX2 - anti_overlap, dX2 + ratio_yoke*dX2 + middleGap2 + gap2,
+                                -(dY2 + ratio_yoke*dX2 - anti_overlap)))
 
     cornersMainR = np.zeros(16, np.float64)
     cornersCLBA = np.zeros(16, np.float64)
@@ -157,36 +139,25 @@ def create_magnet(magnetName, medium, tShield,
         'components' : []
     }
 
-    color = [0, 1, 2, 3]
     if field_profile == 'uniform':
-        if fieldDirection == "up":
-            CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, color[0], fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, color[0], fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, color[1], fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, color[1], fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str8, medium, dZ, cornersTL, color[3], fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str9, medium, dZ, cornersTR, color[2], fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str10, medium, dZ, cornersBL, color[2], fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str11, medium, dZ, cornersBR, color[3], fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str8, medium, dZ, cornersTL, fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str9, medium, dZ, cornersTR, fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str10, medium, dZ, cornersBL, fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str11, medium, dZ, cornersBR, fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
 
-        elif fieldDirection == "down":
-            CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, color[1], fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, color[1], fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, color[0], fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, color[0], fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str8, medium, dZ, cornersTL, color[2], fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str9, medium, dZ, cornersTR, color[3], fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str10, medium, dZ, cornersBL, color[3], fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
-            CreateArb8(magnetName + str11, medium, dZ, cornersBR, color[2], fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
     else:
-        CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, color[0], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, color[0], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, color[1], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, color[1], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str8, medium, dZ, cornersTL, color[3], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str9, medium, dZ, cornersTR, color[2], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str10, medium, dZ, cornersBL, color[2], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str11, medium, dZ, cornersBR, color[3], fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str8, medium, dZ, cornersTL, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str9, medium, dZ, cornersTR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str10, medium, dZ, cornersBL, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str11, medium, dZ, cornersBR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
 
     theMagnet['dz'] = dZ/100
     theMagnet['z_center'] = Z/100
@@ -201,6 +172,7 @@ def design_muon_shield(params,fSC_mag = True, use_simulated_fields = False):
     m = 100 * cm
     tesla = 1
     fField = 1.7
+    SC_field = 5.1
 
     magnetName = ["MagnAbsorb1", "MagnAbsorb2", "Magn1", "Magn2", "Magn3", "Magn4", "Magn5", "Magn6", "Magn7"]
 
@@ -210,8 +182,8 @@ def design_muon_shield(params,fSC_mag = True, use_simulated_fields = False):
 
     LE = 7 * m
     dZ0 = 1 * m
-    dZ1 = 0.4 * m
-    dZ2 = 2.31 * m
+    dZ1 = params[0]#0.4 * m
+    dZ2 = params[1] #2.31 * m
     dZ3 = params[2]
     dZ4 = params[3]
     dZ5 = params[4]
@@ -228,6 +200,7 @@ def design_muon_shield(params,fSC_mag = True, use_simulated_fields = False):
     dYOut = np.zeros(n_magnets)
     gapOut = np.zeros(n_magnets)
     dZf = np.zeros(n_magnets)
+    ratio_yokes = np.ones(n_magnets)
 
     Z = np.zeros(n_magnets)
     midGapIn= np.zeros(n_magnets)
@@ -237,29 +210,32 @@ def design_muon_shield(params,fSC_mag = True, use_simulated_fields = False):
 
     offset = 7
 
-    dXIn[0] = 0.4 * m
-    dXOut[0] = 0.40 * m
-    gapIn[0] = 0.1 * mm
-    dYIn[0] = 1.5 * m
-    dYOut[0] = 1.5 * m
-    gapOut[0] = 0.1 * mm
-    dXIn[1] = 0.5 * m
-    dXOut[1] = 0.5 * m
-    gapIn[1] = 0.02 * m
-    dYIn[1] = 1.3 * m
-    dYOut[1] = 1.3 * m
-    gapOut[1] = 0.02 * m
+    # dXIn[0] = 0.4 * m
+    # dXOut[0] = 0.40 * m
+    # dYIn[0] = 1.5 * m
+    # dYOut[0] = 1.5 * m
+    # gapIn[0] = 0.1 * mm
+    # gapOut[0] = 0.1 * mm
+    # ratio_yokes[0] = 1
+    # dXIn[1] = 0.5 * m
+    # dXOut[1] = 0.5 * m
+    # dYIn[1] = 1.3 * m
+    # dYOut[1] = 1.3 * m
+    # gapIn[1] = 0.02 * m
+    # gapOut[1] = 0.02 * m
+    # ratio_yokes[1] = 1
 
 
     offset = 7
 
-    for i in range(2, n_magnets-1):
-        dXIn[i] = params[offset + i * 6 + 1]
-        dXOut[i] = params[offset + i * 6 + 2]
-        dYIn[i] = params[offset + i * 6 + 3]
-        dYOut[i] = params[offset + i * 6 + 4]
-        gapIn[i] = params[offset + i * 6 + 5]
-        gapOut[i] = params[offset + i * 6 + 6]
+    for i in range(n_magnets-1): #range(2,n_magnets-1)
+        dXIn[i] = params[offset + i * 7 + 1]
+        dXOut[i] = params[offset + i * 7 + 2]
+        dYIn[i] = params[offset + i * 7 + 3]
+        dYOut[i] = params[offset + i * 7 + 4]
+        gapIn[i] = params[offset + i * 7 + 5]
+        gapOut[i] = params[offset + i * 7 + 6]
+        ratio_yokes[i] = params[offset + i * 7 + 7]
 
     XXX = -25 * m - fMuonShieldLength / 2. # TODO: This needs to be checked
     zEndOfAbsorb = XXX - fMuonShieldLength / 2.
@@ -309,50 +285,41 @@ def design_muon_shield(params,fSC_mag = True, use_simulated_fields = False):
     tShield = {
         'magnets':[]
     }
-    create_magnet(magnetName[nM], "G4_Fe", tShield, fieldsAbsorber, 'uniform', fieldDirection[nM], dXIn[nM], dYIn[nM], dXOut[nM],
-                 dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM], HmainSideMagIn[nM], HmainSideMagOut[nM],
-                 gapIn[nM], gapOut[nM], Z[nM], True, False)
-
-    fieldScale = np.ones(9)
+    create_magnet(magnetName[nM], "G4_Fe", tShield, fieldsAbsorber, 'uniform', dXIn[nM], dYIn[nM], dXOut[nM],
+                 dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM], ratio_yokes[nM],
+                 gapIn[nM], gapOut[nM], Z[nM], True, Ymgap=0.0)
+    if use_simulated_fields: field_map = get_field()
     for nM in range(2, n_magnets):
         if (dZf[nM] < 1e-5 or nM == 4) and fSC_mag:
             continue
-        SC_key = False
-        ironField_s = fField * fieldScale[nM] * tesla
         if nM == 3 and fSC_mag:
-            SC_FIELD = 5.1
-            ironField_s_coil = SC_FIELD * fieldScale[nM] * tesla
-            SC_key = True
-            if use_simulated_fields:
-                field_profile = 'nearest'#'linear_interpolation'
-                fields_s = get_field()
-            else:
-                field_profile = 'uniform'
-                magFieldIron_s = [0., ironField_s_coil, 0.]
-                RetField_s = [0., -ironField_s, 0.]
-                ConRField_s = [-ironField_s, 0., 0.]
-                ConLField_s = [ironField_s, 0., 0.]
-                fields_s = [magFieldIron_s, RetField_s, ConRField_s, ConLField_s]
-        else: 
+            Ymgap = 5
+            ironField_s = SC_field * tesla #5.1
+        else:
+            Ymgap = 0
+            ironField_s = fField * tesla #1.7
+
+        if use_simulated_fields and nM ==3 and fSC_mag:
+            field_profile = 'nearest'
+            fields_s = field_map#get_field()
+        
+        else:
             field_profile = 'uniform'
+            if fieldDirection[nM] == "down":
+                ironField_s = -ironField_s
             magFieldIron_s = [0., ironField_s, 0.]
-            RetField_s = [0., -ironField_s, 0.]
-            ConRField_s = [-ironField_s, 0., 0.]
-            ConLField_s = [ironField_s, 0., 0.]
+            RetField_s = [0., -ironField_s/ratio_yokes[nM], 0.]
+            ConRField_s = [-ironField_s/ratio_yokes[nM], 0., 0.]
+            ConLField_s = [ironField_s/ratio_yokes[nM], 0., 0.]
             fields_s = [magFieldIron_s, RetField_s, ConRField_s, ConLField_s]
 
-        create_magnet(magnetName[nM], "G4_Fe", tShield, fields_s, field_profile, fieldDirection[nM], dXIn[nM], dYIn[nM], dXOut[nM],
-                  dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM], HmainSideMagIn[nM], HmainSideMagOut[nM],
-                  gapIn[nM], gapOut[nM], Z[nM], nM == 8, False, SC_key)
-
+        create_magnet(magnetName[nM], "G4_Fe", tShield, fields_s, field_profile, dXIn[nM], dYIn[nM], dXOut[nM],
+                  dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM],ratio_yokes[nM],
+                  gapIn[nM], gapOut[nM], Z[nM], nM == 8,Ymgap=Ymgap)
     return tShield
 
-import pickle
-import gzip
-def get_field():
-    with gzip.open('/home/hep/lprate/projects/roxie_ship/outputs/points.pkl', 'rb') as f:
-        field_s = pickle.load(f)
-    return [field_s['points'].tolist(),field_s['B'].tolist()]
+
+
 
 
 def get_design_from_params(params, z_bias=50., force_remove_magnetic_field=False, fSC_mag:bool = True, use_simulated_fields = False):
