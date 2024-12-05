@@ -83,7 +83,7 @@ def run(muons,
 
 
 
-DEF_INPUT_FILE = '/home/hep/lprate/projects/MuonsAndMatter/data/inputs.pkl'#'data/oliver_data_enriched.pkl'
+DEF_INPUT_FILE = '/data/inputs.pkl'#'data/oliver_data_enriched.pkl'
 if __name__ == '__main__':
     import argparse
     import gzip
@@ -109,8 +109,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     tag = args.tag
     cores = args.c
-    with open('/home/hep/lprate/projects/BlackBoxOptimization/outputs/complete_57_SC_new/phi_optm.txt', "r") as txt_file:
-        data = [float(line.strip()) for line in txt_file]
     params = params=list(args.params)#np.array(data)
     def split_array(arr, K):
         N = len(arr)
