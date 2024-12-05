@@ -2,7 +2,7 @@ import numpy as np
 import pickle
 import gzip
 from matplotlib.path import Path as polygon_path
-from lib import magnet_simulations
+#from lib import magnet_simulations
 import sys
 sys.path.append('/home/hep/lprate/projects/MuonsAndMatter/python/lib/reference_designs')
 from lib.reference_designs.params import new_parametrization, get_magnet_params, sc_v6
