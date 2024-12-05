@@ -11,6 +11,7 @@ public:
 
     void GetFieldValue(const G4double Point[4], G4double *Bfield) const override;
     void GetFieldValueNearestNeighbor(const G4double Point[4], G4double *Bfield) const;
+    void GetFieldValueLinear(const G4double Point[4], G4double *Bfield) const;
 
 private:
     std::vector<G4ThreeVector> fPoints;

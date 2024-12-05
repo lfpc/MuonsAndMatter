@@ -63,6 +63,10 @@ void CustomMagneticField::GetFieldValueNearestNeighbor(const G4double Point[4], 
     Bfield[2] = fFields[idx].z();
 }
 
+void CustomMagneticField::GetFieldValueLinear(const G4double Point[4], G4double *Bfield) const {
+    // TODO
+}
+
 void CustomMagneticField::GetFieldValue(const G4double Point[4], G4double *Bfield) const {
     if (fInterpType == NEAREST_NEIGHBOR) {
         GetFieldValueNearestNeighbor(Point, Bfield);

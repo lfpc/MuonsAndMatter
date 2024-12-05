@@ -23,7 +23,6 @@ add_subdirectory(external/jsoncpp)
 
 # Add the include directory for jsoncpp
 include_directories(external/jsoncpp/include)
-include_directories(external/nanoflann/include)
 
 set(SOURCE_FILES
         DetectorConstruction.cc

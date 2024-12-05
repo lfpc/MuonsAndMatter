@@ -2,16 +2,17 @@ import numpy as np
 import pickle
 import gzip
 from matplotlib.path import Path as polygon_path
-#from lib import magnet_simulations
+import magnet_simulations#from lib import magnet_simulations
 import sys
-sys.path.append('./reference_designs')
-from lib.reference_designs.params import new_parametrization, get_magnet_params
+sys.path.append('/home/hep/lprate/projects/MuonsAndMatter/python/lib/reference_designs')
+from params import new_parametrization, get_magnet_params, sc_v6#from lib.reference_designs.params import new_parametrization, get_magnet_params, sc_v6
 import pandas as pd
 
 def get_field(from_file = False,
             params = sc_v6,
             file_name = 'data/fields.pkl',
             **kwargs_field):
+    '''Returns the field map for the given parameters. If from_file is True, the field map is loaded from the file_name.'''
     if from_file:
         with gzip.open(file_name, 'rb') as f:
             fields = pickle.load(f)
@@ -30,23 +31,22 @@ def simulate_field(params,
         mag_params = params[idx]
         if mag in ['?', 'M1']: continue
         elif mag == 'M3'and fSC_mag: 
-            Z_pos += 2 * params[0] - z_gap
+            Z_pos += 2 * params[0]/100 - z_gap
             continue
-        if fSC_mag and mag == 'M2': Ymgap = 0.05; B_goal = 5.1; yoke_type = 'Mag1'#'Mag2'
-        elif mag == 'HA': Ymgap=0.; B_goal = 1.6; yoke_type = 'Mag1'
-        else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3'
+        if fSC_mag and mag == 'M2': Ymgap = 0.05; B_goal = 5.1; yoke_type = 'Mag2'
+        elif mag == 'HA': Ymgap=0.; B_goal = 1.6; yoke_type = 'Mag1';continue
+        else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3';continue
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal=B_goal, yoke_type=yoke_type)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-
+    all_params.to_csv('magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
-    d_space = ((6., 6.5, (-1, Z_pos+0.5)))
-    print('PARAMS:', all_params)
-    #return
+    d_space = ((3., 3., (-1, Z_pos+0.5)))
     fields = magnet_simulations.run(all_params, d_space=d_space)
-    fields['points'][:,2] += Z_init/100
+
+    #fields['points'][:,2] += Z_init/100
     with gzip.open('fields.pkl', 'wb') as f:
         pickle.dump(fields, f)
         print('Fields saved to fields.pkl')
@@ -81,6 +81,7 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
         'dz' : dZ,
         "z_center" : z_translation,
     })
+
 
 # fields should be 4x3 np array
 def create_magnet(magnetName, medium, tShield,

@@ -50,11 +50,13 @@ def get_magnet_params(params,
                      z_gap:float = 0.1,
                      B_goal:float = 5.1,
                      yoke_type:str = 'Mag1',
+                     
                      save_dir = None,):
     # #convert to meters
     ratio_yoke = params[7]
     params /= 100
     Xmgap = params[8]
+    NI = 1.60E+06 if yoke_type == 'Mag2'else 50 #CHANGE FOR WARM CONFIGURATION
     d = {'yoke_type': yoke_type,
         'coil_type': 'Racetrack',
         'material': 'bhiron_1', #check material and etc for SC
@@ -68,10 +70,11 @@ def get_magnet_params(params,
         'J(A/mm2)': 50, 
         'N1': 3,
         'N2': 10,
+        'NI(A)':NI,
         'delta_x(mm)': 1,
         'delta_y(mm)': 1,
         'B_goal(T)': B_goal,
-        'Z_pos(m)': -1*params[0],#[0.02],
+        'Z_pos(m)': -1*params[0],
         'Xmgap1(m)': Xmgap,
         'Xmgap2(m)': Xmgap,
         'Z_len(m)': 2 * params[0] - z_gap,
@@ -83,7 +86,7 @@ def get_magnet_params(params,
         'Xyoke2(m)': params[2] + params[6] + ratio_yoke * params[2] + Xmgap,
         'Ycore1(m)': params[3],
         'Yvoid1(m)': params[3] + Ymgap,
-        'Yyoke1(m)': params[3] + ratio_yoke * params[1] + Ymgap, #0.33 na tabela deles???
+        'Yyoke1(m)': params[3] + ratio_yoke * params[1] + Ymgap,
         'Ycore2(m)': params[4],
         'Yvoid2(m)': params[4] + Ymgap,
         'Yyoke2(m)': params[4] + ratio_yoke * params[2] + Ymgap}

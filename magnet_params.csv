@@ -1,0 +1,2 @@
+yoke_type,coil_type,material,resol_x(m),resol_y(m),resol_z(m),disc_x,disc_z,bias,mu_r,J(A/mm2),N1,N2,NI(A),delta_x(mm),delta_y(mm),B_goal(T),Z_pos(m),Xmgap1(m),Xmgap2(m),Z_len(m),Xcore1(m),Xvoid1(m),Xyoke1(m),Xcore2(m),Xvoid2(m),Xyoke2(m),Ycore1(m),Yvoid1(m),Yyoke1(m),Ycore2(m),Yvoid2(m),Yyoke2(m)
+Mag2,Racetrack,bhiron_1,0.05,0.05,0.05,10,10,1.5,1,50,3,10,1600000.0,1,1,5.1,0.0,0.0,0.0,6.9616,0.4569,0.727,2.0976999999999997,0.4569,0.6193,1.9899999999999998,0.2218,0.2718,1.6424999999999998,0.2218,0.2718,1.6424999999999998
