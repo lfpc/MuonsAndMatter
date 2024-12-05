@@ -7,20 +7,15 @@
 
 CustomMagneticField::CustomMagneticField(const std::vector<G4ThreeVector>& points, const std::vector<G4ThreeVector>& fields, InterpolationType interpType)
     : fPoints(points), fFields(fields), fInterpType(interpType) {
-    // Initialize bins
-    initializeBins();
+    // Initialize grid parameters
+    initializeGrid();
 }
 
 CustomMagneticField::~CustomMagneticField() {
 }
 
-void CustomMagneticField::initializeBins() {
-    // Define the number of bins in each dimension
-    numBinsX = 10;
-    numBinsY = 10;
-    numBinsZ = 10;
-
-    // Calculate the bin size
+void CustomMagneticField::initializeGrid() {
+    // Calculate the grid size
     G4ThreeVector minCorner(std::numeric_limits<double>::max(), std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
     G4ThreeVector maxCorner(std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest());
 
@@ -33,131 +28,45 @@ void CustomMagneticField::initializeBins() {
         if (point.z() > maxCorner.z()) maxCorner.setZ(point.z());
     }
 
-    binSize = G4ThreeVector((maxCorner.x() - minCorner.x()) / numBinsX,
-                            (maxCorner.y() - minCorner.y()) / numBinsY,
-                            (maxCorner.z() - minCorner.z()) / numBinsZ);
+    x_min = minCorner.x();
+    y_min = minCorner.y();
+    z_min = minCorner.z();
 
-    // Initialize bins
-    bins.resize(numBinsX * numBinsY * numBinsZ);
+    // Calculate the number of grid points in each dimension
+    nx = static_cast<int>(std::round((maxCorner.x() - minCorner.x()) / (fPoints[1].x() - fPoints[0].x())));
+    ny = static_cast<int>(std::round((maxCorner.y() - minCorner.y()) / (fPoints[1].y() - fPoints[0].y())));
+    nz = static_cast<int>(std::round((maxCorner.z() - minCorner.z()) / (fPoints[1].z() - fPoints[0].z())));
 
-    for (size_t i = 0; i < numBinsX; ++i) {
-        for (size_t j = 0; j < numBinsY; ++j) {
-            for (size_t k = 0; k < numBinsZ; ++k) {
-                size_t binIndex = i + numBinsX * (j + numBinsY * k);
-                bins[binIndex].minCorner = G4ThreeVector(minCorner.x() + i * binSize.x(),
-                                                         minCorner.y() + j * binSize.y(),
-                                                         minCorner.z() + k * binSize.z());
-                bins[binIndex].maxCorner = G4ThreeVector(minCorner.x() + (i + 1) * binSize.x(),
-                                                         minCorner.y() + (j + 1) * binSize.y(),
-                                                         minCorner.z() + (k + 1) * binSize.z());
-
-                // Find the nearest neighbors for this bin
-                G4ThreeVector binCenter = (bins[binIndex].minCorner + bins[binIndex].maxCorner) / 2.0;
-                std::vector<std::pair<double, size_t>> distances;
-                for (size_t idx = 0; idx < fPoints.size(); ++idx) {
-                    double dist = (fPoints[idx] - binCenter).mag2();
-                    distances.emplace_back(dist, idx);
-                }
-                std::sort(distances.begin(), distances.end());
-                for (size_t n = 0; n < 8 && n < distances.size(); ++n) {
-                    bins[binIndex].nearestNeighbors.push_back(distances[n].second);
-                }
-            }
-        }
-    }
+    dx_inv = 1.0 / (fPoints[1].x() - fPoints[0].x());
+    dy_inv = 1.0 / (fPoints[1].y() - fPoints[0].y());
+    dz_inv = 1.0 / (fPoints[1].z() - fPoints[0].z());
 }
 
-void CustomMagneticField::findBin(const G4ThreeVector& point, size_t& binX, size_t& binY, size_t& binZ) const {
-    binX = std::min(static_cast<size_t>((point.x() - bins[0].minCorner.x()) / binSize.x()), numBinsX - 1);
-    binY = std::min(static_cast<size_t>((point.y() - bins[0].minCorner.y()) / binSize.y()), numBinsY - 1);
-    binZ = std::min(static_cast<size_t>((point.z() - bins[0].minCorner.z()) / binSize.z()), numBinsZ - 1);
+void CustomMagneticField::GetFieldValueNearestNeighbor(const G4double Point[4], G4double *Bfield) const {
+    // Calculate nearest indices using integer arithmetic
+    int i = (int)round((Point[0] - x_min) * dx_inv);
+    int j = (int)round((Point[1] - y_min) * dy_inv);
+    int k = (int)round((Point[2] - z_min) * dz_inv);
+
+    // Check bounds
+    if (i < 0 || i >= nx || j < 0 || j >= ny || k < 0 || k >= nz) {
+        Bfield[0] = Bfield[1] = Bfield[2] = 0.0;
+        return; // Out of bounds
+    }
+
+    // Compute flat index
+    int idx = i + nx * (j + ny * k);
+
+    // Assign the nearest values
+    Bfield[0] = fFields[idx].x();
+    Bfield[1] = fFields[idx].y();
+    Bfield[2] = fFields[idx].z();
 }
 
 void CustomMagneticField::GetFieldValue(const G4double Point[4], G4double *Bfield) const {
     if (fInterpType == NEAREST_NEIGHBOR) {
         GetFieldValueNearestNeighbor(Point, Bfield);
-    } else if (fInterpType == LINEAR) {
+    } else {
         GetFieldValueLinear(Point, Bfield);
     }
-}
-
-void CustomMagneticField::GetFieldValueNearestNeighbor(const G4double Point[4], G4double *Bfield) const {
-    // Initialize the magnetic field to zero
-    Bfield[0] = 0.0;
-    Bfield[1] = 0.0;
-    Bfield[2] = 0.0;
-
-    // Find the bin corresponding to the query point
-    G4ThreeVector p(Point[0], Point[1], Point[2]);
-    size_t binX, binY, binZ;
-    findBin(p, binX, binY, binZ);
-    size_t binIndex = binX + numBinsX * (binY + numBinsY * binZ);
-
-    // Use the precomputed nearest neighbors for interpolation
-    const auto& nearestNeighbors = bins[binIndex].nearestNeighbors;
-    size_t nearestIndex = nearestNeighbors[0]; // Use the first nearest neighbor for simplicity
-
-    // Set the magnetic field to the nearest neighbor's field value
-    Bfield[0] = fFields[nearestIndex].x();
-    Bfield[1] = fFields[nearestIndex].y();
-    Bfield[2] = fFields[nearestIndex].z();
-}
-
-void CustomMagneticField::GetFieldValueLinear(const G4double Point[4], G4double *Bfield) const {
-    // Initialize the magnetic field to zero
-    Bfield[0] = 0.0;
-    Bfield[1] = 0.0;
-    Bfield[2] = 0.0;
-
-    // Find the bin corresponding to the query point
-    G4ThreeVector p(Point[0], Point[1], Point[2]);
-    size_t binX, binY, binZ;
-    findBin(p, binX, binY, binZ);
-    size_t binIndex = binX + numBinsX * (binY + numBinsY * binZ);
-
-    // Use the precomputed nearest neighbors for interpolation
-    const auto& nearestNeighbors = bins[binIndex].nearestNeighbors;
-
-    // Initialize bounding box corners
-    G4ThreeVector pMin(std::numeric_limits<double>::max(), std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
-    G4ThreeVector pMax(std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest());
-
-    // Find the bounding box corners
-    for (const auto& index : nearestNeighbors) {
-        const G4ThreeVector& pt = fPoints[index];
-        if (pt.x() < pMin.x()) pMin.setX(pt.x());
-        if (pt.y() < pMin.y()) pMin.setY(pt.y());
-        if (pt.z() < pMin.z()) pMin.setZ(pt.z());
-        if (pt.x() > pMax.x()) pMax.setX(pt.x());
-        if (pt.y() > pMax.y()) pMax.setY(pt.y());
-        if (pt.z() > pMax.z()) pMax.setZ(pt.z());
-    }
-
-    // Interpolate the magnetic field
-    double xd = (Point[0] - pMin.x()) / (pMax.x() - pMin.x());
-    double yd = (Point[1] - pMin.y()) / (pMax.y() - pMin.y());
-    double zd = (Point[2] - pMin.z()) / (pMax.z() - pMin.z());
-
-    G4ThreeVector B000 = fFields[nearestNeighbors[0]];
-    G4ThreeVector B001 = fFields[nearestNeighbors[1]];
-    G4ThreeVector B010 = fFields[nearestNeighbors[2]];
-    G4ThreeVector B011 = fFields[nearestNeighbors[3]];
-    G4ThreeVector B100 = fFields[nearestNeighbors[4]];
-    G4ThreeVector B101 = fFields[nearestNeighbors[5]];
-    G4ThreeVector B110 = fFields[nearestNeighbors[6]];
-    G4ThreeVector B111 = fFields[nearestNeighbors[7]];
-
-    G4ThreeVector B00 = B000 * (1 - xd) + B100 * xd;
-    G4ThreeVector B01 = B001 * (1 - xd) + B101 * xd;
-    G4ThreeVector B10 = B010 * (1 - xd) + B110 * xd;
-    G4ThreeVector B11 = B011 * (1 - xd) + B111 * xd;
-
-    G4ThreeVector B0 = B00 * (1 - yd) + B10 * yd;
-    G4ThreeVector B1 = B01 * (1 - yd) + B11 * yd;
-
-    G4ThreeVector B = B0 * (1 - zd) + B1 * zd;
-
-    Bfield[0] = B.x();
-    Bfield[1] = B.y();
-    Bfield[2] = B.z();
 }

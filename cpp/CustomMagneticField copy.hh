@@ -11,16 +11,24 @@ public:
 
     void GetFieldValue(const G4double Point[4], G4double *Bfield) const override;
     void GetFieldValueNearestNeighbor(const G4double Point[4], G4double *Bfield) const;
+    void GetFieldValueLinear(const G4double Point[4], G4double *Bfield) const;
 
 private:
     std::vector<G4ThreeVector> fPoints;
     std::vector<G4ThreeVector> fFields;
     InterpolationType fInterpType;
 
-    // Grid parameters
-    double x_min, y_min, z_min;
-    double dx_inv, dy_inv, dz_inv;
-    int nx, ny, nz;
+    // Binning structure
+    struct Bin {
+        G4ThreeVector minCorner;
+        G4ThreeVector maxCorner;
+        std::vector<size_t> nearestNeighbors;
+    };
 
-    void initializeGrid();
+    std::vector<Bin> bins;
+    size_t numBinsX, numBinsY, numBinsZ;
+    G4ThreeVector binSize;
+
+    void initializeBins();
+    void findBin(const G4ThreeVector& point, size_t& binX, size_t& binY, size_t& binZ) const;
 };

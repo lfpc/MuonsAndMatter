@@ -38,7 +38,7 @@
 #include "G4GenericTrap.hh"
 #include "SlimFilmSensitiveDetector.hh"
 #include "CustomMagneticField.hh"
-
+//#include "CavernConstruction.hh"
 
 #include <iostream>
 #include <G4Trap.hh>
@@ -89,6 +89,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
     // Process the magnets from the JSON variable
     const Json::Value magnets = detectorData["magnets"];
+    //const Json::Value fields = detectorData["field_map"];
     double totalWeight = 0;
     for (const auto& magnet : magnets) {
 
@@ -111,7 +112,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
 
         Json::Value arb8s = magnet["components"];
-        G4MagneticField* GlobalmagField = nullptr;
+        //G4MagneticField* GlobalmagField = nullptr;
         
         for (auto arb8: arb8s) {
             std::vector<G4TwoVector> corners_two;
@@ -144,9 +145,11 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
                 const Json::Value& fieldsData = field_value[1];
 
                 for (Json::ArrayIndex i = 0; i < pointsData.size(); ++i) {
-                    points.emplace_back(pointsData[i][0].asDouble() * m, pointsData[i][1].asDouble() * m, pointsData[i][2].asDouble() * m + z_center);
+                    points.emplace_back(pointsData[i][0].asDouble() * m, pointsData[i][1].asDouble() * m, pointsData[i][2].asDouble() * m);
+
                     fields.emplace_back(fieldsData[i][0].asDouble() * tesla, fieldsData[i][1].asDouble() * tesla, fieldsData[i][2].asDouble() * tesla);
                 }
+                
                 // Determine the interpolation type
                 CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
                 if (arb8["field_profile"].asString() == "linear_interpolation") {
@@ -164,7 +167,6 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
             auto genericV = new G4GenericTrap(G4String("sdf"), dz, corners_two);
             auto logicG = new G4LogicalVolume(genericV, boxMaterial, "gggvl");
             double volArb = boxMaterial->GetDensity() /(kg/m3)  * genericV->GetCubicVolume()/(m3);
-//            std::cout<<"Density "<< boxMaterial->GetDensity()/(g/m3) << " | cubic vol "<<genericV->GetCubicVolume()/(m3)<<std::endl;
             totalWeight += volArb;
             logicG->SetFieldManager(FieldManager, true);
             new G4PVPlacement(0, G4ThreeVector(0, 0, z_center), logicG, "BoxZ", logicWorld, false, 0, true);
@@ -174,6 +176,8 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 //            break;
         }
     }
+
+
 
 
     sensitiveLogical = nullptr;
@@ -200,6 +204,8 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
 
     detectorWeightTotal = totalWeight;
+    //auto Cavern = ConstructShapes(concrete, logicWorld, z_transition, zEndOfAbsorb);
+
 
     // Return the physical world
     return physWorld;
