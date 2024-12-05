@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from lib.ship_muon_shield import get_design_from_params
+from lib.ship_muon_shield_customfield import get_design_from_params
 
 def plot_magnet(detector, 
                 output_file='plots/detector_visualization.png',
@@ -9,7 +9,6 @@ def plot_magnet(detector,
                 z_bias =50,
                 sensitive_film_position = None,
                 fixed_zlim:bool = False, 
-                format = 'png',
                 azim:float = 126,
                 elev:float = 17,
                 ignore_magnets = []):
@@ -133,8 +132,8 @@ def plot_magnet(detector,
     fig.subplots_adjust(left=0, bottom=0, right=1, top=1, wspace=None, hspace=None)
 
     if output_file is not None and output_file != '':
-        fig.savefig(output_file, dpi=600, bbox_inches='tight', pad_inches=0,format = format, transparent=False)
-
+        fig.savefig(output_file, dpi=600, bbox_inches='tight', pad_inches=0, transparent=False)
+        print(f'Plot saved to {output_file}')
     #print("Total sensitive hits plotted", total_sensitive_hits)
     plt.close()
 

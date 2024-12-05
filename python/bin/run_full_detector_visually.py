@@ -11,34 +11,6 @@ from lib.ship_muon_shield_customfield import get_design_from_params
 import pickle
 from plot_magnet import plot_magnet
 
-def add_fixed_params(phi: np.ndarray):
-    if len(phi) == 21:  # insert sc_v6 SC mag
-        phi = np.concatenate([np.array([0., 353.0780, 125.0830]), phi])
-        phi = np.concatenate([phi[:6], np.array([72.0000, 51.0000, 29.0000, 46.0000, 10.0000, 7.0000, 
-                                                45.6888, 45.6888, 22.1839, 22.1839, 27.0063, 16.2448, 
-                                                10.0000, 31.0000, 35.0000, 31.0000, 51.0000, 11.0000]), phi[6:]])
-    elif len(phi) == 24:
-        phi = np.concatenate([np.array([0., 353.0780, 125.0830]), phi])
-        phi = np.concatenate([phi[:6], np.array([72.0000, 51.0000, 29.0000, 46.0000, 10.0000, 7.0000, 1.0, 
-                                                45.6888, 45.6888, 22.1839, 22.1839, 27.0063, 16.2448, 3.0, 
-                                                10.0000, 31.0000, 35.0000, 31.0000, 51.0000, 11.0000, 1.0]), phi[6:]])
-    if len(phi) == 42:  # insert hadron absorber and other (?)
-        phi = np.concatenate([np.array([40.0, 231.0]), phi])
-        phi = np.concatenate([phi[:8], np.array([40.0, 40.0, 150.0, 150.0, 1.0, 1.0, 50.0, 50.0, 130.0, 
-                                                130.0, 2.0, 2.0]), phi[8:]])
-    elif len(phi) == 48:
-        phi = np.concatenate([np.array([40.0, 231.0]), phi])
-        phi = np.concatenate([phi[:8], np.array([40.0, 40.0, 150.0, 150.0, 1.0, 1.0, 1.0, 
-                                                50.0, 50.0, 130.0, 130.0, 2.0, 2.0, 1.0]), phi[8:]])
-    if len(phi) == 56:
-        # Insert specific values at given indices
-        insert_indices = [13, 19, 25, 31, 37, 43, 49, 55]
-        insert_values = np.array([1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0])
-        for idx, val in zip(insert_indices, insert_values):
-            phi = np.concatenate([phi[:idx], np.array([val]), phi[idx:]])
-    
-    return phi
-
 
 def main(n_muons:int,
         design = 100, 
@@ -46,7 +18,8 @@ def main(n_muons:int,
          params=None,
           sensitive_film_position:float = 57, 
           fSC_mag:bool = True,
-          input_file = 'data/full_sample/full_sample_0.pkl'):
+          input_dist:float = 0.9,
+          input_file = 'data/inputs.pkl'):
     design = int(design)
     assert design in {100, 9, 8}
 
@@ -67,7 +40,8 @@ def main(n_muons:int,
             params = np.insert(params,8,[40.0, 40.0, 150.0, 150.0, 2.0, 2.0, 80.0, 80.0, 150.0, 150.0, 2.0, 2.0])
     
 
-        detector = get_design_from_params(params, z_bias=z_bias, force_remove_magnetic_field=False, fSC_mag=fSC_mag, use_simulated_fields=False)
+        detector = get_design_from_params(params, z_bias=z_bias, force_remove_magnetic_field=False, fSC_mag=fSC_mag, 
+                                          use_simulated_fields=False, sensitive_film_params={'dz': 0.01, 'dx': 10, 'dy': 10, 'position':sensitive_film_position})
     elif design == 9:
         detector = get_design_9(z_bias=z_bias, force_remove_magnetic_field=False)
     elif design == 8:
@@ -83,13 +57,6 @@ def main(n_muons:int,
                                      # get all the hits at the sensitive film.
     detector["store_all"] = False
 
-    sensitive_film_params:dict = {'dz': 0.01, 'dx': 30, 'dy': 30, 'position':sensitive_film_position}
-    for k,v in sensitive_film_params.items():
-        if k=='position': 
-            if isinstance(v,tuple): #if it is a tuple, the first value indicates the magnet number and the second the position to its end
-                detector['sensitive_film']['z_center'] = v[1] + detector['magnets'][v[0]]['z_center'] + detector['magnets'][v[0]]['dz']
-            else: detector['sensitive_film']['z_center'] += v
-        else: detector['sensitive_film'][k] = v
 
     # detector["store_all"] = True
     json.dumps(detector)
@@ -105,13 +72,20 @@ def main(n_muons:int,
 
     with gzip.open(input_file, 'rb') as f:
         data = pickle.load(f)
+    np.random.seed(42)
     np.random.shuffle(data)
-    px,py,pz,x,y,z,particle,factor = data.T
-
-    charge = (particle/(-13)).astype(int)
+    px,py,pz,x,y,z,particle = data.T
+    charge = particle.astype(int)
+    #charge = (particle/(-13)).astype(int)
     assert (np.abs(charge)==1).all()
-    z = z/100 + 70.845 - 68.685 + 66.34
-    z = detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz'] + z
+    if input_dist is not None:
+        z_pos = detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz']-input_dist
+        z = z_pos*np.ones_like(z)
+    else:
+        z = z/100 + 70.845 - 68.685 + 66.34
+        z = detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz'] + z
+    #z = z/100 + 70.845 - 68.685 + 66.34
+    #z = detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz'] + z
 
     muon_data = []
     muon_data_sensitive = []
@@ -137,6 +111,7 @@ def main(n_muons:int,
     print('Total Magnets Length:', dz)
     print('Total Magnets Length real:', detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz'] - (detector['magnets'][0]['z_center']-detector['magnets'][0]['dz']))
     print('Sensitive Film Position:', detector['sensitive_film']['z_center'])
+    print('SHAPE of DATA', np.array(muon_data).shape)
     plot_magnet(detector, 
                 output_file,
                 muon_data, 
@@ -166,13 +141,10 @@ if __name__ == '__main__':
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
-    params = add_fixed_params(params)
     if args.params_test is not None:
         assert len(args.params_test) % 2 == 0
         for i in range(0, len(args.params_test), 2):
             params[int(args.params_test[i])] = float(args.params_test[i + 1])
-
-        print('PARAMS: ',np.array(params)[np.array([1, 12,13,14,15,16,17])])
-    sensitive_film = 57
+    sensitive_film = args.sens
     main(n_muons = args.n,params=params,sensitive_film_position=sensitive_film, fSC_mag=args.SC)
 

@@ -234,7 +234,6 @@ def create_magnet(magnetName, medium, tShield,
 
     tShield['magnets'].append(theMagnet)
 
-
 def design_muon_shield(params,fSC_mag = True):
     n_magnets = 9
     cm = 1
@@ -378,7 +377,8 @@ def design_muon_shield(params,fSC_mag = True):
     return tShield
 
 
-def get_design_from_params(params, z_bias=50., force_remove_magnetic_field=False, fSC_mag:bool = True):
+def get_design_from_params(params, z_bias=50., force_remove_magnetic_field=False, fSC_mag:bool = True,
+                           sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':0}):
     mag_unit =  10.000000
     # nMagnets 9
 
@@ -427,10 +427,10 @@ def get_design_from_params(params, z_bias=50., force_remove_magnetic_field=False
         },
 
         "sensitive_film": {
-            "z_center" : new_mz,
-            "dz" : 0.01,
-            "dx": 3,
-            "dy": 3,
+            "z_center" : new_mz + sensitive_film_params['position'],
+            "dz" : sensitive_film_params['dz'],
+            "dx": sensitive_film_params['dx'],
+            "dy": sensitive_film_params['dy'],
         }
     })
 
