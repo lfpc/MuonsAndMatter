@@ -18,7 +18,9 @@ cpp/build3
 plots/
 
 # Ignore data directory
-data/
+data/full_samples/
+data/outputs/*
+
 
 # Ignore checks directory
 checks/

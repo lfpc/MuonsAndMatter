@@ -143,10 +143,6 @@ def construct_and_plot(muons,
         fSC_mag:bool = True,
         sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':57},
         kwargs_plot = {}):
-    if len(phi)==42: #shield might have 14 fixed parameters
-        phi = np.insert(phi,0,[70.0, 170.0])
-        phi = np.insert(phi,8,[40.0, 40.0, 150.0, 150.0, 2.0, 2.0, 80.0, 80.0, 150.0, 150.0, 2.0, 2.0])
-
     detector = get_design_from_params(params = phi,z_bias=z_bias,force_remove_magnetic_field=False,fSC_mag = fSC_mag)
     for k,v in sensitive_film_params.items():
         if k=='position': detector['sensitive_film']['z_center'] += v
