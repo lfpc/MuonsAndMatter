@@ -45,8 +45,7 @@ def test(phi,inputs_dir:str,
 def get_files(phi,inputs_dir:str,
         outputs_dir:str, 
         cores:int = 384,
-        seed = 1,
-        tag = ''):
+        seed = 1):
     SHIP = ShipMuonShieldCluster(cores = cores,
                  loss_with_weight = False,
                  manager_ip='34.65.198.159',
@@ -63,7 +62,7 @@ def get_files(phi,inputs_dir:str,
         time1 = time()
         SHIP(phi,file = n_name).item()
         print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
-        concatenate_files('/home/hep/lprate/projects/cluster/outputs', n_name)
+        concatenate_files(outputs_dir, n_name)
         print('saved new file')
         print('TIME:', time()-t1)
 
@@ -94,7 +93,7 @@ def get_total_hits(phi,inputs_dir:str,
         time1 = time()
         n_hits = SHIP(phi,file = n_name).item()
         print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
-        concatenate_files('/home/hep/lprate/projects/cluster/outputs', n_name)
+        concatenate_files(outputs_dir, n_name)
         n_hits_total += n_hits
         n_muons_unweighted += len(factor)
         all_results[n_name] = (n_muons,n_hits)
@@ -144,11 +143,9 @@ optimal_oliver =  [208.0, 207.0, 281.0, 248.0, 305.0, 242.0, 72.0, 51.0, 29.0, 4
                          38.0, 46.0, 192.0, 14.0, 9.0, 10.0, 31.0, 35.0, 31.0, 51.0, 11.0, 3.0, 32.0, 54.0, 
                          24.0, 8.0, 8.0, 22.0, 32.0, 209.0, 35.0, 8.0, 13.0, 33.0, 77.0, 85.0, 241.0, 9.0, 26.0]
 
-
-INPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/full_sample'
-OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs'
-
 if __name__ == '__main__':
+    INPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/full_sample'
+    OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs'
     import argparse
     import gzip
     import pickle

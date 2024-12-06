@@ -83,7 +83,7 @@ def run(muons,
 
 
 
-DEF_INPUT_FILE = '/home/hep/lprate/projects/MuonsAndMatter/data/inputs.pkl'#'data/oliver_data_enriched.pkl'
+DEF_INPUT_FILE = 'data/inputs.pkl'#'data/oliver_data_enriched.pkl'
 if __name__ == '__main__':
     import argparse
     import gzip

@@ -62,12 +62,12 @@ def get_grid_data(points: np.array, B: np.array, new_points: tuple):
 
 def run_fem(magn_params:dict,
             delta_air = (1.0,1.0,1.0),
-            materials_dir = '/home/hep/lprate/projects/roxie_ship/roxie_evaluator/files/materials'):
+            materials_dir = 'data'):
     """Runs the finite element method to compute the magnetic field.
     Parameters:
     magn_params (dict): Dictionary containing the magnets parameters.
     delta_air (tuple, optional): Dimensions of block of air outside the magnets to simulate. Defaults to (1.0,1.0,1.0).
-    materials_dir (str, optional): Directory containing the materials. Defaults to '/home/hep/lprate/projects/roxie_ship/roxie_evaluator/files/materials'.
+    materials_dir (str, optional): Directory containing the materials. Defaults to 'data/'.
     Returns:
     dict: A dictionary containing the position points and the computed magnetic field 'B'.
     """
