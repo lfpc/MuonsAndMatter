@@ -4,7 +4,7 @@ import gzip
 from matplotlib.path import Path as polygon_path
 from lib import magnet_simulations
 import sys
-sys.path.append('/home/hep/lprate/projects/MuonsAndMatter/python/lib/reference_designs')
+#sys.path.append('/home/hep/lprate/projects/MuonsAndMatter/python/lib/reference_designs')
 from lib.reference_designs.params import new_parametrization, get_magnet_params, sc_v6
 import pandas as pd
 
@@ -402,5 +402,4 @@ def get_design_from_params(params,
 
 
 if __name__ == '__main__':
-    from params import sc_v6
     shield = get_design_from_params(np.array(sc_v6), use_simulated_fields= True)
