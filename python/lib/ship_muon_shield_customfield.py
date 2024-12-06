@@ -2,7 +2,7 @@ import numpy as np
 import pickle
 import gzip
 from matplotlib.path import Path as polygon_path
-#from lib import magnet_simulations
+from lib import magnet_simulations
 import sys
 sys.path.append('/home/hep/lprate/projects/MuonsAndMatter/python/lib/reference_designs')
 from lib.reference_designs.params import new_parametrization, get_magnet_params, sc_v6
@@ -24,7 +24,8 @@ def get_field(from_file = False,
 def simulate_field(params,
               Z_init = 0,
               fSC_mag:bool = True,
-              z_gap = 0.1):
+              z_gap = 0.1,
+              save_fields:bool = True):
     all_params = pd.DataFrame()
     Z_pos = 0.
     for mag,idx in new_parametrization.items():
@@ -34,22 +35,22 @@ def simulate_field(params,
             Z_pos += 2 * params[0]/100 - z_gap
             continue
         if fSC_mag and mag == 'M2': Ymgap = 0.05; B_goal = 5.1; yoke_type = 'Mag2'
-        elif mag == 'HA': Ymgap=0.; B_goal = 1.6; yoke_type = 'Mag1';continue
-        else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3';continue
+        elif mag == 'HA': Ymgap=0.; B_goal = 1.6; yoke_type = 'Mag1'
+        else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3'
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal=B_goal, yoke_type=yoke_type)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    all_params.to_csv('magnet_params.csv', index=False)
+    if save_fields: all_params.to_csv('data/magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
     d_space = ((3., 3., (-1, Z_pos+0.5)))
     fields = magnet_simulations.run(all_params, d_space=d_space)
-
-    #fields['points'][:,2] += Z_init/100
-    with gzip.open('fields.pkl', 'wb') as f:
-        pickle.dump(fields, f)
-        print('Fields saved to fields.pkl')
+    fields['points'][:,2] += Z_init/100
+    if save_fields:
+        with gzip.open('data/outputs/fields.pkl', 'wb') as f:
+            pickle.dump(fields, f)
+            print('Fields saved to data/outputs/fields.pkl')
     return [fields['points'],fields['B']]
 
 
@@ -71,8 +72,6 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
 
     if field_profile != 'uniform': 
         magField = filter_fields(magField[0],magField[1],corners, dZ)
-        #points = get_field()[0]
-        #magField = filter_fields(points,np.repeat(np.reshape(magField,(1,-1)),points.shape[0],axis=0),corners, dZ)
     tShield['components'].append({
         'corners' : corners.tolist(),
         'field_profile' : field_profile, #interpolation type
