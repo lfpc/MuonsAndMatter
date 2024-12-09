@@ -123,9 +123,10 @@ if __name__ == '__main__':
     input_file = args.f
     input_dist = args.z
     sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':args.sens_plane}
-
+    t1_fem = time()
     field = get_field(False,np.asarray(params),Z_init = 0., fSC_mag=args.SC_mag,
                               file_name=args.field_file)
+    t2_fem = time()
 
     with gzip.open(input_file, 'rb') as f:
         data = pickle.load(f)
@@ -141,7 +142,9 @@ if __name__ == '__main__':
         result = pool.starmap(run, [(workload,params,input_dist,True,args.SC_mag,sensitive_film_params, args.real_fields,
                                     args.field_file,args.return_nan,args.seed, False) for workload in workloads])
     t2 = time()
+    print(f"Time to FEM: {t2_fem - t1_fem:.2f} seconds.")
     print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")
+    print('Field SHAPE', np.shape(field[0]), np.shape(field[1]))
     if args.plot_magnet:
         all_results = []
         for rr in result:

@@ -7,15 +7,11 @@ __pycache__/
 # Ignore .DS_Store files
 .DS_Store
 
-# Ignore build directory
-build/
-
 # Ignore cpp/cmake-build-debug directory
 cpp/cmake-build-debug/
-cpp/build3
-
+cpp/build/*
 # Ignore plots directory
-plots/
+plots/*
 
 # Ignore data directory
 data/full_samples/
@@ -24,4 +20,4 @@ data/outputs/*
 
 # Ignore checks directory
 checks/
-build_cpp.sh
+# build_cpp.sh

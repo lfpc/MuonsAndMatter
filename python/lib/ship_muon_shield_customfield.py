@@ -426,10 +426,7 @@ if __name__ == '__main__':
     import numpy as np
     from lib.ship_muon_shield_customfield import get_design_from_params
     from muon_slabs import initialize
-    detector = get_design_from_params(np.array(sc_v6), use_field_maps= True,field_map_file = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs/fields.pkl')
-    t1 = time()
-    json.dumps(detector)
-    print('TIME to DUMP JSON:', time()-t1)
+    detector = get_design_from_params(np.array(sc_v6), use_field_maps= True,field_map_file = 'data/outputs/fields.pkl')
     t1 = time()
     output_data = initialize(np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256), json.dumps(detector))
     print('Time to initialize', time()-t1)

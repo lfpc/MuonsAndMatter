@@ -1,4 +1,3 @@
-
 #. /disk/lhcb/scripts/lhcb_setup.sh
 export APPTAINER_TMPDIR=/disk/users/`whoami`/temp
 export TMPDIR=/disk/users/`whoami`/tmp
