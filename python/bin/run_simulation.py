@@ -100,7 +100,7 @@ if __name__ == '__main__':
     parser.add_argument("--z", type=float, default=0.9)
     parser.add_argument("-sens_plane", type=float, default=67)
     parser.add_argument("-real_fields", action = 'store_true')
-    parser.add_argument("-field_file", type=str, default=None)
+    parser.add_argument("-field_file", type=str, default='data/outputs/fields.pkl') 
     parser.add_argument("-shuffle_input", action = 'store_true')
     parser.add_argument("-plot_magnet", action = 'store_true')
     parser.add_argument("-warm",dest="SC_mag", action = 'store_false')

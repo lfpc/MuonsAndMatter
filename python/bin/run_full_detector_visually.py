@@ -23,7 +23,6 @@ def main(n_muons:int,
     design = int(design)
     assert design in {100, 9, 8}
 
-    z_bias = 50
     if design == 100:
         if params is None:
             if fSC_mag: params = sc_v6
@@ -35,13 +34,13 @@ def main(n_muons:int,
                     number = float(line.strip())
                     params.append(number)
 
-        detector = get_design_from_params(params, z_bias=z_bias, force_remove_magnetic_field=False, fSC_mag=fSC_mag, 
+        detector = get_design_from_params(params, force_remove_magnetic_field=False, fSC_mag=fSC_mag, 
                                           use_field_maps=False, sensitive_film_params={'dz': 0.01, 'dx': 10, 'dy': 10, 'position':sensitive_film_position})
     elif design == 9:
-        detector = get_design_9(z_bias=z_bias, force_remove_magnetic_field=False)
+        detector = get_design_9(force_remove_magnetic_field=False)
     elif design == 8:
         # Design 8 is built directly from the parameters and using similar code, shield optimizations can be performed
-        detector = get_design_8(z_bias=z_bias, force_remove_magnetic_field=False)
+        detector = get_design_8(force_remove_magnetic_field=False)
 
     with open('data/gdetector.json', 'w') as f:
         json.dump(detector, f)
@@ -109,8 +108,7 @@ def main(n_muons:int,
     print('SHAPE of DATA', np.array(muon_data).shape)
     plot_magnet(detector, 
                 output_file,
-                muon_data, 
-                z_bias,
+                muon_data,
                 sensitive_film_position, 
                 azim = args.angle,
                 elev = args.elev,

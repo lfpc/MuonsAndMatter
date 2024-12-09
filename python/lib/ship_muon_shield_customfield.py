@@ -21,7 +21,7 @@ def get_field(from_file = False,
             fields = pickle.load(f)
         fields = [fields['points'],fields['B']]
     else:
-        fields = simulate_field(params, **kwargs_field)
+        fields = simulate_field(params, file_name = file_name,**kwargs_field)
     return fields
 
 def simulate_field(params,
@@ -29,7 +29,7 @@ def simulate_field(params,
               fSC_mag:bool = True,
               z_gap = 0.1,
               field_direction = ['up', 'up', 'up', 'up', 'up', 'down', 'down', 'down', 'down'],
-              save_fields:bool = True):
+              file_name = 'data/outputs/fields.pkl'):
     '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
     t1 = time()
     all_params = pd.DataFrame()
@@ -49,16 +49,16 @@ def simulate_field(params,
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    if save_fields: all_params.to_csv('data/magnet_params.csv', index=False)
+    if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
     d_space = ((3., 3., (-1, Z_pos+0.5)))
     fields = magnet_simulations.run(all_params, d_space=d_space, resol = (0.05,0.05,0.05), apply_symmetry=False)
     fields['points'][:,2] += Z_init/100
     print('Magnetic field simulation took', time()-t1, 'seconds')
-    if save_fields:
-        with open('data/outputs/fields.pkl', 'wb') as f:
+    if file_name is not None:
+        with open(file_name, 'wb') as f:
             pickle.dump(fields, f)
-            print('Fields saved to data/outputs/fields.pkl')
+            print('Fields saved to', file_name)
     return [fields['points'],fields['B']]
 
 
