@@ -48,7 +48,7 @@ def run(muons,
     assert((np.abs(charge)==1).all())
 
     if input_dist is not None:
-        z_pos = detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz']-input_dist
+        z_pos = -input_dist
         z = z_pos*np.ones_like(z)
     else:
         z = z/100 + 70.845 - 68.685 + 66.34
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     tag = args.tag
     cores = args.c
-    params = params=list(args.params)#np.array(data)
+    params = list(args.params)#np.array(data)
     def split_array(arr, K):
         N = len(arr)
         base_size = N // K
