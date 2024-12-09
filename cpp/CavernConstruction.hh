@@ -1,4 +1,4 @@
-/*#ifndef MY_PROJECT_SHAPECONSTRUCTION_HH
+#ifndef MY_PROJECT_SHAPECONSTRUCTION_HH
 #define MY_PROJECT_SHAPECONSTRUCTION_HH
 
 #include "G4Box.hh"
@@ -8,6 +8,6 @@
 #include "G4ThreeVector.hh"
 #include "G4Material.hh"
 
-G4LogicalVolume* ConstructShapes(G4Material* concrete, G4LogicalVolume* logicWorld, double z_transition, double zEndOfAbsorb);
+G4LogicalVolume* ConstructCavern(G4Material* concrete, G4LogicalVolume* logicWorld, double z_transition, double zEndOfAbsorb);
 
-#endif //MY_PROJECT_SHAPECONSTRUCTION_HH*/
+#endif //MY_PROJECT_SHAPECONSTRUCTION_HH

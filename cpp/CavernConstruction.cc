@@ -1,6 +1,6 @@
-/*#include "CavernConstruction.hh"
+#include "CavernConstruction.hh"
 
-G4LogicalVolume* ConstructShapes(G4Material* concrete, G4LogicalVolume* logicWorld, double z_transition, double zEndOfAbsorb) {
+G4LogicalVolume* ConstructCavern(G4Material* concrete, G4LogicalVolume* logicWorld, double z_transition, double zEndOfAbsorb) {
     // Define parameters for the shapes
     G4double TCC8_length = 170 * m;
     G4double ECN3_length = 100 * m;
@@ -71,4 +71,4 @@ G4LogicalVolume* ConstructShapes(G4Material* concrete, G4LogicalVolume* logicWor
     new G4PVPlacement(0, G4ThreeVector(), Cavern, "Cavern_phys", logicWorld, false, 0, true);
 
     return Cavern;
-}*/
+}
