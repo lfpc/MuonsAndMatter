@@ -9,7 +9,6 @@ from time import time
 
 def run(muons, 
         phi, 
-        z_bias:float=50, 
         input_dist:float = None,
         return_weight = False,
         fSC_mag:bool = True,
@@ -24,7 +23,6 @@ def run(muons,
     if type(muons) is tuple:
         muons = muons[0]
     detector = get_design_from_params(params = phi,
-                                      z_bias=z_bias,
                                       force_remove_magnetic_field=False,
                                       fSC_mag = fSC_mag,
                                       use_field_maps=use_field_maps,
@@ -77,7 +75,6 @@ def run(muons,
     if draw_magnet: 
         plot_magnet(detector,
                 muon_data = muon_data_s, 
-                z_bias = z_bias,
                 sensitive_film_position = 5,#sensitive_film_params['position'], 
                 **kwargs_plot)
     if return_weight: return muon_data_s, output_data['weight_total']
@@ -124,7 +121,6 @@ if __name__ == '__main__':
 
     n_muons = args.n
     input_file = args.f
-    z_bias = 50
     input_dist = args.z
     sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':args.sens_plane}
 
@@ -142,7 +138,7 @@ if __name__ == '__main__':
     workloads = split_array(data_n,cores)
     t1 = time()
     with mp.Pool(cores) as pool:
-        result = pool.starmap(run, [(workload,params,z_bias,input_dist,True,args.SC_mag,sensitive_film_params, args.real_fields,
+        result = pool.starmap(run, [(workload,params,input_dist,True,args.SC_mag,sensitive_film_params, args.real_fields,
                                     args.field_file,args.return_nan,args.seed, False) for workload in workloads])
     t2 = time()
     print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")
@@ -159,5 +155,5 @@ if __name__ == '__main__':
         print('Data Shape', all_results.shape)
         sensitive_film_params['position'] = 5
         with mp.Pool(1) as pool:
-            result = pool.starmap(construct_and_plot, [(all_results,params,z_bias,True,sensitive_film_params, args.real_fields, args.field_file)])
+            result = pool.starmap(construct_and_plot, [(all_results,params,True,sensitive_film_params, args.real_fields, args.field_file)])
                                          

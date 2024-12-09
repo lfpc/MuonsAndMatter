@@ -242,7 +242,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     dZ6 = params[5]
     dZ7 = params[6]
     dZ8 = params[7]
-    fMuonShieldLength = 2 * (dZ1 + dZ2 + dZ3 + dZ4 + dZ5 + dZ6 + dZ7 + dZ8) + LE
+    #fMuonShieldLength = 2 * (dZ1 + dZ2 + dZ3 + dZ4 + dZ5 + dZ6 + dZ7 + dZ8) + LE
 
 
     dXIn = np.zeros(n_magnets)
@@ -275,13 +275,13 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
         midGapIn[i] = params[offset + i * n_params + 8]
         midGapOut[i] = midGapIn[i]
 
-    XXX = -25 * m - fMuonShieldLength / 2. # TODO: This needs to be checked
-    zEndOfAbsorb = XXX - fMuonShieldLength / 2.
+    #XXX = -25 * m - fMuonShieldLength / 2. # TODO: This needs to be checked
+    #zEndOfAbsorb = XXX - fMuonShieldLength / 2.
 
-    dZf[0] = dZ1 - zgap / 2
-    Z[0] = zEndOfAbsorb + dZf[0] + zgap
+    #dZf[0] = dZ1 - zgap / 2
+    #Z[0] = zEndOfAbsorb + dZf[0] + zgap
     dZf[1] = dZ2 - zgap / 2
-    Z[1] = Z[0] + dZf[0] + dZf[1] + zgap
+    Z[1] = dZf[1]#Z[0] + dZf[0] + dZf[1] + zgap
     dZf[2] = dZ3 - zgap / 2
     Z[2] = Z[1] + dZf[1] + dZf[2] + 2 * zgap
     dZf[3] = dZ4 - zgap / 2
@@ -365,7 +365,6 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
 
 
 def get_design_from_params(params, 
-                           z_bias=50.,
                            fSC_mag:bool = True, 
                            force_remove_magnetic_field = False,
                            use_field_maps = False,
@@ -378,13 +377,12 @@ def get_design_from_params(params,
 
     magnets_2 = []
     for mag in shield['magnets']:
-        mag['z_center'] = mag['z_center'] + z_bias
+        mag['z_center'] = mag['z_center']
         for x in mag['components']:
             if force_remove_magnetic_field:
                 x['field'] = (0.0, 0.0, 0.0)
                 x['field_profile'] = 'uniform'
             elif x['field_profile'] not in ['uniform','global']: 
-                x['field'][0][:,2] += z_bias
                 x['field'] = [x['field'][0].tolist(),x['field'][1].tolist()]
 
         mag['material'] = 'G4_Fe'
@@ -392,7 +390,6 @@ def get_design_from_params(params,
 
         new_mz = mag['dz'] + mag['z_center'] + 0.05#limit in 31.5
     if shield['global_field_map'] != []:
-        shield['global_field_map'][0][:,2] += z_bias
         shield['global_field_map'] = [shield['global_field_map'][0].tolist(),shield['global_field_map'][1].tolist()]
 
     shield['magnets'] = magnets_2

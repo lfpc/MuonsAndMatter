@@ -6,7 +6,6 @@ from lib.ship_muon_shield_customfield import get_design_from_params, filter_fiel
 def plot_magnet(detector, 
                 output_file='plots/detector_visualization.png',
                 muon_data = [], 
-                z_bias =50,
                 sensitive_film_position = None,
                 fixed_zlim:bool = False, 
                 azim:float = 126,
@@ -120,7 +119,7 @@ def plot_magnet(detector,
         ax.scatter(z[particle>0], x[particle>0], y[particle>0], color='blue', label=f'Muon {i + 1}', s=0.5)
         ax.scatter(z[particle<0], x[particle<0], y[particle<0], color='orange', label=f'AntiMuon {i + 1}', s=0.5)
 
-    if fixed_zlim: ax.set_xlim(-30+z_bias+sensitive_film_position, detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz']-5)
+    if fixed_zlim: ax.set_xlim(-30+sensitive_film_position, detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz']-5)
     else: ax.set_xlim(30, -15)
     ax.set_ylim(-20, 20)
     ax.set_zlim(-20, 20)
@@ -145,19 +144,17 @@ def plot_magnet(detector,
 
 def construct_and_plot(muons, 
         phi, 
-        z_bias=50,
         fSC_mag:bool = True,
         sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':57},
         use_field_maps = False,
         field_map_file = None,
         kwargs_plot = {}):
-    detector = get_design_from_params(params = phi,z_bias=z_bias,fSC_mag = fSC_mag, use_field_maps=use_field_maps, field_map_file = field_map_file)
+    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, use_field_maps=use_field_maps, field_map_file = field_map_file)
     for k,v in sensitive_film_params.items():
         if k=='position': detector['sensitive_film']['z_center'] += v
         else: detector['sensitive_film'][k] = v
     plot_magnet(detector,
                 muon_data = muons, 
-                z_bias = z_bias,
                 sensitive_film_position = sensitive_film_params['position'],#sensitive_film_params['position'], 
                 **kwargs_plot)
     
