@@ -183,13 +183,12 @@ void set_kill_momenta(double kill_momenta) {
 std::string initialize( int rseed_0,
                  int rseed_1, int rseed_2, int rseed_3, std::string detector_specs) {
     randomEngine = new CLHEP::MTwistEngine(rseed_0);
-
+    
 
     long seeds[4] = {rseed_0, rseed_1, rseed_2, rseed_3};
 
     CLHEP::HepRandom::setTheSeeds(seeds);
     G4Random::setTheSeeds(seeds);
-
     runManager = new G4RunManager;
 
 
@@ -205,12 +204,17 @@ std::string initialize( int rseed_0,
         std::string errs;
 
         std::istringstream iss(detector_specs);
+        //#include <chrono>
+        //auto start = std::chrono::high_resolution_clock::now();
         if (Json::parseFromStream(readerBuilder, iss, &detectorData, &errs)) {
             // Output the parsed JSON object
-            std::cout << detectorData["worldSizeX"] << std::endl;
+            std::cout << "WorldSize: " <<detectorData["worldSizeZ"] << std::endl;
         } else {
             std::cerr << "Failed to parse JSON: " << errs << std::endl;
         }
+        //auto end = std::chrono::high_resolution_clock::now();
+        //std::cout<<"TIME JSON" << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << std::endl;
+    
 
 
         int type = detectorData["type"].asInt();

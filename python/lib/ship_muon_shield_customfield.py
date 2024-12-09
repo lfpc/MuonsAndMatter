@@ -12,11 +12,11 @@ from time import time
 
 def get_field(from_file = False,
             params = sc_v6,
-            file_name = 'data/fields.pkl',
+            file_name = 'data/outputs/fields.pkl',
             **kwargs_field):
     '''Returns the field map for the given parameters. If from_file is True, the field map is loaded from the file_name.'''
-    if from_file:
-        #return [np.array([[0.,0.],[0.,0.],[0.,0.01]]).T, np.array([[0.,0.],[0.,0.],[0.,0.01]]).T]
+    if from_file and exists(file_name):
+        print('Using field map from file', file_name)
         with open(file_name, 'rb') as f:
             fields = pickle.load(f)
         fields = [fields['points'],fields['B']]
@@ -38,12 +38,12 @@ def simulate_field(params,
         mag_params = params[idx]
         if mag in ['?', 'M1']: continue
         elif mag == 'M3'and fSC_mag: 
-            Z_pos += 2 * params[0]/100 - z_gap
+            Z_pos += 2 * mag_params[0]/100 - z_gap
             continue
         if fSC_mag and mag == 'M2': Ymgap = 0.05; B_goal = 5.1; yoke_type = 'Mag2'
         elif mag == 'HA': Ymgap=0.; B_goal = 1.6; yoke_type = 'Mag1'
         else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3'
-        if field_direction[i] == 'down': B_goal *= -1
+        if field_direction[i] == 'down': B_goal *= -1 
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal=B_goal, yoke_type=yoke_type)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
@@ -54,6 +54,7 @@ def simulate_field(params,
     d_space = ((3., 3., (-1, Z_pos+0.5)))
     fields = magnet_simulations.run(all_params, d_space=d_space, resol = (0.05,0.05,0.05), apply_symmetry=False)
     fields['points'][:,2] += Z_init/100
+    fields['B'][:,1] *= -1 #simulation is inverted?
     print('Magnetic field simulation took', time()-t1, 'seconds')
     if file_name is not None:
         with open(file_name, 'wb') as f:
@@ -69,8 +70,11 @@ def filter_fields(points,fields,corners, Z,dZ):
     corners = np.split(corners,2)
     polygon_1 = polygon_path(corners[0])
     polygon_2 = polygon_path(corners[1])
+    print('Checking in', Z-dZ, Z+dZ)
     inside = np.logical_or(polygon_1.contains_points(points[:,:2]),polygon_2.contains_points(points[:,:2]))
+    print('Size 1', inside.sum())
     inside = np.logical_and(inside, (points[:,2] > Z-dZ) & (points[:,2] < Z+dZ))
+    print('Size 2', inside.sum())
     if inside.sum() == 0:
         raise ValueError('No points inside the magnet')
     return [points[inside],fields[inside]]
@@ -81,8 +85,8 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
     corners /= 100
     dZ /= 100
     z_translation /= 100
-    if field_profile != 'uniform' and False: 
-        magField = filter_fields(magField[0],magField[1],corners, z_translation,dZ)
+    #if field_profile != 'uniform': 
+    #    magField = filter_fields(magField[0],magField[1],corners, z_translation,dZ)
     tShield['components'].append({
         'corners' : corners.tolist(),
         'field_profile' : field_profile, #interpolation type
@@ -315,13 +319,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     }
 
     if use_field_maps: 
-        if field_map_file is not None and exists(field_map_file):
-            field_from_file = True
-            field_map_file = field_map_file
-        else:
-            field_from_file = False
-            
-        field_map = get_field(field_from_file,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag, field_direction = fieldDirection,
+        field_map = get_field(field_map_file is not None,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag, field_direction = fieldDirection,
                               file_name=field_map_file)
 
         tShield['global_field_map'] = field_map

@@ -192,7 +192,7 @@ def run(magn_params:dict,
     B = 0
     for i in range(n_magnets):
         params = {k:v[i] for k,v in magn_params.items()}
-        delta_z = 1.0 if params['B_goal(T)'] > 2 else 0.5
+        delta_z = 2.0 if params['B_goal(T)'] > 2 else 1.0
         B += get_grid_data(**run_fem(params, delta_air = (1.0,1.0,delta_z)), new_points=points)[1]
     points = np.column_stack([points[i].ravel() for i in range(3)])
     if apply_symmetry:

@@ -91,11 +91,11 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
     const Json::Value magnets = detectorData["magnets"];
 
     G4MagneticField* GlobalmagField = nullptr;
-    #include <chrono>
-    auto start = std::chrono::high_resolution_clock::now();
+    //#include <chrono>
+    //auto start = std::chrono::high_resolution_clock::now();
     Json::Value field_value = detectorData["global_field_map"]; //taking 5 seconds
-    auto end = std::chrono::high_resolution_clock::now(); //5 seconds until here
-    std::cout<<"TIME: " << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << std::endl;
+    //auto end = std::chrono::high_resolution_clock::now(); //5 seconds until here
+    //std::cout<<"TIME: " << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << std::endl;
     
     if (!field_value.empty()) {
         std::vector<G4ThreeVector> points;
@@ -112,8 +112,8 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         // Define the custom magnetic field
         GlobalmagField = new CustomMagneticField(points, fields, interpType);
     }
-    end = std::chrono::high_resolution_clock::now(); //14 seconds until here
-    std::cout<<"TIME" << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << std::endl;
+    //end = std::chrono::high_resolution_clock::now(); //14 seconds until here
+    //std::cout<<"TIME" << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << std::endl;
     //const Json::Value fields = detectorData["field_map"];
     double totalWeight = 0;
     for (const auto& magnet : magnets) {

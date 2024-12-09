@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from lib.ship_muon_shield_customfield import get_design_from_params, filter_fields
+from lib.magnet_simulations import get_symmetry
 
 def plot_magnet(detector, 
                 output_file='plots/detector_visualization.png',
@@ -14,6 +15,8 @@ def plot_magnet(detector,
     magnets = detector['magnets']
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
+    if np.size(detector['global_field_map']) > 0:
+        detector['global_field_map'] = get_symmetry(*np.asarray(detector['global_field_map']), reorder=True)
     if "sensitive_film" in detector  and sensitive_film_position is not None:
         cz, cx, cy = detector["sensitive_film"]["z_center"], 0, 0
         if sensitive_film_position is not None: 
@@ -52,15 +55,17 @@ def plot_magnet(detector,
     for i,mag in enumerate(magnets):
         if i in ignore_magnets: continue
         #print(f'MAG {i}' , mag)
-        z1 = -mag['dz']
-        z2 = +mag['dz']
+        z1 = mag['z_center']-mag['dz']
+        z2 = mag['z_center']+mag['dz']
 
         for i, component in enumerate(mag['components']):
             the_dat = component['corners']
             if component['field_profile'] == 'uniform':field = component['field']
             elif component['field_profile'] == 'global': 
+                print('Using global field map')
                 field = filter_fields(*detector['global_field_map'],component['corners'],component['z_center'],component['dz'])
-                field = np.mean(detector['global_field_map'][1],axis=0)
+                field = np.mean(field[1],axis=0)
+                print(field)
             else: field = np.mean(component['field'][1],axis=0)
             B_th = 0.7
             if field[1] < -B_th:
@@ -84,7 +89,6 @@ def plot_magnet(detector,
                     ]
             )
             
-            corners[:, 2] += mag['z_center']
             corners = np.array([[c[2], c[0], c[1]] for c in corners])
             # Define the 12 edges connecting the corners
             edges = [[corners[j] for j in [0, 1, 2, 3]],

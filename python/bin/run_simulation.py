@@ -58,7 +58,7 @@ def run(muons,
     for i in range(len(px)):
         simulate_muon(px[i], py[i], pz[i], int(charge[i]), x[i],y[i], z[i])
         #data = collect()
-        muon_data += [data]
+        #muon_data += [data]
         data_s = collect_from_sensitive()
         if len(data_s['px'])>0 and 13 in np.abs(data_s['pdg_id']): 
             #muon_data += [[data['px'][-1], data['py'][-1], data['pz'][-1],data['x'][-1], data['y'][-1], data['z'][-1]]]
@@ -70,7 +70,7 @@ def run(muons,
             muon_data_s += [output_s]
         elif return_nan:
             muon_data_s += [[0]*muons.shape[-1]]
-    #muon_data_s = np.asarray(muon_data)
+    #muon_data = np.asarray(muon_data)
     muon_data_s = np.asarray(muon_data_s)
     if draw_magnet: 
         plot_magnet(detector,
@@ -124,8 +124,10 @@ if __name__ == '__main__':
     input_dist = args.z
     sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':args.sens_plane}
     t1_fem = time()
-    field = get_field(False,np.asarray(params),Z_init = 0., fSC_mag=args.SC_mag,
-                              file_name=args.field_file)
+    if args.real_fields: 
+        from_file = False
+        field = get_field(from_file,np.asarray(params),Z_init = 0., fSC_mag=args.SC_mag,
+                                file_name=args.field_file)
     t2_fem = time()
 
     with gzip.open(input_file, 'rb') as f:
@@ -140,22 +142,23 @@ if __name__ == '__main__':
     t1 = time()
     with mp.Pool(cores) as pool:
         result = pool.starmap(run, [(workload,params,input_dist,True,args.SC_mag,sensitive_film_params, args.real_fields,
-                                    args.field_file,args.return_nan,args.seed, False) for workload in workloads])
+                                    args.field_file,args.return_nan,args.seed, True) for workload in workloads])
     t2 = time()
     print(f"Time to FEM: {t2_fem - t1_fem:.2f} seconds.")
     print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")
-    print('Field SHAPE', np.shape(field[0]), np.shape(field[1]))
-    if args.plot_magnet:
-        all_results = []
-        for rr in result:
-            resulting_data,weight = rr
-            if len(resulting_data)==0: continue
-            all_results += [resulting_data]
-        print(f"Weight = {weight} kg")
-        all_results = np.concatenate(all_results, axis=0)
-        #with gzip.open(f'data/outputs/outputs_{tag}.pkl', "wb") as f:
-        #    pickle.dump(all_results, f)
-        print('Data Shape', all_results.shape)
+    if args.real_fields:  print('Field SHAPE', np.shape(field[0]), np.shape(field[1]))
+    
+    all_results = []
+    for rr in result:
+        resulting_data,weight = rr
+        if len(resulting_data)==0: continue
+        all_results += [resulting_data]
+    print(f"Weight = {weight} kg")
+    all_results = np.concatenate(all_results, axis=0)
+    #with gzip.open(f'data/outputs/outputs_{tag}.pkl', "wb") as f:
+    #    pickle.dump(all_results, f)
+    print('Data Shape', all_results.shape)
+    if False:#args.plot_magnet:
         sensitive_film_params['position'] = 5
         with mp.Pool(1) as pool:
             result = pool.starmap(construct_and_plot, [(all_results,params,True,sensitive_film_params, args.real_fields, args.field_file)])
