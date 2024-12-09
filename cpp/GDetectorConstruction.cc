@@ -67,6 +67,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
     // Get NIST material manager
     G4NistManager* nist = G4NistManager::Instance();
+    
 
     // Define the world material
     G4Material* worldMaterial = nist->FindOrBuildMaterial("G4_AIR");
@@ -84,11 +85,35 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
     G4LogicalVolume* logicWorld = new G4LogicalVolume(solidWorld, worldMaterial, "WorldY");
     logicWorld->SetUserLimits(userLimits2);
 //    logicWorld->SetUserLimits(userLimits);
-
+    
     G4VPhysicalVolume* physWorld = new G4PVPlacement(0, G4ThreeVector(worldPositionX, worldPositionY, worldPositionZ), logicWorld, "WorldZ", 0, false, 0, true);
-
     // Process the magnets from the JSON variable
     const Json::Value magnets = detectorData["magnets"];
+
+    G4MagneticField* GlobalmagField = nullptr;
+    #include <chrono>
+    auto start = std::chrono::high_resolution_clock::now();
+    Json::Value field_value = detectorData["global_field_map"]; //taking 5 seconds
+    auto end = std::chrono::high_resolution_clock::now(); //5 seconds until here
+    std::cout<<"TIME: " << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << std::endl;
+    
+    if (!field_value.empty()) {
+        std::vector<G4ThreeVector> points;
+        std::vector<G4ThreeVector> fields;
+        const Json::Value& pointsData = field_value[0];
+        const Json::Value& fieldsData = field_value[1];
+        for (Json::ArrayIndex i = 0; i < pointsData.size(); ++i) {
+            points.emplace_back(pointsData[i][0].asDouble() * m, pointsData[i][1].asDouble() * m, pointsData[i][2].asDouble() * m);
+
+            fields.emplace_back(fieldsData[i][0].asDouble() * tesla, fieldsData[i][1].asDouble() * tesla, fieldsData[i][2].asDouble() * tesla);
+        }
+        // Determine the interpolation type
+        CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
+        // Define the custom magnetic field
+        GlobalmagField = new CustomMagneticField(points, fields, interpType);
+    }
+    end = std::chrono::high_resolution_clock::now(); //14 seconds until here
+    std::cout<<"TIME" << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << std::endl;
     //const Json::Value fields = detectorData["field_map"];
     double totalWeight = 0;
     for (const auto& magnet : magnets) {
@@ -110,15 +135,13 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         G4double z_center = magnet["z_center"].asDouble() * m;
         G4double dz = magnet["dz"].asDouble() * m;
 
-
         Json::Value arb8s = magnet["components"];
         //G4MagneticField* GlobalmagField = nullptr;
-        
         for (auto arb8: arb8s) {
             std::vector<G4TwoVector> corners_two;
 //            G4ThreeVector corners[8];
             Json::Value corners = arb8["corners"];
-
+            
             for (int i = 0; i < 8; ++i) {
                 corners_two.push_back(G4TwoVector (corners[i*2].asDouble() * m, corners[i*2+1].asDouble() * m));
             }
@@ -128,8 +151,9 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
             G4double fieldZ;
             G4ThreeVector fieldValue;
             G4MagneticField* magField = nullptr;
-
-            if (arb8["field_profile"].asString() == "uniform"){
+            if (arb8["field_profile"].asString() == "global") {
+                magField = GlobalmagField;
+            } else if (arb8["field_profile"].asString() == "uniform"){
                 fieldX = field_value[0].asDouble();
                 fieldY = field_value[1].asDouble();
                 fieldZ = field_value[2].asDouble();
@@ -149,17 +173,15 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
                     fields.emplace_back(fieldsData[i][0].asDouble() * tesla, fieldsData[i][1].asDouble() * tesla, fieldsData[i][2].asDouble() * tesla);
                 }
-                
                 // Determine the interpolation type
                 CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
                 if (arb8["field_profile"].asString() == "linear_interpolation") {
                     interpType = CustomMagneticField::LINEAR;
-                } //add cubic too?
+                }
                 // Define the custom magnetic field
                 
                 magField = new CustomMagneticField(points, fields, interpType);
             }
-
             auto FieldManager = new G4FieldManager();
             FieldManager->SetDetectorField(magField);
             FieldManager->CreateChordFinder(magField);

@@ -22,7 +22,7 @@ def get_symmetry(points:np.array, B:np.array, reorder:bool = True):
    points_4 = np.array([points[:,0], -points[:,1], points[:,2]]).T
    B_1 = B
    B_2 = np.array([-B[:,0], B[:,1], B[:,2]]).T
-   B_3 = np.array([B[:,0], B[:,1], B[:,2]]).T
+   B_3 = B
    B_4 = np.array([-B[:,0], B[:,1], B[:,2]]).T
    points = np.vstack((points_1, points_2, points_3, points_4))
    B = np.vstack((B_1, B_2, B_3, B_4))
@@ -167,14 +167,14 @@ def run(magn_params:dict,
         d_space = ((2.5, 2.5, (-0.,4.))),
         plot_results:bool = False,
         save_results:bool = False,
-        output_directory:str = './outputs',
+        output_file:str = './outputs',
         apply_symmetry:bool = False,
         ):
     """Simulates the magnetic field based on given parameters and performs various operations such as applying symmetry,
     plotting results, and saving results.
     Parameters:
     magn_params (dict): Dictionary containing magnetic parameters.
-    output_directory (str, optional): Directory to save outputs. Defaults to './outputs'.
+    output_file (str, optional): Directory to save outputs. Defaults to './outputs'.
     apply_symmetry (bool, optional): Whether to apply symmetry to the computed magnetic field. Defaults to False.
     plot_results (bool, optional): Whether to plot the results. Defaults to False.
     save_results (bool, optional): Whether to save the results to a file. Defaults to False.
@@ -205,13 +205,13 @@ def run(magn_params:dict,
         pl.show_grid(ztitle='Y [m]', xtitle='Z [m]', ytitle='X [m]')
         pl.add_axes(zlabel='Y [m]', xlabel='Z [m]', ylabel='X [m]')
         pl.view_isometric() 
-        pl.save_graphic(os.path.join(output_directory,'plot_nc.pdf'))
-        print('Plot saved to', os.path.join(output_directory,'plot_nc.pdf'))
+        pl.save_graphic(os.path.join(output_file,'plot_nc.pdf'))
+        print('Plot saved to', os.path.join(output_file,'plot_nc.pdf'))
 
     if save_results:
-        with gzip.open(os.path.join(output_directory,'results.pkl'), 'wb') as f:
+        with gzip.open(output_file, 'wb') as f:
             pickle.dump({'points':points, 'B':B}, f)
-        print('Results saved to', os.path.join(output_directory,'results.pkl'))
+        print('Results saved to', output_file)
     return {'points':points, 'B':B}
     
    
@@ -222,13 +222,13 @@ if __name__ == '__main__':
    
    MAIN_DIR = '/home/hep/lprate/projects/roxie_ship'
    parameters_filename = os.path.join(MAIN_DIR,'inputs', 'parameters.csv')
-   output_directory = os.path.join(MAIN_DIR,'outputs')
+   output_file = os.path.join(MAIN_DIR,'outputs')
 
    import pandas as pd
    magn_params = pd.read_csv(parameters_filename).to_dict(orient='list')
    print(magn_params)
    t1 = time.time()
-   d = run(magn_params,output_directory = output_directory, apply_symmetry=False, plot_results=False, save_results=True)
+   d = run(magn_params,output_file = output_file, apply_symmetry=False, plot_results=False, save_results=True)
    print('total_time: ', time.time() - t1, ' sec')
    points = d['points']
    print('limits: ', points.min(axis=0), points.max(axis=0))

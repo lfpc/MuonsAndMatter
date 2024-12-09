@@ -3,10 +3,12 @@ import pickle
 import gzip
 from matplotlib.path import Path as polygon_path
 from lib import magnet_simulations
-import sys
+#import sys
 #sys.path.append('/home/hep/lprate/projects/MuonsAndMatter/python/lib/reference_designs')
 from lib.reference_designs.params import new_parametrization, get_magnet_params, sc_v6
 import pandas as pd
+from os.path import exists
+from time import time
 
 def get_field(from_file = False,
             params = sc_v6,
@@ -14,7 +16,8 @@ def get_field(from_file = False,
             **kwargs_field):
     '''Returns the field map for the given parameters. If from_file is True, the field map is loaded from the file_name.'''
     if from_file:
-        with gzip.open(file_name, 'rb') as f:
+        #return [np.array([[0.,0.],[0.,0.],[0.,0.01]]).T, np.array([[0.,0.],[0.,0.],[0.,0.01]]).T]
+        with open(file_name, 'rb') as f:
             fields = pickle.load(f)
         fields = [fields['points'],fields['B']]
     else:
@@ -25,10 +28,13 @@ def simulate_field(params,
               Z_init = 0,
               fSC_mag:bool = True,
               z_gap = 0.1,
+              field_direction = ['up', 'up', 'up', 'up', 'up', 'down', 'down', 'down', 'down'],
               save_fields:bool = True):
+    '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
+    t1 = time()
     all_params = pd.DataFrame()
     Z_pos = 0.
-    for mag,idx in new_parametrization.items():
+    for i, (mag,idx) in enumerate(new_parametrization.items()):
         mag_params = params[idx]
         if mag in ['?', 'M1']: continue
         elif mag == 'M3'and fSC_mag: 
@@ -37,6 +43,7 @@ def simulate_field(params,
         if fSC_mag and mag == 'M2': Ymgap = 0.05; B_goal = 5.1; yoke_type = 'Mag2'
         elif mag == 'HA': Ymgap=0.; B_goal = 1.6; yoke_type = 'Mag1'
         else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3'
+        if field_direction[i] == 'down': B_goal *= -1
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal=B_goal, yoke_type=yoke_type)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
@@ -45,23 +52,28 @@ def simulate_field(params,
     if save_fields: all_params.to_csv('data/magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
     d_space = ((3., 3., (-1, Z_pos+0.5)))
-    fields = magnet_simulations.run(all_params, d_space=d_space)
+    fields = magnet_simulations.run(all_params, d_space=d_space, resol = (0.05,0.05,0.05), apply_symmetry=False)
     fields['points'][:,2] += Z_init/100
+    print('Magnetic field simulation took', time()-t1, 'seconds')
     if save_fields:
-        with gzip.open('data/outputs/fields.pkl', 'wb') as f:
+        with open('data/outputs/fields.pkl', 'wb') as f:
             pickle.dump(fields, f)
             print('Fields saved to data/outputs/fields.pkl')
     return [fields['points'],fields['B']]
 
 
-def filter_fields(points,fields,corners, dZ):
+def filter_fields(points,fields,corners, Z,dZ):
     corners = np.array(corners).reshape(-1, 2)
+    points = np.asarray(points)
+    fields = np.asarray(fields)
     corners = np.split(corners,2)
     polygon_1 = polygon_path(corners[0])
     polygon_2 = polygon_path(corners[1])
     inside = np.logical_or(polygon_1.contains_points(points[:,:2]),polygon_2.contains_points(points[:,:2]))
-    inside = np.logical_and(inside, (points[:,2] > -dZ) & (points[:,2] < dZ))
-    return [points[inside],fields[inside]] #[points[inside].tolist(),fields[inside].tolist()]
+    inside = np.logical_and(inside, (points[:,2] > Z-dZ) & (points[:,2] < Z+dZ))
+    if inside.sum() == 0:
+        raise ValueError('No points inside the magnet')
+    return [points[inside],fields[inside]]
 
 def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
                tShield, x_translation, y_translation, z_translation, stepGeo):
@@ -69,9 +81,8 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
     corners /= 100
     dZ /= 100
     z_translation /= 100
-
-    if field_profile != 'uniform': 
-        magField = filter_fields(magField[0],magField[1],corners, dZ)
+    if field_profile != 'uniform' and False: 
+        magField = filter_fields(magField[0],magField[1],corners, z_translation,dZ)
     tShield['components'].append({
         'corners' : corners.tolist(),
         'field_profile' : field_profile, #interpolation type
@@ -206,7 +217,7 @@ def create_magnet(magnetName, medium, tShield,
     tShield['magnets'].append(theMagnet)
 
 
-def design_muon_shield(params,fSC_mag = True, use_simulated_fields = False):
+def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_file = None):
     n_magnets = 9
     cm = 1
     mm = 0.1 * cm
@@ -298,12 +309,22 @@ def design_muon_shield(params,fSC_mag = True, use_simulated_fields = False):
         HmainSideMagIn[i] = dYIn[i] / 2
         HmainSideMagOut[i] = dYOut[i] / 2
 
-    if use_simulated_fields: 
-        field_map = get_field(False,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag)
-
     tShield = {
-        'magnets':[]
+        'magnets':[],
+        'global_field_map': []
     }
+
+    if use_field_maps: 
+        if field_map_file is not None and exists(field_map_file):
+            field_from_file = True
+            field_map_file = field_map_file
+        else:
+            field_from_file = False
+            
+        field_map = get_field(field_from_file,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag, field_direction = fieldDirection,
+                              file_name=field_map_file)
+
+        tShield['global_field_map'] = field_map
     #create_magnet(magnetName[nM], "G4_Fe", tShield, fieldsAbsorber, 'uniform', dXIn[nM], dYIn[nM], dXOut[nM],
     #             dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM], ratio_yokes[nM],
     #             gapIn[nM], gapOut[nM], Z[nM], True, Ymgap=0.0)
@@ -320,9 +341,9 @@ def design_muon_shield(params,fSC_mag = True, use_simulated_fields = False):
             Ymgap = 0
             ironField_s = fField * tesla #1.7
 
-        if use_simulated_fields:# and nM ==3 and fSC_mag:
-            field_profile = 'nearest'
-            fields_s = field_map
+        if use_field_maps and nM != 8:# and nM ==3 and fSC_mag:
+            field_profile = 'global'
+            fields_s = [[],[]]#field_map
         
         else:
             field_profile = 'uniform'
@@ -336,7 +357,7 @@ def design_muon_shield(params,fSC_mag = True, use_simulated_fields = False):
 
         create_magnet(magnetName[nM], "G4_Fe", tShield, fields_s, field_profile, dXIn[nM], dYIn[nM], dXOut[nM],
                   dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM],ratio_yokes[nM],
-                  gapIn[nM], gapOut[nM], Z[nM], nM in [1,8],Ymgap=Ymgap)
+                  gapIn[nM], gapOut[nM], Z[nM], nM in [1,8],Ymgap=Ymgap) #making the last small magnet uniform field, change this?
     return tShield
 
 
@@ -347,22 +368,22 @@ def get_design_from_params(params,
                            z_bias=50.,
                            fSC_mag:bool = True, 
                            force_remove_magnetic_field = False,
-                           use_simulated_fields = False,
+                           use_field_maps = False,
+                           field_map_file = None,
                            sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':0}):
     # nMagnets 9
 
-    shield = design_muon_shield(params, fSC_mag, use_simulated_fields = use_simulated_fields)
+    shield = design_muon_shield(params, fSC_mag, use_field_maps = use_field_maps, field_map_file = field_map_file)
     # print(shield)
 
     magnets_2 = []
-
     for mag in shield['magnets']:
         mag['z_center'] = mag['z_center'] + z_bias
         for x in mag['components']:
             if force_remove_magnetic_field:
                 x['field'] = (0.0, 0.0, 0.0)
                 x['field_profile'] = 'uniform'
-            elif use_simulated_fields: 
+            elif x['field_profile'] not in ['uniform','global']: 
                 x['field'][0][:,2] += z_bias
                 x['field'] = [x['field'][0].tolist(),x['field'][1].tolist()]
 
@@ -370,7 +391,9 @@ def get_design_from_params(params,
         magnets_2.append(mag)
 
         new_mz = mag['dz'] + mag['z_center'] + 0.05#limit in 31.5
-
+    if shield['global_field_map'] != []:
+        shield['global_field_map'][0][:,2] += z_bias
+        shield['global_field_map'] = [shield['global_field_map'][0].tolist(),shield['global_field_map'][1].tolist()]
 
     shield['magnets'] = magnets_2
     sensitive_film_position = sensitive_film_params['position']
@@ -402,4 +425,14 @@ def get_design_from_params(params,
 
 
 if __name__ == '__main__':
-    shield = get_design_from_params(np.array(sc_v6), use_simulated_fields= True)
+    import json
+    import numpy as np
+    from lib.ship_muon_shield_customfield import get_design_from_params
+    from muon_slabs import initialize
+    detector = get_design_from_params(np.array(sc_v6), use_field_maps= True,field_map_file = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs/fields.pkl')
+    t1 = time()
+    json.dumps(detector)
+    print('TIME to DUMP JSON:', time()-t1)
+    t1 = time()
+    output_data = initialize(np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256), json.dumps(detector))
+    print('Time to initialize', time()-t1)

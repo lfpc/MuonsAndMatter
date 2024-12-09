@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from lib.ship_muon_shield_customfield import get_design_from_params
+from lib.ship_muon_shield_customfield import get_design_from_params, filter_fields
 
 def plot_magnet(detector, 
                 output_file='plots/detector_visualization.png',
@@ -58,20 +58,26 @@ def plot_magnet(detector,
 
         for i, component in enumerate(mag['components']):
             the_dat = component['corners']
-            field = component['field']
-            col = 'purple'
-            if field[0] < 0:
+            if component['field_profile'] == 'uniform':field = component['field']
+            elif component['field_profile'] == 'global': 
+                field = filter_fields(*detector['global_field_map'],component['corners'],component['z_center'],component['dz'])
+                field = np.mean(detector['global_field_map'][1],axis=0)
+            else: field = np.mean(component['field'][1],axis=0)
+            B_th = 0.7
+            if field[1] < -B_th:
                 col = 'red'
-            elif field[0] > 0:
+            elif field[1] > B_th:
                 col = 'green'
-            elif field[1] < 0:
+            elif field[0] < -B_th:
                 col = 'red'
-            elif field[1] > 0:
+            elif field[0] > B_th:
                 col = 'green'
-            elif field[2] < 0:
+            elif field[2] < -B_th:
                 col = 'blue'
-            elif field[2] > 0:
+            elif field[2] > B_th:
                 col = 'blue'
+            else: col = 'gray'
+
             corners = np.array(
                 [
                     [the_dat[0], the_dat[1], z1], [the_dat[2], the_dat[3], z1], [the_dat[4], the_dat[5], z1], [the_dat[6], the_dat[7], z1],
@@ -142,8 +148,10 @@ def construct_and_plot(muons,
         z_bias=50,
         fSC_mag:bool = True,
         sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':57},
+        use_field_maps = False,
+        field_map_file = None,
         kwargs_plot = {}):
-    detector = get_design_from_params(params = phi,z_bias=z_bias,force_remove_magnetic_field=False,fSC_mag = fSC_mag)
+    detector = get_design_from_params(params = phi,z_bias=z_bias,fSC_mag = fSC_mag, use_field_maps=use_field_maps, field_map_file = field_map_file)
     for k,v in sensitive_film_params.items():
         if k=='position': detector['sensitive_film']['z_center'] += v
         else: detector['sensitive_film'][k] = v

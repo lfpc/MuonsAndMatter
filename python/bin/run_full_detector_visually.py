@@ -34,14 +34,9 @@ def main(n_muons:int,
                 for line in file:
                     number = float(line.strip())
                     params.append(number)
-            
-        if len(params)==42: #shield might have 14 fixed parameters
-            params = np.insert(params,0,[70.0, 170.0])
-            params = np.insert(params,8,[40.0, 40.0, 150.0, 150.0, 2.0, 2.0, 80.0, 80.0, 150.0, 150.0, 2.0, 2.0])
-    
 
         detector = get_design_from_params(params, z_bias=z_bias, force_remove_magnetic_field=False, fSC_mag=fSC_mag, 
-                                          use_simulated_fields=False, sensitive_film_params={'dz': 0.01, 'dx': 10, 'dy': 10, 'position':sensitive_film_position})
+                                          use_field_maps=False, sensitive_film_params={'dz': 0.01, 'dx': 10, 'dy': 10, 'position':sensitive_film_position})
     elif design == 9:
         detector = get_design_9(z_bias=z_bias, force_remove_magnetic_field=False)
     elif design == 8:
