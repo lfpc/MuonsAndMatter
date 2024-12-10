@@ -19,7 +19,7 @@ def get_field(from_file = False,
         print('Using field map from file', file_name)
         with open(file_name, 'rb') as f:
             fields = pickle.load(f)
-        fields = [fields['points'],fields['B']]
+        #fields = [fields['points'],fields['B']]
     else:
         fields = simulate_field(params, file_name = file_name,**kwargs_field)
     return fields
@@ -29,6 +29,8 @@ def simulate_field(params,
               fSC_mag:bool = True,
               z_gap = 0.1,
               field_direction = ['up', 'up', 'up', 'up', 'up', 'down', 'down', 'down', 'down'],
+              resol = (0.05,0.05,0.05),
+              d_space = ((3., 3., (-1, 30.))), 
               file_name = 'data/outputs/fields.pkl'):
     '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
     t1 = time()
@@ -51,17 +53,15 @@ def simulate_field(params,
         if mag == 'M2': Z_pos += z_gap
     if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
-    d_space = ((3., 3., (-1, Z_pos+0.5)))
-    fields = magnet_simulations.run(all_params, d_space=d_space, resol = (0.05,0.05,0.05), apply_symmetry=False)
+    fields = magnet_simulations.run(all_params, d_space=d_space, resol=resol, apply_symmetry=False)
     fields['points'][:,2] += Z_init/100
-    fields['B'][:,1] *= -1 #simulation is inverted?
+    fields['B'] *= -1 #simulation is inverted?
     print('Magnetic field simulation took', time()-t1, 'seconds')
     if file_name is not None:
         with open(file_name, 'wb') as f:
             pickle.dump(fields, f)
             print('Fields saved to', file_name)
-    return [fields['points'],fields['B']]
-
+    return fields
 
 def filter_fields(points,fields,corners, Z,dZ):
     corners = np.array(corners).reshape(-1, 2)
@@ -70,11 +70,8 @@ def filter_fields(points,fields,corners, Z,dZ):
     corners = np.split(corners,2)
     polygon_1 = polygon_path(corners[0])
     polygon_2 = polygon_path(corners[1])
-    print('Checking in', Z-dZ, Z+dZ)
     inside = np.logical_or(polygon_1.contains_points(points[:,:2]),polygon_2.contains_points(points[:,:2]))
-    print('Size 1', inside.sum())
     inside = np.logical_and(inside, (points[:,2] > Z-dZ) & (points[:,2] < Z+dZ))
-    print('Size 2', inside.sum())
     if inside.sum() == 0:
         raise ValueError('No points inside the magnet')
     return [points[inside],fields[inside]]
@@ -319,8 +316,16 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     }
 
     if use_field_maps: 
-        field_map = get_field(field_map_file is not None,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag, field_direction = fieldDirection,
-                              file_name=field_map_file)
+        resimulate_field = True#field_map_file is not None
+        d_space = (3., 3., (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
+        resol = (0.05,0.05,0.05)
+        field_map = get_field(not resimulate_field,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag, 
+                              resol = resol, d_space = d_space,
+                              field_direction = fieldDirection,file_name=field_map_file)
+        field_map = {'B': field_map['B'],
+                     'range_x': [0,d_space[0], resol[0]],
+                     'range_y': [0,d_space[1], resol[1]],
+                     'range_z': [d_space[2][0],d_space[2][1], resol[2]]}
 
         tShield['global_field_map'] = field_map
     #create_magnet(magnetName[nM], "G4_Fe", tShield, fieldsAbsorber, 'uniform', dXIn[nM], dYIn[nM], dXOut[nM],
@@ -372,8 +377,7 @@ def get_design_from_params(params,
 
     shield = design_muon_shield(params, fSC_mag, use_field_maps = use_field_maps, field_map_file = field_map_file)
     # print(shield)
-
-    magnets_2 = []
+    #magnets_2 = []
     for mag in shield['magnets']:
         mag['z_center'] = mag['z_center']
         for x in mag['components']:
@@ -381,39 +385,41 @@ def get_design_from_params(params,
                 x['field'] = (0.0, 0.0, 0.0)
                 x['field_profile'] = 'uniform'
             elif x['field_profile'] not in ['uniform','global']: 
-                x['field'] = [x['field'][0].tolist(),x['field'][1].tolist()]
+                x['field']['B'] = x['field']['B'].tolist()
 
         mag['material'] = 'G4_Fe'
-        magnets_2.append(mag)
-
-        new_mz = mag['dz'] + mag['z_center'] + 0.05#limit in 31.5
+        #magnets_2.append(mag)
+        max_z = mag['dz'] + mag['z_center'] + 0.05#limit in 31.5
     if shield['global_field_map'] != []:
-        shield['global_field_map'] = [shield['global_field_map'][0].tolist(),shield['global_field_map'][1].tolist()]
+        shield['global_field_map']['B'] = shield['global_field_map']['B'].tolist()
 
-    shield['magnets'] = magnets_2
-    sensitive_film_position = sensitive_film_params['position']
-    if isinstance(sensitive_film_position, tuple):
-        sensitive_film_position = sensitive_film_position[1] + \
-                                    shield['magnets'][sensitive_film_position[0]]['z_center'] + \
-                                    shield['magnets'][sensitive_film_position[0]]['dz']
-    else: sensitive_film_position += new_mz
+    #shield['magnets'] = magnets_2
+    if sensitive_film_params is not None:
+        sensitive_film_position = sensitive_film_params['position']
+        if isinstance(sensitive_film_position, tuple):
+            sensitive_film_position = sensitive_film_position[1] + \
+                                        shield['magnets'][sensitive_film_position[0]]['z_center'] + \
+                                        shield['magnets'][sensitive_film_position[0]]['dz']
+        else: sensitive_film_position += max_z
+        max_z = sensitive_film_position
 
+    print('TOTAL LENGTH', max_z)
     shield.update({
         "worldPositionX": 0, "worldPositionY": 0, "worldPositionZ": 0, "worldSizeX": 11, "worldSizeY": 11,
-        "worldSizeZ": 180,
+        "worldSizeZ": max_z*2 + 30,
         "type" : 1,
         "limits" : {
             "max_step_length": 0.05,#-1,
             "minimum_kinetic_energy": 0.1,#-1
         },
-
-        "sensitive_film": {
+    })
+    if sensitive_film_params is not None:
+        shield.update({
+            "sensitive_film": {
             "z_center" : sensitive_film_position,
             "dz" : sensitive_film_params['dz'],
             "dx": sensitive_film_params['dx'],
-            "dy": sensitive_film_params['dy'],
-        },
-    })
+            "dy": sensitive_film_params['dy']}})
 
 
     return shield
