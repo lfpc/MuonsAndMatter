@@ -75,14 +75,15 @@ def run_fem(magn_params:dict,
     mu_air = roxie_evaluator.ConstantPermeability(4*np.pi*1e-7)
     mu_iron = roxie_evaluator.Permeability(os.path.join(materials_dir, magn_params['material'] + '.csv'))
 
-    lc = 2e-1 # mesh size parameter
+    lc = 2e-1 # mesh size parameter #2e-1
     element_order = 1# element oder
     max_iter = 50 # maximum number of newton iterations
     tolerance = 1e-3 # the tolerance for the cg solver
+    gmsh.clear()
     if not gmsh.isInitialized():
+        print('Initializing gmsh')
         gmsh.initialize()
         gmsh.model.add("make_SHiP_magnet_mesh")
-    gmsh.clear()
 
     delta_x, delta_y, delta_z = delta_air
 

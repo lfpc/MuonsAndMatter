@@ -56,18 +56,18 @@ def get_magnet_params(params,
     ratio_yoke = params[7]
     params /= 100
     Xmgap = params[8]
-    NI = 1.60E+06 if yoke_type == 'Mag2'else 50 #CHANGE FOR WARM CONFIGURATION
+    NI = 1.6E+06 if yoke_type == 'Mag2'else 50 #CHANGE FOR WARM CONFIGURATION
     d = {'yoke_type': yoke_type,
         'coil_type': 'Racetrack',
         'material': 'bhiron_1', #check material and etc for SC
         'resol_x(m)': 0.05,
         'resol_y(m)': 0.05,
         'resol_z(m)': 0.05,
-        'disc_x': 10,
-        'disc_z': 10,
+        #'disc_x': 10,
+        #'disc_z': 10,
         'bias': 1.5,
         'mu_r': 1,
-        'J(A/mm2)': 50, 
+        #'J(A/mm2)': 50, 
         'N1': 3,
         'N2': 10,
         'NI(A)':NI,

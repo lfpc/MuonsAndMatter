@@ -29,7 +29,6 @@
 #include "G4Mag_UsualEqRhs.hh"
 #include "G4PropagatorInField.hh"
 #include "G4ClassicalRK4.hh"
-#include "CustomMagneticField.hh"
 
 
 #include <iostream>
@@ -115,29 +114,8 @@ G4VPhysicalVolume* DetectorConstruction::Construct() {
     new G4PVPlacement(0, G4ThreeVector(), logicSphere, "SphereZ", logicWorld, false, 0, true);
 
     // Define the uniform magnetic field
-    //G4ThreeVector fieldValue = G4ThreeVector(1*tesla, 0., 0.);
-    //magField = new G4UniformMagField(fieldValue);
-
-    // Extract magnetic field data from detectorData
-    std::vector<G4ThreeVector> points;
-    std::vector<G4ThreeVector> fields;
-    const Json::Value& magFieldData = detectorData["magnetic_field"];
-    const Json::Value& pointsData = magFieldData["points"];
-    const Json::Value& fieldsData = magFieldData["B"];
-
-    for (Json::ArrayIndex i = 0; i < pointsData.size(); ++i) {
-        points.emplace_back(pointsData[i][0].asDouble() * m, pointsData[i][1].asDouble() * m, pointsData[i][2].asDouble() * m);
-        fields.emplace_back(fieldsData[i][0].asDouble() * tesla, fieldsData[i][1].asDouble() * tesla, fieldsData[i][2].asDouble() * tesla);
-        //std::cout << "Evaluated B field: (" << fieldsData[i][0].asDouble() << ", " << fieldsData[i][0].asDouble() << ", " << fieldsData[i][0].asDouble() << ")\n";
-        //std::cout << "Evaluated B field *TESLA: (" << fieldsData[i][0].asDouble()*tesla << ", " << fieldsData[i][0].asDouble()*tesla << ", " << fieldsData[i][0].asDouble()*tesla << ")\n";
-    }
-    // Determine the interpolation type
-    CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
-    if (magFieldData["interpolation"].asString() == "linear") {
-        interpType = CustomMagneticField::LINEAR;
-    }
-    // Define the custom magnetic field
-    CustomMagneticField* magField = new CustomMagneticField(points, fields, interpType);
+    G4ThreeVector fieldValue = G4ThreeVector(1*tesla, 0., 0.);
+    magField = new G4UniformMagField(fieldValue);
 
     // Get the global field manager
     G4FieldManager* fieldManager = G4TransportationManager::GetTransportationManager()->GetFieldManager();

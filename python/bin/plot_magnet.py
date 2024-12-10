@@ -62,10 +62,8 @@ def plot_magnet(detector,
             the_dat = component['corners']
             if component['field_profile'] == 'uniform':field = component['field']
             elif component['field_profile'] == 'global': 
-                print('Using global field map')
                 field = filter_fields(*detector['global_field_map'],component['corners'],component['z_center'],component['dz'])
                 field = np.mean(field[1],axis=0)
-                print(field)
             else: field = np.mean(component['field'][1],axis=0)
             B_th = 0.7
             if field[1] < -B_th:
