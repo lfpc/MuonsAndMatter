@@ -39,6 +39,9 @@ set(SOURCE_FILES
 
 add_library(common_sources STATIC ${SOURCE_FILES})
 
+# Add pybind11 include directories to common_sources
+target_include_directories(common_sources PUBLIC ${pybind11_INCLUDE_DIRS})
+
 add_executable(MuonSlab main.cc)
 
 # Create the Python module

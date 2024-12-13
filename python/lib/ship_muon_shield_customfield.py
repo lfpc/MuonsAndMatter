@@ -10,18 +10,18 @@ import pandas as pd
 from os.path import exists
 from time import time
 
-def get_field(from_file = False,
+def get_field(resimulate_fields = False,
             params = sc_v6,
             file_name = 'data/outputs/fields.pkl',
             **kwargs_field):
     '''Returns the field map for the given parameters. If from_file is True, the field map is loaded from the file_name.'''
-    if from_file and exists(file_name):
+    if resimulate_fields:
+        fields = simulate_field(params, file_name = file_name,**kwargs_field)
+    elif exists(file_name):
         print('Using field map from file', file_name)
         with open(file_name, 'rb') as f:
             fields = pickle.load(f)
-        #fields = [fields['points'],fields['B']]
-    else:
-        fields = simulate_field(params, file_name = file_name,**kwargs_field)
+    #fields = [fields['points'],fields['B']]
     return fields
 
 def simulate_field(params,
@@ -64,6 +64,7 @@ def simulate_field(params,
     return fields
 
 def filter_fields(points,fields,corners, Z,dZ):
+    '''Filters the field_map to only include those inside the magnet. Not being used anymore'''
     corners = np.array(corners).reshape(-1, 2)
     points = np.asarray(points)
     fields = np.asarray(fields)
@@ -93,6 +94,64 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
         "z_center" : z_translation,
     })
 
+
+def CreateCavern(shift = 0):
+    cavern = []
+    def cavern_components(x_translation, 
+               y_translation, 
+               dX,
+               dY,
+               external_rock):
+        x1 = x_translation - dX
+        x2 = x_translation + dX
+        y1 = y_translation - dY
+        y2 = y_translation + dY
+        corners_up = np.tile(np.array([[x2, y2],
+               [x1, y2],
+               [x1, external_rock[1]],
+               [x2, external_rock[1]]]).flatten(), 2).tolist()
+        corners_right = np.tile(np.array([[x2, -external_rock[1]],
+              [x2, external_rock[1]],
+              [external_rock[0], external_rock[1]],
+              [external_rock[0], -external_rock[1]]]).flatten(), 2).tolist()
+        corners_left = np.tile(np.array([[x1, -external_rock[1]],
+             [-external_rock[0], -external_rock[1]],
+             [-external_rock[0], external_rock[1]],
+             [x1, external_rock[1]]]).flatten(), 2).tolist()
+        corners_down = np.tile(np.array([[x1, y1],
+             [x2, y1],
+             [x2, -external_rock[1]],
+             [x1, -external_rock[1]]]).flatten(), 2).tolist()
+        return [corners_up,corners_right,corners_left,corners_down]
+    external_rock = (20,20) #entire space is 40x40
+
+    TCC8_length = 170
+    dX_TCC8 = 5
+    dY_TCC8 = 3.75
+    TCC8_shift = (2.3,1.75,-TCC8_length/2)
+
+    ECN3_length = 100
+    dX_ECN3 = 8
+    dY_ECN3 = 7.5
+    ECN3_shift = (3.5,4, ECN3_length/2)
+
+    TCC8 = {"material": "G4_CONCRETE",
+            "name": 'TCC8',
+            "dz": TCC8_length/2,
+            "z_center" : TCC8_shift[2]+shift,
+            "components" : []}
+    TCC8["components"] = cavern_components(*TCC8_shift[:2],dX_TCC8,dY_TCC8,external_rock)
+    cavern.append(TCC8)
+
+    ECN3 = {"material": "G4_CONCRETE",
+            "name": 'ECN3',
+            "dz" : ECN3_length/2,
+            "z_center" : ECN3_shift[2]+shift,
+            "components" : []}
+    ECN3["components"] = cavern_components(*ECN3_shift[:2],dX_ECN3,dY_ECN3,external_rock)
+    cavern.append(ECN3)
+
+    return cavern
 
 # fields should be 4x3 np array
 def create_magnet(magnetName, medium, tShield,
@@ -243,7 +302,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     dZ6 = params[5]
     dZ7 = params[6]
     dZ8 = params[7]
-    #fMuonShieldLength = 2 * (dZ1 + dZ2 + dZ3 + dZ4 + dZ5 + dZ6 + dZ7 + dZ8) + LE
+    fMuonShieldLength = 2 * (dZ1 + dZ2 + dZ3 + dZ4 + dZ5 + dZ6 + dZ7 + dZ8) + LE
 
 
     dXIn = np.zeros(n_magnets)
@@ -311,15 +370,16 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
         HmainSideMagOut[i] = dYOut[i] / 2
 
     tShield = {
+        'dz': fMuonShieldLength / 200,
         'magnets':[],
         'global_field_map': []
     }
 
     if use_field_maps: 
-        resimulate_field = True#field_map_file is not None
+        resimulate_field = (field_map_file is None) or (not exists(field_map_file))
         d_space = (3., 3., (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
         resol = (0.05,0.05,0.05)
-        field_map = get_field(not resimulate_field,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag, 
+        field_map = get_field(resimulate_field,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
                               field_direction = fieldDirection,file_name=field_map_file)
         field_map = {'B': field_map['B'],
@@ -328,9 +388,6 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
                      'range_z': [d_space[2][0],d_space[2][1], resol[2]]}
 
         tShield['global_field_map'] = field_map
-    #create_magnet(magnetName[nM], "G4_Fe", tShield, fieldsAbsorber, 'uniform', dXIn[nM], dYIn[nM], dXOut[nM],
-    #             dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM], ratio_yokes[nM],
-    #             gapIn[nM], gapOut[nM], Z[nM], True, Ymgap=0.0)
     for nM in range(1, n_magnets):
         if (dZf[nM] < 1e-5 or nM == 4) and fSC_mag:
             continue
@@ -372,12 +429,10 @@ def get_design_from_params(params,
                            force_remove_magnetic_field = False,
                            use_field_maps = False,
                            field_map_file = None,
-                           sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':0}):
-    # nMagnets 9
+                           sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':0},
+                           add_cavern:bool = True):
 
     shield = design_muon_shield(params, fSC_mag, use_field_maps = use_field_maps, field_map_file = field_map_file)
-    # print(shield)
-    #magnets_2 = []
     for mag in shield['magnets']:
         mag['z_center'] = mag['z_center']
         for x in mag['components']:
@@ -386,12 +441,13 @@ def get_design_from_params(params,
                 x['field_profile'] = 'uniform'
             elif x['field_profile'] not in ['uniform','global']: 
                 x['field']['B'] = x['field']['B'].tolist()
-
         mag['material'] = 'G4_Fe'
-        #magnets_2.append(mag)
-        max_z = mag['dz'] + mag['z_center'] + 0.05#limit in 31.5
+        max_z = mag['dz'] + mag['z_center'] + 0.05
     if shield['global_field_map'] != []:
         shield['global_field_map']['B'] = shield['global_field_map']['B'].tolist()
+    fairship_shift = shield['dz']+25
+    z_transition = (-25-shield['dz']+(2*shield['magnets'][0]['dz']+0.8)+0.24+12)
+    if add_cavern: shield["cavern"] = CreateCavern(fairship_shift+z_transition)#CreateCavern(shield['dz']+25) #not perfectly consistent with fairship? 30 cm different
 
     #shield['magnets'] = magnets_2
     if sensitive_film_params is not None:
@@ -403,10 +459,10 @@ def get_design_from_params(params,
         else: sensitive_film_position += max_z
         max_z = sensitive_film_position
 
-    print('TOTAL LENGTH', max_z)
+    print('TOTAL LENGTH', max_z, shield['dz']*2-7)
     shield.update({
-        "worldPositionX": 0, "worldPositionY": 0, "worldPositionZ": 0, "worldSizeX": 11, "worldSizeY": 11,
-        "worldSizeZ": max_z*2 + 30,
+        "worldPositionX": 0, "worldPositionY": 0, "worldPositionZ": 0, "worldSizeX": 41, "worldSizeY": 41,
+        "worldSizeZ": 400,#max_z*2 + 30,
         "type" : 1,
         "limits" : {
             "max_step_length": 0.05,#-1,
@@ -430,7 +486,10 @@ if __name__ == '__main__':
     import numpy as np
     from lib.ship_muon_shield_customfield import get_design_from_params
     from muon_slabs import initialize
-    detector = get_design_from_params(np.array(sc_v6), use_field_maps= True,field_map_file = 'data/outputs/fields.pkl')
+    detector = get_design_from_params(np.array(sc_v6), use_field_maps=True,field_map_file = 'data/outputs/fields.pkl', add_cavern=True)
     t1 = time()
-    output_data = initialize(np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256), json.dumps(detector))
+    output_data = initialize(np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256), json.dumps(detector))#, np.array([0.,0.]))
     print('Time to initialize', time()-t1)
+    t1 = time()
+    json.dumps(detector)
+    print('Time to JSON dump', time()-t1)

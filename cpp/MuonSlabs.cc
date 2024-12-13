@@ -183,7 +183,11 @@ void set_kill_momenta(double kill_momenta) {
 std::string initialize( int rseed_0,
                  int rseed_1, int rseed_2, int rseed_3, std::string detector_specs) {
     randomEngine = new CLHEP::MTwistEngine(rseed_0);
-    
+    //#include <chrono>
+    //auto start = std::chrono::high_resolution_clock::now();
+    //auto end = std::chrono::high_resolution_clock::now();
+    //std::cout<<"TIME JSON" << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << std::endl;
+
 
     long seeds[4] = {rseed_0, rseed_1, rseed_2, rseed_3};
 
@@ -195,6 +199,7 @@ std::string initialize( int rseed_0,
     bool applyStepLimiter = false;
     bool storeAll = false;
     bool storePrimary = true;
+    
     if (detector_specs.empty())
         detector = new DetectorConstruction();
     else {
@@ -204,18 +209,16 @@ std::string initialize( int rseed_0,
         std::string errs;
 
         std::istringstream iss(detector_specs);
-        //#include <chrono>
-        //auto start = std::chrono::high_resolution_clock::now();
+        
         if (Json::parseFromStream(readerBuilder, iss, &detectorData, &errs)) {
-            // Output the parsed JSON object
             std::cout << "WorldSize: " <<detectorData["worldSizeZ"] << std::endl;
         } else {
             std::cerr << "Failed to parse JSON: " << errs << std::endl;
         }
-        //auto end = std::chrono::high_resolution_clock::now();
+        //end = std::chrono::high_resolution_clock::now();
         //std::cout<<"TIME JSON" << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << std::endl;
-    
 
+        
 
         int type = detectorData["type"].asInt();
         applyStepLimiter = (detectorData["limits"]["max_step_length"].asDouble() > 0);
@@ -243,6 +246,7 @@ std::string initialize( int rseed_0,
     runManager->SetUserInitialization(detector);
 
     auto physicsList = new FTFP_BERT;
+
 //    auto physicsList = new QGSP_BERT_HP_PEN();
 //    auto physicsList = new QGSP_BERT;
     std::cout<<"Step limiter physics applied: "<<applyStepLimiter<<std::endl;
@@ -250,7 +254,6 @@ std::string initialize( int rseed_0,
         physicsList->RegisterPhysics(new G4StepLimiterPhysics());
     }
     runManager->SetUserInitialization(physicsList);
-
     customEventAction = new CustomEventAction();
     primariesGenerator = new PrimaryGeneratorAction();
     steppingAction = new CustomSteppingAction();
@@ -258,7 +261,6 @@ std::string initialize( int rseed_0,
     customEventAction->setSteppingAction(steppingAction);
     steppingAction->setStoreAll(storeAll);
     steppingAction->setStorePrimary(storePrimary);
-
 //    auto actionInitialization = new B4aActionInitialization(detector, eventAction, primariesGenerator);
 //    runManager->SetUserInitialization(actionInitialization);
 
@@ -269,14 +271,10 @@ std::string initialize( int rseed_0,
     // Get the pointer to the User Interface manager
     ui_manager = G4UImanager::GetUIpointer();
 
-
-
-
     ui_manager->ApplyCommand(std::string("/run/initialize"));
     ui_manager->ApplyCommand(std::string("/run/printProgress 100"));
 
     std::cout<<"Initialized"<<std::endl;
-
     Json::Value returnData;
     returnData["weight_total"] = detector->getDetectorWeight();
 

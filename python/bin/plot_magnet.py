@@ -97,7 +97,7 @@ def plot_magnet(detector,
                         [corners[j] for j in [1, 2, 6, 5]]]
 
             # # Plot the edges
-            ax.add_collection3d(Poly3DCollection(edges, facecolors=col, linewidths=0.07, edgecolors='r', alpha=.25))
+            ax.add_collection3d(Poly3DCollection(edges, facecolors=col, linewidths=0.3, edgecolors='r', alpha=.1))
             #
             # # Scatter plot of the corners
             # ax.scatter3D(corners[:, 0], corners[:, 1], corners[:, 2], color='b', s=0.04)
@@ -120,6 +120,30 @@ def plot_magnet(detector,
         #total_sensitive_hits += 1
         ax.scatter(z[particle>0], x[particle>0], y[particle>0], color='blue', label=f'Muon {i + 1}', s=0.5)
         ax.scatter(z[particle<0], x[particle<0], y[particle<0], color='orange', label=f'AntiMuon {i + 1}', s=0.5)
+    
+    # Plot cavern
+    if "cavern" in detector:
+        for cavern in detector["cavern"]:
+            for component in cavern["components"]:
+                the_dat = np.array(component)#.reshape(-1, 2)
+                z1 = max(-15,cavern['z_center'] - cavern['dz'])
+                z2 = min(30,cavern['z_center'] + cavern['dz'])
+                corners = np.array(
+                [
+                    [the_dat[0], the_dat[1], z1], [the_dat[2], the_dat[3], z1], [the_dat[4], the_dat[5], z1], [the_dat[6], the_dat[7], z1],
+                    [the_dat[0 + 8], the_dat[1 + 8], z2], [the_dat[2 + 8], the_dat[3 + 8], z2], [the_dat[4 + 8], the_dat[5 + 8], z2], [the_dat[6 + 8], the_dat[7 + 8], z2],
+                    ]
+            )
+            
+                corners = np.array([[c[2], c[0], c[1]] for c in corners])
+                                # Define the 12 edges connecting the corners
+                edges = [[corners[j] for j in [0, 1, 2, 3]],
+                            [corners[j] for j in [4, 5, 6, 7]],
+                            [corners[j] for j in [0, 1, 5, 4]],
+                            [corners[j] for j in [2, 3, 7, 6]],
+                            [corners[j] for j in [0, 3, 7, 4]],
+                            [corners[j] for j in [1, 2, 6, 5]]]
+                ax.add_collection3d(Poly3DCollection(edges, facecolors='gray', linewidths=0.07, edgecolors='black', alpha=0.25))
 
     if fixed_zlim: ax.set_xlim(-30+sensitive_film_position, detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz']-5)
     else: ax.set_xlim(30, -15)

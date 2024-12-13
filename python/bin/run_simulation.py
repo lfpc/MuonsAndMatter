@@ -13,12 +13,34 @@ def run(muons,
         return_weight = False,
         fSC_mag:bool = True,
         sensitive_film_params:dict = {'dz': 0.01, 'dx': 10, 'dy': 10,'position':67},
+        add_cavern = True,
         use_field_maps = False,
         field_map_file = None,
         return_nan:bool = False,
         seed:int = None,
         draw_magnet = False,
         kwargs_plot = {},):
+    """
+        Simulates the passage of muons through the muon shield and collects the resulting data.
+        Parameters:
+        muons (ndarray): Array of muon parameters. Each muon is represented by its momentum (px, py, pz), 
+                         position (x, y, z), charge, and optionally weight.
+        phi: List of 72 parameters for the detector design. 
+        input_dist (float, optional): If different than None, define the distance to set the initial z position of all muons. If None (default), the z position is taken from the file.
+        return_weight (bool, optional): If True, returns the total weight of the muon shield. Defaults to False.
+        fSC_mag (bool, optional): Flag to use the hybrid configuration (i.e., with the superconducting magnet) of the muon shield in the simulation. Defaults to True.
+        sensitive_film_params (dict, optional): Parameters for the sensitive film. Defaults to {'dz': 0.01, 'dx': 10, 'dy': 10, 'position': 67}. If None, the simulation collects all the data from the muons (not only hits).
+        use_field_maps (bool, optional): Flag to use simulate (FEM) and use field maps in the simulation. Defaults to False.
+        field_map_file (str, optional): Path to the field map file. Defaults to None.
+        return_nan (bool, optional): If True, returns a list of zeros as the output for muons that do not hit the sensitive film. Defaults to False.
+        seed (int, optional): Seed for random number generation. Defaults to None.
+        draw_magnet (bool, optional): If True, plot the muon shield. Defaults to False.
+        kwargs_plot (dict, optional): Additional keyword arguments for plotting.
+        Returns:
+        ndarray: Array of simulated muon data (momentum, position, particle ID and possibly weight (if presented in the input)). 
+        float (optional): Total weight of the muon shield if return_weight is True.
+        """
+    
 
     if type(muons) is tuple:
         muons = muons[0]
@@ -27,7 +49,8 @@ def run(muons,
                                       fSC_mag = fSC_mag,
                                       use_field_maps=use_field_maps,
                                       sensitive_film_params=sensitive_film_params,
-                                      field_map_file = field_map_file)
+                                      field_map_file = field_map_file,
+                                      add_cavern = add_cavern)
 
     detector["store_primary"] = sensitive_film_params is None
     detector["store_all"] = False
@@ -39,6 +62,7 @@ def run(muons,
 
     # set_field_value(1,0,0)
     # set_kill_momenta(65)
+    
     kill_secondary_tracks(True)
     if muons.shape[-1] == 8: px,py,pz,x,y,z,charge,W = muons.T
     else: px,py,pz,x,y,z,charge = muons.T
@@ -48,18 +72,17 @@ def run(muons,
     assert((np.abs(charge)==1).all())
 
     if input_dist is not None:
-        z_pos = -input_dist
-        z = z_pos*np.ones_like(z)
-    else:
-        z = z/100 + 70.845 - 68.685 + 66.34
-        z = detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz'] + z
+        z = (-input_dist)*np.ones_like(z)
+
     muon_data = []
     if sensitive_film_params is None:
+        #If sensitive film is not present, we collect all the muons
         for i in range(len(px)):
             simulate_muon(px[i], py[i], pz[i], int(charge[i]), x[i],y[i], z[i])
             data = collect()
             muon_data += [data]
     else:
+        #If sensitive film is defined, we collect only the muons that hit the sensitive film
         for i in range(len(px)):
             simulate_muon(px[i], py[i], pz[i], int(charge[i]), x[i],y[i], z[i])
             data_s = collect_from_sensitive()
@@ -103,6 +126,7 @@ if __name__ == '__main__':
     parser.add_argument("-real_fields", action = 'store_true')
     parser.add_argument("-field_file", type=str, default='data/outputs/fields.pkl') 
     parser.add_argument("-shuffle_input", action = 'store_true')
+    parser.add_argument("-remove_cavern", dest = "add_cavern", action = 'store_false')
     parser.add_argument("-plot_magnet", action = 'store_true')
     parser.add_argument("-warm",dest="SC_mag", action = 'store_false')
     parser.add_argument("-return_nan", action = 'store_true')
@@ -144,8 +168,8 @@ if __name__ == '__main__':
     workloads = split_array(data_n,cores)
     t1 = time()
     with mp.Pool(cores) as pool:
-        result = pool.starmap(run, [(workload,params,input_dist,True,args.SC_mag,sensitive_film_params, args.real_fields,
-                                    args.field_file,args.return_nan,args.seed, False) for workload in workloads])
+        result = pool.starmap(run, [(workload,params,input_dist,True,args.SC_mag,sensitive_film_params,args.add_cavern, 
+                                    args.real_fields,args.field_file,args.return_nan,args.seed, False) for workload in workloads])
     t2 = time()
     print(f"Time to FEM: {t2_fem - t1_fem:.2f} seconds.")
     print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")

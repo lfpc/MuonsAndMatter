@@ -17,6 +17,7 @@ def main(n_muons:int,
          output_file='plots/detector_visualization.png', 
          params=None,
           sensitive_film_position:float = 57, 
+          add_cavern = True,
           fSC_mag:bool = True,
           input_dist:float = 0.9,
           input_file = 'data/inputs.pkl'):
@@ -34,7 +35,7 @@ def main(n_muons:int,
                     number = float(line.strip())
                     params.append(number)
 
-        detector = get_design_from_params(params, force_remove_magnetic_field=False, fSC_mag=fSC_mag, 
+        detector = get_design_from_params(params, force_remove_magnetic_field=False, fSC_mag=fSC_mag, add_cavern=add_cavern,
                                           use_field_maps=False, sensitive_film_params={'dz': 0.01, 'dx': 10, 'dy': 10, 'position':sensitive_film_position})
     elif design == 9:
         detector = get_design_9(force_remove_magnetic_field=False)
@@ -121,12 +122,13 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-n",type=int,default = 1)
-    parser.add_argument("-input_file", type=str, default = None)
-    parser.add_argument("-sens",type=float,default = None)
+    parser.add_argument("-input_file", type=str, default = 'data/inputs.pkl')
+    parser.add_argument("-sens",type=float,default = 5)
     parser.add_argument("-params",type=str,default = 'sc_v6')
     parser.add_argument("-angle",type=float,default = 126)
     parser.add_argument("-elev",type=float,default = 17)
     parser.add_argument("-params_test", nargs='+', default=None)
+    parser.add_argument("-remove_cavern", dest = "add_cavern", action = 'store_false')
     parser.add_argument("-warm", dest = 'SC', action='store_false')
     args = parser.parse_args()
     if args.params == 'sc_v6': params = sc_v6
@@ -139,5 +141,5 @@ if __name__ == '__main__':
         for i in range(0, len(args.params_test), 2):
             params[int(args.params_test[i])] = float(args.params_test[i + 1])
     sensitive_film = args.sens
-    main(n_muons = args.n,params=params,sensitive_film_position=sensitive_film, fSC_mag=args.SC)
+    main(n_muons = args.n,params=params,sensitive_film_position=sensitive_film, fSC_mag=args.SC, input_file=args.input_file, add_cavern=args.add_cavern)
 

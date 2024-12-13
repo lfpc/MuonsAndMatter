@@ -62,15 +62,17 @@ def get_grid_data(points: np.array, B: np.array, new_points: tuple):
 
 def run_fem(magn_params:dict,
             delta_air = (1.0,1.0,1.0),
-            materials_dir = 'data'):
+            materials_dir = None):
     """Runs the finite element method to compute the magnetic field.
     Parameters:
     magn_params (dict): Dictionary containing the magnets parameters.
     delta_air (tuple, optional): Dimensions of block of air outside the magnets to simulate. Defaults to (1.0,1.0,1.0).
-    materials_dir (str, optional): Directory containing the materials. Defaults to 'data/'.
+    materials_dir (str, optional): Directory containing the materials. Defaults is None, returning the data dir in tha parent dir.
     Returns:
     dict: A dictionary containing the position points and the computed magnetic field 'B'.
     """
+    if materials_dir is None:
+        materials_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
 
     mu_air = roxie_evaluator.ConstantPermeability(4*np.pi*1e-7)
     mu_iron = roxie_evaluator.Permeability(os.path.join(materials_dir, magn_params['material'] + '.csv'))
