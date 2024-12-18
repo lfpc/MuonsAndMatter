@@ -94,25 +94,61 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
     const Json::Value magnets = detectorData["magnets"];
 
     G4MagneticField* GlobalmagField = nullptr;
-    if (!field_value.empty()) {
-        //std::vector<G4ThreeVector> points;
+    if (!B_vector.empty()) {
         std::map<std::string, std::vector<double>> ranges;
         std::vector<G4ThreeVector> fields;
-        //const Json::Value& pointsData = field_value[0];
-        //const Json::Value& fieldsData = field_value[1];
-        ranges["range_x"] = {field_value["range_x"][0].asDouble() * m, field_value["range_x"][1].asDouble() * m, field_value["range_x"][2].asDouble() * m};
-        ranges["range_y"] = {field_value["range_y"][0].asDouble() * m, field_value["range_y"][1].asDouble() * m, field_value["range_y"][2].asDouble() * m};
-        ranges["range_z"] = {field_value["range_z"][0].asDouble() * m, field_value["range_z"][1].asDouble() * m, field_value["range_z"][2].asDouble() * m};
+        ranges["range_x"] = {detectorData["global_field_map"]["range_x"][0].asDouble() * m, detectorData["global_field_map"]["range_x"][1].asDouble() * m, detectorData["global_field_map"]["range_x"][2].asDouble() * m};
+        ranges["range_y"] = {detectorData["global_field_map"]["range_y"][0].asDouble() * m, detectorData["global_field_map"]["range_y"][1].asDouble() * m, detectorData["global_field_map"]["range_y"][2].asDouble() * m};
+        ranges["range_z"] = {detectorData["global_field_map"]["range_z"][0].asDouble() * m, detectorData["global_field_map"]["range_z"][1].asDouble() * m, detectorData["global_field_map"]["range_z"][2].asDouble() * m};
 
-        const Json::Value& fieldsData = field_value["B"];
-        for (Json::ArrayIndex i = 0; i < fieldsData.size(); ++i) {
-            //points.emplace_back(pointsData[i][0].asDouble() * m, pointsData[i][1].asDouble() * m, pointsData[i][2].asDouble() * m);
-            fields.emplace_back(fieldsData[i][0].asDouble() * tesla, fieldsData[i][1].asDouble() * tesla, fieldsData[i][2].asDouble() * tesla);
+        for (size_t i = 0; i < B_vector.size(); i += 3) {
+            fields.emplace_back(B_vector[i] * tesla, B_vector[i + 1] * tesla, B_vector[i + 2] * tesla);
         }
         // Determine the interpolation type
         CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
         // Define the custom magnetic field
         GlobalmagField = new CustomMagneticField(ranges, fields, interpType);
+        // create a sub-world for the magnetic field
+        /*G4double x_min = -ranges["range_x"][1];
+        G4double x_max = ranges["range_x"][1];
+        G4double y_min = -ranges["range_y"][1];
+        G4double y_max = ranges["range_y"][1];
+        G4double z_min = ranges["range_z"][0];
+        G4double z_max = ranges["range_z"][1];
+
+        G4double x_length = x_max - x_min;
+        G4double y_length = y_max - y_min;
+        G4double z_length = z_max - z_min;
+
+        G4double x_center = (x_max + x_min) / 2.0;
+        G4double y_center = (y_max + y_min) / 2.0;
+        G4double z_center = (z_max + z_min) / 2.0;
+
+        // Create the volume
+        G4Box* regionSolid = new G4Box("RegionSolid", x_length / 2.0, y_length / 2.0, z_length / 2.0);
+        G4Material* airMaterial = G4NistManager::Instance()->FindOrBuildMaterial("G4_AIR");
+        G4LogicalVolume* regionLogical = new G4LogicalVolume(regionSolid, airMaterial, "RegionLogical");
+
+        // Assign the magnetic field
+        auto fieldManager = new G4FieldManager();
+        fieldManager->SetDetectorField(GlobalmagField);
+        fieldManager->CreateChordFinder(GlobalmagField);
+        regionLogical->SetFieldManager(fieldManager, true);
+
+        // Place the volume
+        new G4PVPlacement(
+            nullptr,
+            G4ThreeVector(x_center, y_center, z_center),
+            regionLogical,
+            "RegionPhysical",
+            logicWorld,
+            false,
+            0,
+            true
+        );
+
+        // Make the volume invisible
+        regionLogical->SetVisAttributes(G4VisAttributes::GetInvisible());*/
     }
     //const Json::Value fields = detectorData["field_map"];
     double totalWeight = 0;
@@ -250,8 +286,8 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
 
 
-GDetectorConstruction::GDetectorConstruction(Json::Value detector_data) {
-    detectorData = detector_data;
+GDetectorConstruction::GDetectorConstruction(Json::Value detector_data, const std::vector<double>& B_vector)
+    : detectorData(detector_data), B_vector(B_vector) {
     detectorWeightTotal = 0;
 }
 

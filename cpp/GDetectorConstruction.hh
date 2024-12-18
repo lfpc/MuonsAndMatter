@@ -14,9 +14,10 @@ public:
     virtual G4VPhysicalVolume *Construct();
     SlimFilmSensitiveDetector* slimFilmSensitiveDetector;
 public:
-    GDetectorConstruction(Json::Value detector_data);
+    GDetectorConstruction(Json::Value detector_data, const std::vector<double>& B_vector);
 protected:
     Json::Value detectorData;
+    std::vector<double> B_vector;
 public:
     void ConstructSDandField() override;
 

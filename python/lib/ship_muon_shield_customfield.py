@@ -9,6 +9,8 @@ from lib.reference_designs.params import new_parametrization, get_magnet_params,
 import pandas as pd
 from os.path import exists
 from time import time
+from muon_slabs import initialize
+import json
 
 def get_field(resimulate_fields = False,
             params = sc_v6,
@@ -372,7 +374,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     tShield = {
         'dz': fMuonShieldLength / 200,
         'magnets':[],
-        'global_field_map': []
+        'global_field_map': {'B': np.array([])},
     }
 
     if use_field_maps: 
@@ -388,6 +390,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
                      'range_z': [d_space[2][0],d_space[2][1], resol[2]]}
 
         tShield['global_field_map'] = field_map
+
     for nM in range(1, n_magnets):
         if (dZf[nM] < 1e-5 or nM == 4) and fSC_mag:
             continue
@@ -443,8 +446,6 @@ def get_design_from_params(params,
                 x['field']['B'] = x['field']['B'].tolist()
         mag['material'] = 'G4_Fe'
         max_z = mag['dz'] + mag['z_center'] + 0.05
-    if shield['global_field_map'] != []:
-        shield['global_field_map']['B'] = shield['global_field_map']['B'].tolist()
     fairship_shift = shield['dz']+25
     z_transition = (-25-shield['dz']+(2*shield['magnets'][0]['dz']+0.8)+0.24+12)
     if add_cavern: shield["cavern"] = CreateCavern(fairship_shift+z_transition)#CreateCavern(shield['dz']+25) #not perfectly consistent with fairship? 30 cm different
@@ -457,7 +458,7 @@ def get_design_from_params(params,
                                         shield['magnets'][sensitive_film_position[0]]['z_center'] + \
                                         shield['magnets'][sensitive_film_position[0]]['dz']
         else: sensitive_film_position += max_z
-        max_z = sensitive_film_position
+        #max_z = sensitive_film_position
 
     print('TOTAL LENGTH', max_z, shield['dz']*2-7)
     shield.update({
@@ -479,17 +480,25 @@ def get_design_from_params(params,
 
 
     return shield
-
+def initialize_geant4(detector, seed = None):
+    B = detector['global_field_map'].pop('B')
+    if seed is None: seeds = (np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256))
+    else: seeds = (seed, seed, seed, seed)
+    output_data = initialize(*seeds,json.dumps(detector), np.asarray(B))
+    return output_data
 
 if __name__ == '__main__':
     import json
     import numpy as np
     from lib.ship_muon_shield_customfield import get_design_from_params
     from muon_slabs import initialize
-    detector = get_design_from_params(np.array(sc_v6), use_field_maps=True,field_map_file = 'data/outputs/fields.pkl', add_cavern=True)
     t1 = time()
-    output_data = initialize(np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256), json.dumps(detector))#, np.array([0.,0.]))
-    print('Time to initialize', time()-t1)
+    detector = get_design_from_params(np.array(sc_v6), use_field_maps=True,field_map_file = None, add_cavern=True)
+    t1_init = time()
+    output_data = initialize_geant4(detector)#, np.array([0.,0.]))
+    print('Time to initialize', time()-t1_init)
+    print('TOTAL TIME', time()-t1)
+    
     t1 = time()
     json.dumps(detector)
     print('Time to JSON dump', time()-t1)

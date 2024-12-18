@@ -92,9 +92,11 @@ int main(int argc, char** argv)
         std::cerr << "Failed to parse JSON: " << errs << std::endl;
     }
 
+    std::vector<double> B_vector;
+
 
     // Set mandatory initialization classes
-    runManager->SetUserInitialization(new GDetectorConstruction(fileContents));
+    runManager->SetUserInitialization(new GDetectorConstruction(fileContents, B_vector));
 //    runManager->SetUserInitialization(new BoxyDetectorConstruction(fileContents));
 //    runManager->SetUserInitialization(new DetectorConstruction);
 

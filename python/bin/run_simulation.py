@@ -1,10 +1,11 @@
 
 import json
 import numpy as np
-from lib.ship_muon_shield_customfield import get_design_from_params, get_field
+from lib.ship_muon_shield_customfield import get_design_from_params, get_field, initialize_geant4
 from muon_slabs import simulate_muon, initialize, collect, kill_secondary_tracks, collect_from_sensitive
 from plot_magnet import plot_magnet, construct_and_plot
 from time import time
+
 
 
 def run(muons, 
@@ -55,8 +56,7 @@ def run(muons,
     detector["store_primary"] = sensitive_film_params is None
     detector["store_all"] = False
     t1 = time()
-    if seed is None: output_data = initialize(np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256), json.dumps(detector))
-    else: output_data = initialize(seed,seed, seed, seed, json.dumps(detector))
+    output_data = initialize_geant4(detector, seed)
     print('Time to initialize', time()-t1)
     output_data = json.loads(output_data)    
 
