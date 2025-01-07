@@ -14,7 +14,7 @@ cpp/build/*
 plots/*
 
 # Ignore data directory
-data/full_samples/
+data/full_sample/
 data/outputs/*
 
 

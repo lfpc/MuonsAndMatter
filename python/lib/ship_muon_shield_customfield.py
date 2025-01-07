@@ -15,6 +15,7 @@ import json
 def get_field(resimulate_fields = False,
             params = sc_v6,
             file_name = 'data/outputs/fields.pkl',
+            only_grid_params = False,
             **kwargs_field):
     '''Returns the field map for the given parameters. If from_file is True, the field map is loaded from the file_name.'''
     if resimulate_fields:
@@ -23,7 +24,13 @@ def get_field(resimulate_fields = False,
         print('Using field map from file', file_name)
         with open(file_name, 'rb') as f:
             fields = pickle.load(f)
-    #fields = [fields['points'],fields['B']]
+    if only_grid_params: 
+        d_space = kwargs_field['d_space']
+        resol = kwargs_field['resol']
+        fields= {'B': fields['B'],
+                'range_x': [0,d_space[0], resol[0]],
+                'range_y': [0,d_space[1], resol[1]],
+                'range_z': [d_space[2][0],d_space[2][1], resol[2]]}
     return fields
 
 def simulate_field(params,
@@ -53,7 +60,7 @@ def simulate_field(params,
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
+    #if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
     fields = magnet_simulations.run(all_params, d_space=d_space, resol=resol, apply_symmetry=False)
     fields['points'][:,2] += Z_init/100
@@ -65,19 +72,35 @@ def simulate_field(params,
             print('Fields saved to', file_name)
     return fields
 
-def filter_fields(points,fields,corners, Z,dZ):
-    '''Filters the field_map to only include those inside the magnet. Not being used anymore'''
-    corners = np.array(corners).reshape(-1, 2)
+def filter_fields(points, fields, corners, Z, dZ):
+    """
+    Filters the field map to only include those inside the 3D figure using Delaunay triangulation.
+    
+    Args:
+        points (array-like): Nx3 array of points to be tested.
+        fields (array-like): Corresponding field values for the points.
+        corners (array-like): Flat array of shape (16,) representing the corners of two polygons.
+                              The first 8 elements correspond to the polygon at Z-dZ,
+                              and the last 8 to the polygon at Z+dZ.
+        Z (float): Central Z-coordinate to define the height range.
+        dZ (float): Half-height of the volume to define the Z range.
+        
+    Returns:
+        list: Filtered points and fields inside the 3D figure.
+    """
+    from scipy.spatial import Delaunay
     points = np.asarray(points)
     fields = np.asarray(fields)
-    corners = np.split(corners,2)
-    polygon_1 = polygon_path(corners[0])
-    polygon_2 = polygon_path(corners[1])
-    inside = np.logical_or(polygon_1.contains_points(points[:,:2]),polygon_2.contains_points(points[:,:2]))
-    inside = np.logical_and(inside, (points[:,2] > Z-dZ) & (points[:,2] < Z+dZ))
+    corners = np.asarray(corners).reshape(2, 4, 2) 
+    lower_polygon = np.hstack([corners[0], np.full((4, 1), Z - dZ)]) 
+    upper_polygon = np.hstack([corners[1], np.full((4, 1), Z + dZ)]) 
+    volume_corners = np.vstack([lower_polygon, upper_polygon])
+    hull = Delaunay(volume_corners)
+    inside_hull = hull.find_simplex(points) >= 0
+    inside = inside_hull
     if inside.sum() == 0:
         raise ValueError('No points inside the magnet')
-    return [points[inside],fields[inside]]
+    return [points[inside], fields[inside]]
 
 def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
                tShield, x_translation, y_translation, z_translation, stepGeo):
@@ -85,11 +108,9 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
     corners /= 100
     dZ /= 100
     z_translation /= 100
-    #if field_profile != 'uniform': 
-    #    magField = filter_fields(magField[0],magField[1],corners, z_translation,dZ)
     tShield['components'].append({
         'corners' : corners.tolist(),
-        'field_profile' : field_profile, #interpolation type
+        'field_profile' : field_profile,
         'field' : magField,
         'name': arbName,
         'dz' : dZ,
@@ -161,7 +182,6 @@ def create_magnet(magnetName, medium, tShield,
                   dY, dX2, dY2, dZ, middleGap,
                   middleGap2,ratio_yoke, gap,
                   gap2, Z, stepGeo, Ymgap = 5):
-    fDesign = 8
     dY += Ymgap
     # Assuming 0.5A / mm ^ 2 and 10000At needed, about 200cm ^ 2 gaps are necessary
     # Current design safely above this.Will consult with MISiS to get a better minimum.
@@ -278,7 +298,6 @@ def create_magnet(magnetName, medium, tShield,
 
     tShield['magnets'].append(theMagnet)
 
-
 def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_file = None):
     n_magnets = 9
     cm = 1
@@ -379,16 +398,12 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
 
     if use_field_maps: 
         resimulate_field = (field_map_file is None) or (not exists(field_map_file))
+
         d_space = (3., 3., (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
         resol = (0.05,0.05,0.05)
         field_map = get_field(resimulate_field,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
-                              field_direction = fieldDirection,file_name=field_map_file)
-        field_map = {'B': field_map['B'],
-                     'range_x': [0,d_space[0], resol[0]],
-                     'range_y': [0,d_space[1], resol[1]],
-                     'range_z': [d_space[2][0],d_space[2][1], resol[2]]}
-
+                              field_direction = fieldDirection,file_name=field_map_file, only_grid_params=True)
         tShield['global_field_map'] = field_map
 
     for nM in range(1, n_magnets):
@@ -432,7 +447,7 @@ def get_design_from_params(params,
                            force_remove_magnetic_field = False,
                            use_field_maps = False,
                            field_map_file = None,
-                           sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':0},
+                           sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':83.2},
                            add_cavern:bool = True):
 
     shield = design_muon_shield(params, fSC_mag, use_field_maps = use_field_maps, field_map_file = field_map_file)
@@ -450,30 +465,20 @@ def get_design_from_params(params,
     z_transition = (-25-shield['dz']+(2*shield['magnets'][0]['dz']+0.8)+0.24+12)
     if add_cavern: shield["cavern"] = CreateCavern(fairship_shift+z_transition)#CreateCavern(shield['dz']+25) #not perfectly consistent with fairship? 30 cm different
 
-    #shield['magnets'] = magnets_2
-    if sensitive_film_params is not None:
-        sensitive_film_position = sensitive_film_params['position']
-        if isinstance(sensitive_film_position, tuple):
-            sensitive_film_position = sensitive_film_position[1] + \
-                                        shield['magnets'][sensitive_film_position[0]]['z_center'] + \
-                                        shield['magnets'][sensitive_film_position[0]]['dz']
-        else: sensitive_film_position += max_z
-        #max_z = sensitive_film_position
 
     print('TOTAL LENGTH', max_z, shield['dz']*2-7)
     shield.update({
-        "worldPositionX": 0, "worldPositionY": 0, "worldPositionZ": 0, "worldSizeX": 41, "worldSizeY": 41,
-        "worldSizeZ": 400,#max_z*2 + 30,
+     "worldSizeX": 20, "worldSizeY": 20, "worldSizeZ": 200,
         "type" : 1,
         "limits" : {
-            "max_step_length": 0.05,#-1,
-            "minimum_kinetic_energy": 0.1,#-1
+            "max_step_length": 0.05,
+            "minimum_kinetic_energy": 0.1,
         },
     })
     if sensitive_film_params is not None:
         shield.update({
             "sensitive_film": {
-            "z_center" : sensitive_film_position,
+            "z_center" : sensitive_film_params['position'],
             "dz" : sensitive_film_params['dz'],
             "dx": sensitive_film_params['dx'],
             "dy": sensitive_film_params['dy']}})
@@ -481,7 +486,7 @@ def get_design_from_params(params,
 
     return shield
 def initialize_geant4(detector, seed = None):
-    B = detector['global_field_map'].pop('B')
+    B = detector['global_field_map'].pop('B').flatten()
     if seed is None: seeds = (np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256))
     else: seeds = (seed, seed, seed, seed)
     output_data = initialize(*seeds,json.dumps(detector), np.asarray(B))
@@ -492,8 +497,11 @@ if __name__ == '__main__':
     import numpy as np
     from lib.ship_muon_shield_customfield import get_design_from_params
     from muon_slabs import initialize
+    import os
+    if os.path.exists('data/outputs/fields.pkl'):
+        os.remove('data/outputs/fields.pkl')
     t1 = time()
-    detector = get_design_from_params(np.array(sc_v6), use_field_maps=True,field_map_file = None, add_cavern=True)
+    detector = get_design_from_params(np.array(sc_v6), use_field_maps=True,field_map_file = 'data/outputs/fields.pkl', add_cavern=True)
     t1_init = time()
     output_data = initialize_geant4(detector)#, np.array([0.,0.]))
     print('Time to initialize', time()-t1_init)

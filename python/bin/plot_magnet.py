@@ -16,7 +16,11 @@ def plot_magnet(detector,
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     if np.size(detector['global_field_map']) > 0:
-        detector['global_field_map'] = get_symmetry(*np.asarray(detector['global_field_map']), reorder=True)
+        points = np.meshgrid(np.arange(*detector['global_field_map']['range_x']),
+                          np.arange(*detector['global_field_map']['range_y']),
+                            np.arange(*detector['global_field_map']['range_z']))
+        points = np.column_stack((points[0].ravel(), points[1].ravel(), points[2].ravel()))
+        detector['global_field_map'] = get_symmetry(points,np.asarray(detector['global_field_map']['B']), reorder=True)
     if "sensitive_film" in detector  and sensitive_film_position is not None:
         cz, cx, cy = detector["sensitive_film"]["z_center"], 0, 0
         if sensitive_film_position is not None: 
@@ -97,7 +101,7 @@ def plot_magnet(detector,
                         [corners[j] for j in [1, 2, 6, 5]]]
 
             # # Plot the edges
-            ax.add_collection3d(Poly3DCollection(edges, facecolors=col, linewidths=0.3, edgecolors='r', alpha=.1))
+            ax.add_collection3d(Poly3DCollection(edges, facecolors=col, linewidths=0.3, edgecolors='r', alpha=0.2))
             #
             # # Scatter plot of the corners
             # ax.scatter3D(corners[:, 0], corners[:, 1], corners[:, 2], color='b', s=0.04)
@@ -175,10 +179,7 @@ def construct_and_plot(muons,
         use_field_maps = False,
         field_map_file = None,
         kwargs_plot = {}):
-    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, use_field_maps=use_field_maps, field_map_file = field_map_file)
-    for k,v in sensitive_film_params.items():
-        if k=='position': detector['sensitive_film']['z_center'] += v
-        else: detector['sensitive_film'][k] = v
+    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, use_field_maps=use_field_maps, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params)
     plot_magnet(detector,
                 muon_data = muons, 
                 sensitive_film_position = sensitive_film_params['position'],#sensitive_film_params['position'], 

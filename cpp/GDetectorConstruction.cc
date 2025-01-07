@@ -78,17 +78,33 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
     G4double worldSizeY = detectorData["worldSizeY"].asDouble() * m;
     G4double worldSizeZ = detectorData["worldSizeZ"].asDouble() * m;
 
-    G4double worldPositionX = detectorData["worldPositionX"].asDouble() * m;
-    G4double worldPositionY = detectorData["worldPositionY"].asDouble() * m;
-    G4double worldPositionZ = detectorData["worldPositionZ"].asDouble() * m;
 
     // Create the world volume
     G4Box* solidWorld = new G4Box("WorldX", worldSizeX / 2, worldSizeY / 2, worldSizeZ / 2);
     G4LogicalVolume* logicWorld = new G4LogicalVolume(solidWorld, worldMaterial, "WorldY");
     logicWorld->SetUserLimits(userLimits2);
-//    logicWorld->SetUserLimits(userLimits);
     
-    G4VPhysicalVolume* physWorld = new G4PVPlacement(0, G4ThreeVector(worldPositionX, worldPositionY, worldPositionZ), logicWorld, "WorldZ", 0, false, 0, true);
+    G4VPhysicalVolume* physWorld = new G4PVPlacement(0, G4ThreeVector(0, 0, 0), logicWorld, "WorldZ", 0, false, 0, true);
+    if (detectorData.isMember("cavern")) {
+        const Json::Value caverns = detectorData["cavern"];
+        for (const auto& cavern : caverns){
+            G4double z_center = cavern["z_center"].asDouble() * m;
+            G4double dz = cavern["dz"].asDouble() * m;
+            Json::Value cavern_blocks = cavern["components"];
+            G4Material* boxMaterial = nist->FindOrBuildMaterial(cavern["material"].asString());
+            for (auto block: cavern_blocks){
+                std::vector<G4TwoVector> corners;
+                for (int i = 0; i < 8; ++i) {
+                corners.push_back(G4TwoVector (block[i*2].asDouble() * m, block[i*2+1].asDouble() * m));
+                    }
+                auto genericV = new G4GenericTrap(G4String("cavern_block"), dz, corners);
+                auto logicG = new G4LogicalVolume(genericV, boxMaterial, "cavern_log");
+                new G4PVPlacement(0, G4ThreeVector(0, 0, z_center), logicG, "cavern", logicWorld, false, 0, true);
+                logicG->SetUserLimits(userLimits2);
+            }
+        
+        }
+    }
     // Process the magnets from the JSON variable
     Json::Value field_value = detectorData["global_field_map"];
     const Json::Value magnets = detectorData["magnets"];
@@ -108,47 +124,6 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
         // Define the custom magnetic field
         GlobalmagField = new CustomMagneticField(ranges, fields, interpType);
-        // create a sub-world for the magnetic field
-        /*G4double x_min = -ranges["range_x"][1];
-        G4double x_max = ranges["range_x"][1];
-        G4double y_min = -ranges["range_y"][1];
-        G4double y_max = ranges["range_y"][1];
-        G4double z_min = ranges["range_z"][0];
-        G4double z_max = ranges["range_z"][1];
-
-        G4double x_length = x_max - x_min;
-        G4double y_length = y_max - y_min;
-        G4double z_length = z_max - z_min;
-
-        G4double x_center = (x_max + x_min) / 2.0;
-        G4double y_center = (y_max + y_min) / 2.0;
-        G4double z_center = (z_max + z_min) / 2.0;
-
-        // Create the volume
-        G4Box* regionSolid = new G4Box("RegionSolid", x_length / 2.0, y_length / 2.0, z_length / 2.0);
-        G4Material* airMaterial = G4NistManager::Instance()->FindOrBuildMaterial("G4_AIR");
-        G4LogicalVolume* regionLogical = new G4LogicalVolume(regionSolid, airMaterial, "RegionLogical");
-
-        // Assign the magnetic field
-        auto fieldManager = new G4FieldManager();
-        fieldManager->SetDetectorField(GlobalmagField);
-        fieldManager->CreateChordFinder(GlobalmagField);
-        regionLogical->SetFieldManager(fieldManager, true);
-
-        // Place the volume
-        new G4PVPlacement(
-            nullptr,
-            G4ThreeVector(x_center, y_center, z_center),
-            regionLogical,
-            "RegionPhysical",
-            logicWorld,
-            false,
-            0,
-            true
-        );
-
-        // Make the volume invisible
-        regionLogical->SetVisAttributes(G4VisAttributes::GetInvisible());*/
     }
     //const Json::Value fields = detectorData["field_map"];
     double totalWeight = 0;
@@ -159,22 +134,12 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         std::string materialName = magnet["material"].asString();
         G4Material* boxMaterial = nist->FindOrBuildMaterial(materialName);
 
-//        // Get the dimensions of the box
-//        G4double boxSizeX = magnet["sizeX"].asDouble() * m;
-//        G4double boxSizeY = magnet["sizeY"].asDouble() * m;
-//        G4double boxSizeZ = magnet["sizeZ"].asDouble() * m;
-//
-//        // Get the position of the box
-//        G4double posX = magnet["posX"].asDouble() * m;
-//        G4double posY = magnet["posY"].asDouble() * m;
-//        G4double posZ = magnet["posZ"].asDouble() * m;
         G4double z_center = magnet["z_center"].asDouble() * m;
         G4double dz = magnet["dz"].asDouble() * m;
 
         Json::Value arb8s = magnet["components"];
         for (auto arb8: arb8s) {
             std::vector<G4TwoVector> corners_two;
-//            G4ThreeVector corners[8];
             Json::Value corners = arb8["corners"];
             
             for (int i = 0; i < 8; ++i) {
@@ -228,31 +193,13 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
         }
     }
-
-    if (detectorData.isMember("cavern")) {
-        const Json::Value caverns = detectorData["cavern"];
-        for (const auto& cavern : caverns){
-            G4double z_center = cavern["z_center"].asDouble() * m;
-            G4double dz = cavern["dz"].asDouble() * m;
-            Json::Value cavern_blocks = cavern["components"];
-            G4Material* boxMaterial = nist->FindOrBuildMaterial(cavern["material"].asString());
-            for (auto block: cavern_blocks){
-                std::vector<G4TwoVector> corners;
-                for (int i = 0; i < 8; ++i) {
-                corners.push_back(G4TwoVector (block[i*2].asDouble() * m, block[i*2+1].asDouble() * m));
-                    }
-                auto genericV = new G4GenericTrap(G4String("cavern_block"), dz, corners);
-                auto logicG = new G4LogicalVolume(genericV, boxMaterial, "cavern_log");
-                new G4PVPlacement(0, G4ThreeVector(0, 0, z_center), logicG, "cavern", logicWorld, false, 0, true);
-                logicG->SetUserLimits(userLimits2);
-            }
-        
-        }
+    if (GlobalmagField) {
+        auto fieldManager = new G4FieldManager();
+        fieldManager->SetDetectorField(GlobalmagField);
+        fieldManager->CreateChordFinder(GlobalmagField);
+        logicWorld->SetFieldManager(fieldManager, true);
     }
 
-    else {
-        std::cout<<"NO Cavern.\n";
-    }
 
     sensitiveLogical = nullptr;
     if (detectorData.isMember("sensitive_film")) {

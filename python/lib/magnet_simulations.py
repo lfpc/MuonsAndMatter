@@ -52,17 +52,19 @@ def construct_grid(limits = ((0., 0., -5.),(2.5, 3.5, 5.)),
 def get_grid_data(points: np.array, B: np.array, new_points: tuple):
     '''Interpolates the magnetic field data to a new grid.'''
     t1 = time.time()
-    #Bx_out = griddata(points, B[:, 0], new_points, method='nearest', fill_value=0.0).ravel()
-    #By_out = griddata(points, B[:, 1], new_points, method='nearest', fill_value=0.0).ravel()
-    #Bz_out = griddata(points, B[:, 2], new_points, method='nearest', fill_value=0.0).ravel()
-    # Build a KDTree for the original points
+    '''Bx_out = griddata(points, B[:, 0], new_points, method='nearest', fill_value=0.0).ravel()
+    By_out = griddata(points, B[:, 1], new_points, method='nearest', fill_value=0.0).ravel()
+    Bz_out = griddata(points, B[:, 2], new_points, method='nearest', fill_value=0.0).ravel()'''
     new_points = np.column_stack((new_points[0].ravel(), new_points[1].ravel(), new_points[2].ravel()))
+    Bx_out, By_out, Bz_out = np.zeros_like(new_points).T
+    hull =  slice(None)#(new_points[:, 0] >= points[:, 0].min()) & (new_points[:, 0] <= points[:, 0].max()) & \
+            #(new_points[:, 1] >= points[:, 1].min()) & (new_points[:, 1] <= points[:, 1].max()) & \
+            #(new_points[:, 2] >= points[:, 2].min()) & (new_points[:, 2] <= points[:, 2].max())
     tree = cKDTree(points)
-    _, idx = tree.query(new_points, k=1)
-    Bx_out = B[idx, 0]
-    By_out = B[idx, 1]
-    Bz_out = B[idx, 2]
-    new_points = np.column_stack([new_points[i].ravel() for i in range(3)])
+    _, idx = tree.query(new_points[hull], k=1)
+    Bx_out[hull] = B[idx, 0]
+    By_out[hull] = B[idx, 1]
+    Bz_out[hull] = B[idx, 2]
     new_B = np.column_stack((Bx_out, By_out, Bz_out))
     print('Griddind / Interpolation time = {} sec'.format(time.time() - t1))
     return new_points, new_B

@@ -35,6 +35,13 @@ void CustomMagneticField::initializeGrid(const std::map<std::string, std::vector
 }
 
 void CustomMagneticField::GetFieldValueNearestNeighbor(const G4double Point[4], G4double *Bfield) const {
+    // Check if the point is outside the grid
+    if (fabs(Point[0]) > x_max || fabs(Point[1]) > y_max || fabs(Point[2]) > z_max) {
+        Bfield[0] = 0.0;
+        Bfield[1] = 0.0;
+        Bfield[2] = 0.0;
+        return;
+    }
     // Determine the quadrant of the point
     int quadrant = 0;
     if (Point[0] >= 0 && Point[1] >= 0) {

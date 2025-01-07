@@ -7,7 +7,7 @@ from lib.reference_designs.params_design_9 import get_design as get_design_9
 from lib.reference_designs.params_design_8 import get_design as get_design_8
 from lib.reference_designs.params import *
 import time
-from lib.ship_muon_shield_customfield import get_design_from_params
+from lib.ship_muon_shield_customfield import get_design_from_params, initialize_geant4
 import pickle
 from plot_magnet import plot_magnet
 
@@ -53,10 +53,9 @@ def main(n_muons:int,
     detector["store_all"] = False
 
 
-    # detector["store_all"] = True
-    json.dumps(detector)
-    output_data = initialize(np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256), json.dumps(detector))
-    output_data = json.loads(output_data)
+
+    output_data = initialize_geant4(detector)
+
     print("Detector weight: %f kilograms or %f tonnes "%(output_data['weight_total'], output_data['weight_total'] / 1E3))
 
 
@@ -109,7 +108,7 @@ def main(n_muons:int,
     print('SHAPE of DATA', np.array(muon_data).shape)
     plot_magnet(detector, 
                 output_file,
-                muon_data,
+                muon_data_sensitive,
                 sensitive_film_position, 
                 azim = args.angle,
                 elev = args.elev,
@@ -121,9 +120,9 @@ def main(n_muons:int,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("-n",type=int,default = 1)
+    parser.add_argument("-n",type=int,default = 10)
     parser.add_argument("-input_file", type=str, default = 'data/inputs.pkl')
-    parser.add_argument("-sens",type=float,default = 5)
+    parser.add_argument("-sens",type=float,default = 10)
     parser.add_argument("-params",type=str,default = 'sc_v6')
     parser.add_argument("-angle",type=float,default = 126)
     parser.add_argument("-elev",type=float,default = 17)
@@ -136,6 +135,20 @@ if __name__ == '__main__':
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
+        params_idx = (np.array(new_parametrization['M2'])[[0, 1, 3, 5, 6, 7]]).tolist() + [new_parametrization['M3'][0]]+\
+           new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
+        #params_idx =  new_parametrization['M2'][:-2] + [new_parametrization['M3'][0]]+\
+        #   new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
+
+        import torch
+        params = torch.tensor(params)
+        if params.size(-1) != 72:
+            new_phi = torch.tensor(sc_v6, dtype=params.dtype)
+            new_phi[torch.as_tensor(params_idx)] = params
+            if args.SC:
+                new_phi[new_parametrization['M2'][2]] = new_phi[new_parametrization['M2'][1]]
+                new_phi[new_parametrization['M2'][4]] = new_phi[new_parametrization['M2'][3]]
+        params = new_phi.numpy()
     if args.params_test is not None:
         assert len(args.params_test) % 2 == 0
         for i in range(0, len(args.params_test), 2):

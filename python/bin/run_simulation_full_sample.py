@@ -135,14 +135,7 @@ def get_loss(phi,inputs_dir:str,
     return total_loss
 
 
-
-sc_v6 = [0,353.078,125.083,184.834,150.193,186.812,72,51,29,46,10,7,45.6888,
-         45.6888,22.1839,22.1839,27.0063,16.2448,10,31,35,31,51,11,24.7961,48.7639,8,104.732,15.7991,16.7793,3,100,192,192,2,
-         4.8004,3,100,8,172.729,46.8285,2]
-optimal_oliver =  [208.0, 207.0, 281.0, 248.0, 305.0, 242.0, 72.0, 51.0, 29.0, 46.0, 10.0, 7.0, 54.0,
-                         38.0, 46.0, 192.0, 14.0, 9.0, 10.0, 31.0, 35.0, 31.0, 51.0, 11.0, 3.0, 32.0, 54.0, 
-                         24.0, 8.0, 8.0, 22.0, 32.0, 209.0, 35.0, 8.0, 13.0, 33.0, 77.0, 85.0, 241.0, 9.0, 26.0]
-
+sc_v6 = ShipMuonShieldCluster.sc_v6
 if __name__ == '__main__':
     INPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/full_sample'
     OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs'
@@ -155,7 +148,7 @@ if __name__ == '__main__':
     parser.add_argument("-seed", type=int, default=None)
     parser.add_argument("-inputs_dir", type=str, default=INPUTS_DIR)
     parser.add_argument("-outputs_dir", type=str, default=OUTPUTS_DIR)
-    parser.add_argument("-params", type=str, default=optimal_oliver)
+    parser.add_argument("-params", type=str, default=sc_v6)
     #parser.add_argument("--z", type=float, default=0.1)
     #parser.add_argument("--sens_plane", type=float, default=57)
     parser.add_argument("-calc_loss", action = 'store_true')
@@ -170,7 +163,7 @@ if __name__ == '__main__':
                 number = float(line.strip())
                 params.append(number)
     else: params = args.params
-    params = torch.tensor(params)
+    params = torch.as_tensor(params)
     
     #input_dist = args.z
     #sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':args.sens_plane}
@@ -183,11 +176,9 @@ if __name__ == '__main__':
         tag = args.tag)
         print(f'TOTAL MUONS LOSS: {loss}')
     elif args.only_files:
-        t2 = time()
         get_files(params,args.inputs_dir,args.outputs_dir, 
-        cores = args.n_tasks,#sensitive_film_params = sensitive_film_params,
-        seed = args.seed, #input_dist=args.z,
-        tag = args.tag)
+        cores = args.n_tasks,
+        seed = args.seed)
     else:
         n_muons,n_hits, n_un = get_total_hits(params,args.inputs_dir,args.outputs_dir, 
         cores = args.n_tasks,#sensitive_film_params = sensitive_film_params,
