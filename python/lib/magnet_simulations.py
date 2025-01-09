@@ -12,6 +12,7 @@ from scipy.interpolate import griddata
 from scipy.spatial import cKDTree
 import gzip, pickle
 import roxie_evaluator
+import multiprocessing as mp
 
 
 
@@ -174,6 +175,10 @@ def run_fem(magn_params:dict,
     # points_H, H = solver.compute_field(x, 'H', quad_order=element_order+1)
     return {'points':points, 'B':B}
 
+def simulate_and_grid(params, points):
+    delta_z = 2.0 if params['B_goal(T)'] > 2 else 1.0
+    return get_grid_data(**run_fem(params, delta_air = (1.0,1.0,delta_z)), new_points=points)[1]
+
 def run(magn_params:dict,
         resol = (0.05, 0.05, 0.05),
         d_space = ((2.5, 2.5, (-0.,4.))),
@@ -181,6 +186,7 @@ def run(magn_params:dict,
         save_results:bool = False,
         output_file:str = './outputs',
         apply_symmetry:bool = False,
+        cores:int = 1,
         ):
     """Simulates the magnetic field based on given parameters and performs various operations such as applying symmetry,
     plotting results, and saving results.
@@ -201,11 +207,15 @@ def run(magn_params:dict,
     print('Starting simulation for {} magnets'.format(n_magnets))
     limits_quadrant = ((0., 0., d_space[2][0]), (d_space[0],d_space[1], d_space[2][1]))
     points = construct_grid(limits=limits_quadrant, resol=resol)
+    with mp.Pool(cores) as pool:
+        B = pool.starmap(simulate_and_grid,[({k:v[i] for k,v in magn_params.items()},points) for i in range(n_magnets)])
+    B = np.sum(B, axis=0)
+    '''
     B = 0
     for i in range(n_magnets):
         params = {k:v[i] for k,v in magn_params.items()}
         delta_z = 2.0 if params['B_goal(T)'] > 2 else 1.0
-        B += get_grid_data(**run_fem(params, delta_air = (1.0,1.0,delta_z)), new_points=points)[1]
+        B += get_grid_data(**run_fem(params, delta_air = (1.0,1.0,delta_z)), new_points=points)[1]'''
     points = np.column_stack([points[i].ravel() for i in range(3)])
     if apply_symmetry:
         points,B = get_symmetry(points, B, reorder = True)

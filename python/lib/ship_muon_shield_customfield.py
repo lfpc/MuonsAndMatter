@@ -40,7 +40,8 @@ def simulate_field(params,
               field_direction = ['up', 'up', 'up', 'up', 'up', 'down', 'down', 'down', 'down'],
               resol = (0.05,0.05,0.05),
               d_space = ((3., 3., (-1, 30.))), 
-              file_name = 'data/outputs/fields.pkl'):
+              file_name = 'data/outputs/fields.pkl',
+              cores = 1):
     '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
     t1 = time()
     all_params = pd.DataFrame()
@@ -62,7 +63,7 @@ def simulate_field(params,
         if mag == 'M2': Z_pos += z_gap
     #if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
-    fields = magnet_simulations.run(all_params, d_space=d_space, resol=resol, apply_symmetry=False)
+    fields = magnet_simulations.run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores)
     fields['points'][:,2] += Z_init/100
     fields['B'] *= -1 #simulation is inverted?
     print('Magnetic field simulation took', time()-t1, 'seconds')
@@ -298,7 +299,7 @@ def create_magnet(magnetName, medium, tShield,
 
     tShield['magnets'].append(theMagnet)
 
-def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_file = None):
+def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_file = None, cores_field:int = 1):
     n_magnets = 9
     cm = 1
     mm = 0.1 * cm
@@ -313,8 +314,6 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
 
     zgap = 10 * cm
 
-    LE = 7 * m
-    dZ0 = 1 * m
     dZ1 = params[0]#0.4 * m
     dZ2 = params[1] #2.31 * m
     dZ3 = params[2]
@@ -323,7 +322,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     dZ6 = params[5]
     dZ7 = params[6]
     dZ8 = params[7]
-    fMuonShieldLength = 2 * (dZ1 + dZ2 + dZ3 + dZ4 + dZ5 + dZ6 + dZ7 + dZ8) + LE
+    fMuonShieldLength = 2 * (dZ1 + dZ2 + dZ3 + dZ4 + dZ5 + dZ6 + dZ7 + dZ8) + (7 * zgap / 2) + 0.1
 
 
     dXIn = np.zeros(n_magnets)
@@ -356,13 +355,8 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
         midGapIn[i] = params[offset + i * n_params + 8]
         midGapOut[i] = midGapIn[i]
 
-    #XXX = -25 * m - fMuonShieldLength / 2. # TODO: This needs to be checked
-    #zEndOfAbsorb = XXX - fMuonShieldLength / 2.
-
-    #dZf[0] = dZ1 - zgap / 2
-    #Z[0] = zEndOfAbsorb + dZf[0] + zgap
     dZf[1] = dZ2 - zgap / 2
-    Z[1] = dZf[1]#Z[0] + dZf[0] + dZf[1] + zgap
+    Z[1] = dZf[1]
     dZf[2] = dZ3 - zgap / 2
     Z[2] = Z[1] + dZf[1] + dZf[2] + 2 * zgap
     dZf[3] = dZ4 - zgap / 2
@@ -403,7 +397,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
         resol = (0.05,0.05,0.05)
         field_map = get_field(resimulate_field,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
-                              field_direction = fieldDirection,file_name=field_map_file, only_grid_params=True)
+                              field_direction = fieldDirection,file_name=field_map_file, only_grid_params=True, cores = min(cores_field,n_magnets-1))
         tShield['global_field_map'] = field_map
 
     for nM in range(1, n_magnets):
@@ -448,9 +442,10 @@ def get_design_from_params(params,
                            use_field_maps = False,
                            field_map_file = None,
                            sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':83.2},
-                           add_cavern:bool = True):
+                           add_cavern:bool = True,
+                           cores_field:int = 1):
 
-    shield = design_muon_shield(params, fSC_mag, use_field_maps = use_field_maps, field_map_file = field_map_file)
+    shield = design_muon_shield(params, fSC_mag, use_field_maps = use_field_maps, field_map_file = field_map_file, cores_field=cores_field)
     for mag in shield['magnets']:
         mag['z_center'] = mag['z_center']
         for x in mag['components']:

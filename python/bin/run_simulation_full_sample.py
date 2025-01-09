@@ -15,15 +15,15 @@ def extract_number_from_string(s):
             number_str += char
     return int(number_str)
 
-def concatenate_files(dir, file_number):
+def concatenate_files(direc, file_number):
     all_data = []
-    for file in os.listdir(dir):
+    for file in os.listdir(direc):
         if f'_{file_number}_' not in file: continue
-        with gzip.open(os.path.join(dir,file),'rb') as f:
+        with gzip.open(os.path.join(direc,file),'rb') as f:
             all_data.append(pickle.load(f))
-        os.remove(os.path.join(dir,file))
+        os.remove(os.path.join(direc,file))
     all_data = np.concatenate(all_data,axis=1)
-    with gzip.open(os.path.join(dir,f'muons_data_{file_number}.pkl'),'wb') as f:
+    with gzip.open(os.path.join(direc,f'muons_data_{file_number}.pkl'),'wb') as f:
         pickle.dump(all_data,f)
 
 def test(phi,inputs_dir:str,
@@ -45,12 +45,15 @@ def test(phi,inputs_dir:str,
 def get_files(phi,inputs_dir:str,
         outputs_dir:str, 
         cores:int = 384,
-        seed = 1):
+        seed = 1,
+        field_map = False):
     SHIP = ShipMuonShieldCluster(cores = cores,
                  loss_with_weight = False,
                  manager_ip='34.65.198.159',
                  port=444,
-                 seed = seed)
+                 seed = seed,
+                 simulate_fields=field_map
+                 )
 
     for name in os.listdir(inputs_dir):
         n_name = extract_number_from_string(name)
@@ -65,17 +68,19 @@ def get_files(phi,inputs_dir:str,
         concatenate_files(outputs_dir, n_name)
         print('saved new file')
         print('TIME:', time()-t1)
+        SHIP.simulate_fields = False
 
 def get_total_hits(phi,inputs_dir:str,
         outputs_dir:str, 
         cores:int = 512,
         seed = 1,
-        tag = ''):
+        tag = '',
+        field_map = False):
     SHIP = ShipMuonShieldCluster(cores = cores,
                  loss_with_weight = False,
                  manager_ip='34.65.198.159',
                  port=444,
-                 seed = seed)
+                 seed = seed,simulate_fields=field_map)
     n_muons_total = 0
     n_muons_unweighted = 0
     n_hits_total = 0
@@ -104,18 +109,21 @@ def get_total_hits(phi,inputs_dir:str,
         print('N MUONS: ', n_muons)
         print('N_HITS: ', n_hits)
         print('Survival rate: ', n_hits/n_muons)
+        SHIP.simulate_fields = False
     return n_muons_total,n_hits_total, n_muons_unweighted
 
 def get_loss(phi,inputs_dir:str,
         outputs_dir:str, 
         cores:int = 512,
         seed = 1,
-        tag = ''):
+        tag = '',
+        field_map = False):
     SHIP = ShipMuonShieldCluster(cores = cores,
                  loss_with_weight = False,
                  manager_ip='34.65.198.159',
                  port=444,
-                 seed = seed)
+                 seed = seed,
+                 simulate_fields=field_map)
     total_loss = 0
     all_results = {}
     for name in os.listdir(inputs_dir):
@@ -132,13 +140,14 @@ def get_loss(phi,inputs_dir:str,
             pickle.dump(all_results, f)
         print('TIME:', time.time()-t1)
         print('MUONS LOSS: ', loss)
+        SHIP.simulate_fields = False
     return total_loss
 
 
 sc_v6 = ShipMuonShieldCluster.sc_v6
 if __name__ == '__main__':
     INPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/full_sample'
-    OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs'
+    OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs/full_sample'
     import argparse
     import gzip
     import pickle
@@ -151,6 +160,7 @@ if __name__ == '__main__':
     parser.add_argument("-params", type=str, default=sc_v6)
     #parser.add_argument("--z", type=float, default=0.1)
     #parser.add_argument("--sens_plane", type=float, default=57)
+    parser.add_argument("-field_map", action = 'store_true')
     parser.add_argument("-calc_loss", action = 'store_true')
     parser.add_argument("-only_files", action = 'store_true')
     args = parser.parse_args()
@@ -173,17 +183,20 @@ if __name__ == '__main__':
         loss = get_loss(params,args.inputs_dir,args.outputs_dir, 
         cores = args.n_tasks,
         seed = args.seed,
-        tag = args.tag)
+        tag = args.tag,
+        field_map = args.field_map)
         print(f'TOTAL MUONS LOSS: {loss}')
     elif args.only_files:
         get_files(params,args.inputs_dir,args.outputs_dir, 
         cores = args.n_tasks,
-        seed = args.seed)
+        seed = args.seed,
+        field_map = args.field_map)
     else:
         n_muons,n_hits, n_un = get_total_hits(params,args.inputs_dir,args.outputs_dir, 
-        cores = args.n_tasks,#sensitive_film_params = sensitive_film_params,
-        seed = args.seed, #input_dist=args.z,
-        tag = args.tag)
+        cores = args.n_tasks,
+        seed = args.seed, 
+        tag = args.tag,
+        field_map = args.field_map)
         print(f'number of events: {n_un}')
         print(f'INPUT MUONS: {n_muons}')
         print(f'HITS: {n_hits}')

@@ -154,7 +154,7 @@ if __name__ == '__main__':
         with mp.Pool(1) as pool:
             if os.path.exists('data/outputs/fields.pkl'):
                 os.remove('data/outputs/fields.pkl')
-            detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False)
+            detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, cores_field=cores)
     t2_fem = time()
 
     with gzip.open(input_file, 'rb') as f:
