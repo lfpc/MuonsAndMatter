@@ -327,7 +327,7 @@ def construct_block(medium, tShield,field_profile, stepGeo):
     tShield['magnets'].append(Block)
 
 def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_file = None, cores_field:int = 1):
-    n_magnets = 9
+    n_magnets = 8
     cm = 1
     mm = 0.1 * cm
     m = 100 * cm
@@ -335,21 +335,20 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     fField = 1.7
     SC_field = 5.1
 
-    magnetName = ["MagnAbsorb1", "MagnAbsorb2", "Magn1", "Magn2", "Magn3", "Magn4", "Magn5", "Magn6", "Magn7"]
+    magnetName = ["MagnAbsorb2", "Magn1", "Magn2", "Magn3", "Magn4", "Magn5", "Magn6", "Magn7"]
 
-    fieldDirection = ["up", "up", "up", "up", "up", "down", "down", "down", "down"]
+    fieldDirection = ["up", "up", "up", "up", "down", "down", "down", "down"]
 
     zgap = 10 * cm
 
-    dZ1 = params[0]#0.4 * m
-    dZ2 = params[1] #2.31 * m
+    dZ1 = params[0] #2.31 * m
+    dZ2 = params[1]
     dZ3 = params[2]
     dZ4 = params[3]
     dZ5 = params[4]
     dZ6 = params[5]
     dZ7 = params[6]
-    dZ8 = params[7]
-    fMuonShieldLength = 2 * (dZ1 + dZ2 + dZ3 + dZ4 + dZ5 + dZ6 + dZ7 + dZ8) + (7 * zgap / 2) + 0.1
+    fMuonShieldLength = 2 * (dZ1 + dZ2 + dZ3 + dZ4 + dZ5 + dZ6 + dZ7) + (7 * zgap / 2) + 0.1
 
 
     dXIn = np.zeros(n_magnets)
@@ -368,10 +367,10 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     HmainSideMagOut= np.zeros(n_magnets)
 
 
-    offset = 7
+    offset = 6
     n_params = 8
 
-    for i in range(n_magnets-1): #range(2,n_magnets-1)
+    for i in range(n_magnets-1):
         dXIn[i] = params[offset + i * n_params + 1]
         dXOut[i] = params[offset + i * n_params + 2]
         dYIn[i] = params[offset + i * n_params + 3]
@@ -382,10 +381,12 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
         midGapIn[i] = params[offset + i * n_params + 8]
         midGapOut[i] = midGapIn[i]
 
+    dZf[0] = dZ1 - zgap / 2
+    Z[0] = dZf[0]
     dZf[1] = dZ2 - zgap / 2
-    Z[1] = dZf[1]
+    Z[1] = Z[0] + dZf[0] + dZf[1] + 2 * zgap
     dZf[2] = dZ3 - zgap / 2
-    Z[2] = Z[1] + dZf[1] + dZf[2] + 2 * zgap
+    Z[2] = Z[1] + dZf[1] + dZf[2] + zgap
     dZf[3] = dZ4 - zgap / 2
     Z[3] = Z[2] + dZf[2] + dZf[3] + zgap
     dZf[4] = dZ5 - zgap / 2
@@ -394,17 +395,15 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     Z[5] = Z[4] + dZf[4] + dZf[5] + zgap
     dZf[6] = dZ7 - zgap / 2
     Z[6] = Z[5] + dZf[5] + dZf[6] + zgap
-    dZf[7] = dZ8 - zgap / 2
-    Z[7] = Z[6] + dZf[6] + dZf[7] + zgap
 
-    dXIn[8] = dXOut[7]
-    dYIn[8] = dYOut[7]
-    dXOut[8] = dXIn[8]
-    dYOut[8] = dYIn[8]
-    gapIn[8] = gapOut[7]
-    gapOut[8] = gapIn[8]
-    dZf[8] = 0.1 * m
-    Z[8] = Z[7] + dZf[7] + dZf[8]
+    dXIn[7] = dXOut[6] #last small magnet
+    dYIn[7] = dYOut[6]
+    dXOut[7] = dXIn[7]
+    dYOut[7] = dYIn[7]
+    gapIn[7] = gapOut[6]
+    gapOut[7] = gapIn[7]
+    dZf[7] = 0.1 * m
+    Z[7] = Z[6] + dZf[6] + dZf[7]
 
     for i in range(n_magnets):
         #????
@@ -424,28 +423,28 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
 
         d_space = (4., 4., (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
         resol = (0.05,0.05,0.05)
-        field_map = get_field(resimulate_field,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag, 
+        field_map = get_field(resimulate_field,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
                               field_direction = fieldDirection,file_name=field_map_file, only_grid_params=True, cores = min(cores_field,n_magnets-1))
         tShield['global_field_map'] = field_map
 
-    for nM in range(1, n_magnets):
-        if (dZf[nM] < 1e-5 or nM == 4) and fSC_mag:
+    for nM in range(n_magnets):
+        if nM == 7: continue #remove last small magnet
+        if (dZf[nM] < 1*mm or nM == 3) and fSC_mag:
             continue
-        if nM == 3 and fSC_mag:
+        if nM == 2 and fSC_mag:
             Ymgap = 5*cm
             ironField_s = SC_field * tesla #5.1
-        elif nM == 1:
+        elif nM == 0:
             Ymgap = 0
             ironField_s = 1.6 * tesla
         else:
             Ymgap = 0
             ironField_s = fField * tesla #1.7
 
-        if use_field_maps and nM != 8:# and nM ==3 and fSC_mag:
+        if use_field_maps:# and nM ==3 and fSC_mag:
             field_profile = 'global'
             fields_s = [[],[],[]]#field_map
-        elif nM == 8: continue
         else:
             field_profile = 'uniform'
             if fieldDirection[nM] == "down":
@@ -458,7 +457,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
 
         create_magnet(magnetName[nM], "G4_Fe", tShield, fields_s, field_profile, dXIn[nM], dYIn[nM], dXOut[nM],
                   dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM],ratio_yokes[nM],
-                  gapIn[nM], gapOut[nM], Z[nM], nM in [1,8],Ymgap=Ymgap) #making the last small magnet uniform field, change this?
+                  gapIn[nM], gapOut[nM], Z[nM], nM in [1,7],Ymgap=Ymgap)
     field_profile = 'global' if use_field_maps else 'uniform'
     construct_block("G4_Fe", tShield, field_profile, False)
     return tShield
