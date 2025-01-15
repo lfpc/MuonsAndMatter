@@ -185,9 +185,9 @@ if __name__ == '__main__':
     #    pickle.dump(all_results, f)
     print('Data Shape', all_results.shape)
     if args.plot_magnet:
-        sensitive_film_params['position'] = 5
+        sensitive_film_params['position'] = 83.2
         if detector is not None:
-            plot_magnet(detector, muon_data = all_results, sensitive_film_position = 5)
+            plot_magnet(detector, muon_data = all_results, sensitive_film_position = 83.2)
         else:
             result = construct_and_plot(all_results,params,True,sensitive_film_params, args.real_fields, args.field_file, cavern = args.add_cavern)
                                          

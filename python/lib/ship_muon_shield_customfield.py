@@ -297,10 +297,17 @@ def create_magnet(magnetName, medium, tShield,
         CreateArb8(magnetName + str9, medium, dZ, cornersTR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
         CreateArb8(magnetName + str10, medium, dZ, cornersBL, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
         CreateArb8(magnetName + str11, medium, dZ, cornersBR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+    
+
+    tShield['magnets'].append(theMagnet)
+
+def construct_block(medium, tShield,field_profile, stepGeo):
     #iron block before the magnet
     z_gap = 0.1
     dX = 395.
     dY = 340.
+    dZ = 40.
+    Z = -40-z_gap
     cornersIronBlock = np.array([
         -dX, -dY,
         dX, -dY,
@@ -311,10 +318,13 @@ def create_magnet(magnetName, medium, tShield,
         dX, dY,
         -dX, dY
     ])
-    CreateArb8('IronAfterTarget', "G4_Fe", 40, cornersIronBlock, [0.,0.,0.], field_profile, theMagnet, 0, 0, -40-z_gap, stepGeo) 
-    
-
-    tShield['magnets'].append(theMagnet)
+    Block = {
+        'components' : [],
+        'dz' : dZ/100,
+        'z_center' : Z/100,
+    }
+    CreateArb8('IronAfterTarget', medium, dZ, cornersIronBlock, [0.,0.,0.], field_profile, Block, 0, 0, Z, stepGeo)
+    tShield['magnets'].append(Block)
 
 def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_file = None, cores_field:int = 1):
     n_magnets = 9
@@ -449,6 +459,8 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
         create_magnet(magnetName[nM], "G4_Fe", tShield, fields_s, field_profile, dXIn[nM], dYIn[nM], dXOut[nM],
                   dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM],ratio_yokes[nM],
                   gapIn[nM], gapOut[nM], Z[nM], nM in [1,8],Ymgap=Ymgap) #making the last small magnet uniform field, change this?
+    field_profile = 'global' if use_field_maps else 'uniform'
+    construct_block("G4_Fe", tShield, field_profile, False)
     return tShield
 
 
