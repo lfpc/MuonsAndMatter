@@ -39,7 +39,7 @@ def simulate_field(params,
               z_gap = 0.1,
               field_direction = ['up', 'up', 'up', 'up', 'up', 'down', 'down', 'down', 'down'],
               resol = (0.05,0.05,0.05),
-              d_space = ((3., 3., (-1, 30.))), 
+              d_space = ((4., 4., (-1, 30.))), 
               file_name = 'data/outputs/fields.pkl',
               cores = 1):
     '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
@@ -117,6 +117,7 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
         'dz' : dZ,
         "z_center" : z_translation,
     })
+
 
 
 def CreateCavern(shift = 0):
@@ -296,6 +297,22 @@ def create_magnet(magnetName, medium, tShield,
         CreateArb8(magnetName + str9, medium, dZ, cornersTR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
         CreateArb8(magnetName + str10, medium, dZ, cornersBL, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
         CreateArb8(magnetName + str11, medium, dZ, cornersBR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
+    #iron block before the magnet
+    z_gap = 0.1
+    dX = 395.
+    dY = 340.
+    cornersIronBlock = np.array([
+        -dX, -dY,
+        dX, -dY,
+        dX, dY,
+        -dX, dY,
+        -dX, -dY,
+        dX, -dY,
+        dX, dY,
+        -dX, dY
+    ])
+    CreateArb8('IronAfterTarget', "G4_Fe", 40, cornersIronBlock, [0.,0.,0.], field_profile, theMagnet, 0, 0, -40-z_gap, stepGeo) 
+    
 
     tShield['magnets'].append(theMagnet)
 
@@ -390,10 +407,12 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
         'global_field_map': {'B': np.array([])},
     }
 
+
+
     if use_field_maps: 
         resimulate_field = (field_map_file is None) or (not exists(field_map_file))
 
-        d_space = (3., 3., (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
+        d_space = (4., 4., (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
         resol = (0.05,0.05,0.05)
         field_map = get_field(resimulate_field,np.asarray(params),Z_init = (Z[1] - dZf[1]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
@@ -415,8 +434,8 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
 
         if use_field_maps and nM != 8:# and nM ==3 and fSC_mag:
             field_profile = 'global'
-            fields_s = [[],[]]#field_map
-        
+            fields_s = [[],[],[]]#field_map
+        elif nM == 8: continue
         else:
             field_profile = 'uniform'
             if fieldDirection[nM] == "down":
@@ -444,7 +463,7 @@ def get_design_from_params(params,
                            sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':83.2},
                            add_cavern:bool = True,
                            cores_field:int = 1):
-
+    params = np.round(params, 1)
     shield = design_muon_shield(params, fSC_mag, use_field_maps = use_field_maps, field_map_file = field_map_file, cores_field=cores_field)
     for mag in shield['magnets']:
         mag['z_center'] = mag['z_center']
@@ -493,12 +512,32 @@ if __name__ == '__main__':
     from lib.ship_muon_shield_customfield import get_design_from_params
     from muon_slabs import initialize
     import os
-    if os.path.exists('data/outputs/fields.pkl'):
-        os.remove('data/outputs/fields.pkl')
+    file_map_file = None#'data/outputs/fields.pkl'
+    if file_map_file is not None and os.path.exists(file_map_file):
+        os.remove(file_map_file)
     t1 = time()
-    detector = get_design_from_params(np.array(sc_v6), use_field_maps=True,field_map_file = 'data/outputs/fields.pkl', add_cavern=True)
+    sc_v6 = np.array([40.00, 231.00,   0.00, 353.08, 125.08, 184.83, 150.19, 186.81,  
+         0.,  0., 0., 0.,   0.,   0., 1., 0.,
+         50.00,  50.00, 130.00, 130.00,   2.00,   2.00, 1.00, 10.00,
+        0.,  0.,  0.,  0.,  0.,   0., 1., 0.,
+        45.69,  45.69,  22.18,  22.18,  27.01,  16.24, 3.00, 0.00,
+        0.00,  0.00,  0.00,  0.00,  0.00,  0.00, 1.00, 0.00, 
+        24.80,  48.76,   8.00, 104.73,  15.80,  16.78, 1.00, 0.00,
+        3.00, 100.00, 192.00, 192.00,   2.00,   4.80, 1.00, 0.00,
+        3.00, 100.00,   8.00, 172.73,  46.83,   2.00, 1.00, 0.00])
+    params = np.array([40.0000, 231.0000, 0.0000, 269.1926, 282.1403, 367.0162, 322.7728, 359.3174,
+              0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 1.0000, 0.0000,
+              50.0000, 50.0000, 130.0000, 130.0000, 2.0000, 2.0000, 1.0000, 0.0000,
+              0., 0., 0., 0., 0., 0., 1.0000, 0.0000,
+              21.4247, 21.4247, 125.8893, 125.8893, 30.1958, 3.2143, 3.8597, 0.0000,
+              0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 1.0000, 0.0000,
+              93.8053, 29.9526, 60.7186, 140.0458, 69.8759, 20.0105, 3.3862, 0.7631,
+              64.4989, 85.2994, 141.2064, 147.2664, 64.0734, 23.3233, 1.7772, 28.7906,
+              25.5720, 7.4532, 70.8196, 164.7185, 31.6316, 44.8201, 3.7500, 58.7783])
+    params = sc_v6
+    detector = get_design_from_params(params, use_field_maps=True,field_map_file = file_map_file, add_cavern=True, cores_field=1)
     t1_init = time()
-    output_data = initialize_geant4(detector)#, np.array([0.,0.]))
+    output_data = initialize_geant4(detector)
     print('Time to initialize', time()-t1_init)
     print('TOTAL TIME', time()-t1)
     

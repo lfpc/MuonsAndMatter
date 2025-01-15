@@ -138,6 +138,7 @@ def run_fem(magn_params:dict,
 
    
    # make the mesh
+
     gmsh_model, term_1, term_2 = make_core_fn( magn_params['Xmgap1(m)'],
                                                 magn_params['Xcore1(m)'],
                                                 magn_params['Xvoid1(m)'],
@@ -160,6 +161,7 @@ def run_fem(magn_params:dict,
                                                 element_order=element_order,
                                                 lc=lc,
                                                 show=False)
+
 
     # Make the solver
     solver = roxie_evaluator.PoissonSolver(gmsh_model.mesh, mu, (term_1, term_2),
@@ -210,9 +212,10 @@ def run(magn_params:dict,
     with mp.Pool(cores) as pool:
         B = pool.starmap(simulate_and_grid,[({k:v[i] for k,v in magn_params.items()},points) for i in range(n_magnets)])
     B = np.sum(B, axis=0)
-    '''
-    B = 0
+    
+    '''B = 0
     for i in range(n_magnets):
+        print('Simulating magnet {}'.format(i+1))
         params = {k:v[i] for k,v in magn_params.items()}
         delta_z = 2.0 if params['B_goal(T)'] > 2 else 1.0
         B += get_grid_data(**run_fem(params, delta_air = (1.0,1.0,delta_z)), new_points=points)[1]'''

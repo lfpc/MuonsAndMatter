@@ -2,7 +2,7 @@
 import json
 import numpy as np
 from lib.ship_muon_shield_customfield import get_design_from_params, get_field, initialize_geant4
-from muon_slabs import simulate_muon, initialize, collect, kill_secondary_tracks, collect_from_sensitive
+from muon_slabs import simulate_muon, collect, kill_secondary_tracks, collect_from_sensitive
 from plot_magnet import plot_magnet, construct_and_plot
 from time import time
 
@@ -39,7 +39,7 @@ def run(muons,
         Returns:
         ndarray: Array of simulated muon data (momentum, position, particle ID and possibly weight (if presented in the input)). 
         float (optional): Total weight of the muon shield if return_weight is True.
-        """
+    """
     
 
     if type(muons) is tuple:
@@ -189,5 +189,5 @@ if __name__ == '__main__':
         if detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = 5)
         else:
-            result = construct_and_plot(all_results,params,True,sensitive_film_params, args.real_fields, args.field_file)
+            result = construct_and_plot(all_results,params,True,sensitive_film_params, args.real_fields, args.field_file, cavern = args.add_cavern)
                                          

@@ -15,7 +15,7 @@ def plot_magnet(detector,
     magnets = detector['magnets']
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    if np.size(detector['global_field_map']) > 0:
+    if np.size(detector['global_field_map']['B']) > 0:
         points = np.meshgrid(np.arange(*detector['global_field_map']['range_x']),
                           np.arange(*detector['global_field_map']['range_y']),
                             np.arange(*detector['global_field_map']['range_z']))
@@ -178,8 +178,9 @@ def construct_and_plot(muons,
         sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':57},
         use_field_maps = False,
         field_map_file = None,
+        cavern = True,
         kwargs_plot = {}):
-    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, use_field_maps=use_field_maps, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params)
+    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, use_field_maps=use_field_maps, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params, add_cavern=cavern)
     plot_magnet(detector,
                 muon_data = muons, 
                 sensitive_film_position = sensitive_film_params['position'],#sensitive_film_params['position'], 
