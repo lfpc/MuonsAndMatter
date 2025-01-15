@@ -15,7 +15,7 @@ def plot_magnet(detector,
     magnets = detector['magnets']
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    if np.size(detector['global_field_map']['B']) > 0:
+    if ('B' in detector['global_field_map']) and np.size(detector['global_field_map']['B']) > 0:
         points = np.meshgrid(np.arange(*detector['global_field_map']['range_x']),
                           np.arange(*detector['global_field_map']['range_y']),
                             np.arange(*detector['global_field_map']['range_z']))
@@ -82,7 +82,7 @@ def plot_magnet(detector,
                 col = 'blue'
             elif field[2] > B_th:
                 col = 'blue'
-            else: col = 'gray'
+            else: col = 'grey'
 
             corners = np.array(
                 [

@@ -43,9 +43,6 @@ def main(n_muons:int,
         # Design 8 is built directly from the parameters and using similar code, shield optimizations can be performed
         detector = get_design_8(force_remove_magnetic_field=False)
 
-    with open('data/gdetector.json', 'w') as f:
-        json.dump(detector, f)
-
     detector['limits']["max_step_length"] = 0.05 # meter
     detector['limits']["minimum_kinetic_energy"] = 0.1 # GeV
     detector["store_primary"] = True # If you place a sensitive film, you can also set this to False because you can
@@ -55,8 +52,8 @@ def main(n_muons:int,
 
 
     output_data = initialize_geant4(detector)
-
-    print("Detector weight: %f kilograms or %f tonnes "%(output_data['weight_total'], output_data['weight_total'] / 1E3))
+    output_data = json.loads(output_data) 
+    print(f"Detector weight: {output_data['weight_total']} kilograms or {output_data['weight_total'] / 1E3} tonnes ")
 
 
     # set_field_value(1,0,0)
@@ -122,7 +119,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-n",type=int,default = 10)
     parser.add_argument("-input_file", type=str, default = 'data/inputs.pkl')
-    parser.add_argument("-sens",type=float,default = 10)
+    parser.add_argument("-sens",type=float,default = 83.2)
     parser.add_argument("-params",type=str,default = 'sc_v6')
     parser.add_argument("-angle",type=float,default = 126)
     parser.add_argument("-elev",type=float,default = 17)

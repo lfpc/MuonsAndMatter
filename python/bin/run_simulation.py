@@ -19,6 +19,7 @@ def run(muons,
         return_nan:bool = False,
         seed:int = None,
         draw_magnet = False,
+        SmearBeamRadius:float = 5., #cm
         kwargs_plot = {}):
     """
         Simulates the passage of muons through the muon shield and collects the resulting data.
@@ -73,16 +74,13 @@ def run(muons,
         z = (-input_dist)*np.ones_like(z)
 
     muon_data = []
-    if sensitive_film_params is None:
-        #If sensitive film is not present, we collect all the muons
-        for i in range(len(px)):
-            simulate_muon(px[i], py[i], pz[i], int(charge[i]), x[i],y[i], z[i])
+    
+    for i in range(len(px)):
+        simulate_muon(px[i], py[i], pz[i], int(charge[i]), x[i],y[i], z[i], SmearBeamRadius, seed if seed else np.random.randint(0,100))
+        if sensitive_film_params is None: #If sensitive film is not present, we collect all the track
             data = collect()
             muon_data += [data]
-    else:
-        #If sensitive film is defined, we collect only the muons that hit the sensitive film
-        for i in range(len(px)):
-            simulate_muon(px[i], py[i], pz[i], int(charge[i]), x[i],y[i], z[i])
+        else: #If sensitive film is defined, we collect only the muons that hit the sensitive film
             data_s = collect_from_sensitive()
             if len(data_s['px'])>0 and 13 in np.abs(data_s['pdg_id']): 
                 j = 0
@@ -93,11 +91,12 @@ def run(muons,
                 muon_data += [output_s]
             elif return_nan:
                 muon_data += [[0]*muons.shape[-1]]
+
     muon_data = np.asarray(muon_data)
     if draw_magnet: 
         plot_magnet(detector,
                 muon_data = muon_data, 
-                sensitive_film_position = 5,#sensitive_film_params['position'], 
+                sensitive_film_position = sensitive_film_params['position'], 
                 **kwargs_plot)
     if return_weight: return muon_data, output_data['weight_total']
     else: return muon_data
