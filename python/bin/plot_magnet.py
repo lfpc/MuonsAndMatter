@@ -148,11 +148,18 @@ def plot_magnet(detector,
                             [corners[j] for j in [0, 3, 7, 4]],
                             [corners[j] for j in [1, 2, 6, 5]]]
                 ax.add_collection3d(Poly3DCollection(edges, facecolors='gray', linewidths=0.07, edgecolors='black', alpha=0.25))
+    # Plot horizontal plane at y = -1.7
+    z_plane = -1.7
+    x_range = np.linspace(ax.get_xlim()[0], ax.get_xlim()[1], 100)
+    y_range = np.linspace(ax.get_ylim()[0], ax.get_ylim()[1], 100)
+    X, Y = np.meshgrid(x_range, y_range)
+    Z = np.full_like(X, z_plane)
+    ax.plot_surface(X, Y,Z, color='black', alpha=0.3)
 
     if fixed_zlim: ax.set_xlim(-30+sensitive_film_position, detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz']-5)
-    else: ax.set_xlim(30, -15)
-    ax.set_ylim(-20, 20)
-    ax.set_zlim(-20, 20)
+    else: ax.set_xlim(40, -5)
+    ax.set_ylim(-5, 10)
+    ax.set_zlim(-5, 10)
 
     # Adjust the view angle and zoom level
     # ax.view_init(elev=20., azim=30)  # Adjust elevation and azimuth

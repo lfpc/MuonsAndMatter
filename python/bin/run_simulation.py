@@ -12,7 +12,7 @@ def run(muons,
         input_dist:float = None,
         return_weight = False,
         fSC_mag:bool = True,
-        sensitive_film_params:dict = {'dz': 0.01, 'dx': 10, 'dy': 10, 'position': 83.2},
+        sensitive_film_params:dict = {'dz': 0.01, 'dx': 10, 'dy': 10, 'position': 82},
         add_cavern = True,
         use_field_maps = False,
         field_map_file = None,
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     import pickle
     import multiprocessing as mp
     from time import time
-    from lib.reference_designs.params import sc_v6
+    from lib.reference_designs.params import sc_v6, optimal_oliver
     import os
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=0)
@@ -118,9 +118,9 @@ if __name__ == '__main__':
     parser.add_argument("-seed", type=int, default=None)
     parser.add_argument("--f", type=str, default=DEF_INPUT_FILE)
     parser.add_argument("-tag", type=str, default='geant4')
-    parser.add_argument("-params", nargs='+', default=sc_v6)
-    parser.add_argument("--z", type=float, default=0.9)
-    parser.add_argument("-sens_plane", type=float, default=83.2)
+    parser.add_argument("-params", nargs='+', default=None)
+    parser.add_argument("--z", type=float, default=2)
+    parser.add_argument("-sens_plane", type=float, default=82)
     parser.add_argument("-real_fields", action = 'store_true')
     parser.add_argument("-field_file", type=str, default='data/outputs/fields.pkl') 
     parser.add_argument("-shuffle_input", action = 'store_true')
@@ -132,7 +132,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
     tag = args.tag
     cores = args.c
-    params = list(args.params)
+    if args.params is None and args.SC_mag: params = sc_v6
+    elif args.params is None: params = optimal_oliver
+    else: params = [float(p) for p in args.params] 
     def split_array(arr, K):
         N = len(arr)
         base_size = N // K
@@ -183,10 +185,12 @@ if __name__ == '__main__':
     #with gzip.open(f'data/outputs/outputs_{tag}.pkl', "wb") as f:
     #    pickle.dump(all_results, f)
     print('Data Shape', all_results.shape)
+    if all_results.shape[0]>1000:
+        all_results = all_results[:1000]
     if args.plot_magnet:
-        sensitive_film_params['position'] = 83.2
+        sensitive_film_params['position'] = 38
         if detector is not None:
-            plot_magnet(detector, muon_data = all_results, sensitive_film_position = 83.2)
+            plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'])
         else:
-            result = construct_and_plot(all_results,params,True,sensitive_film_params, args.real_fields, args.field_file, cavern = args.add_cavern)
+            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, use_field_maps=args.real_fields, field_map_file = args.field_file, cavern = False)#args.add_cavern)
                                          

@@ -90,7 +90,7 @@ def main(n_muons:int,
             muon_data_sensitive += [data_sensitive]
         muon_data += [data]
     for i in range(n_muons):
-        simulate_muon_(muon_data, muon_data_sensitive, px[i], py[i], pz[i],charge[i], x[i], y[i], z[i])
+        simulate_muon_(muon_data, muon_data_sensitive, px[i], py[i], pz[i],charge[i], x[i], y[i], z[i], 5.0, 0)
     dz = 0
     for n,i in enumerate(detector['magnets']):
         #print('components', i['components'])

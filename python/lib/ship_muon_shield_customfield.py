@@ -37,7 +37,7 @@ def simulate_field(params,
               Z_init = 0,
               fSC_mag:bool = True,
               z_gap = 0.1,
-              field_direction = ['up', 'up', 'up', 'up', 'up', 'down', 'down', 'down', 'down'],
+              field_direction = [ 'up', 'up', 'up', 'up', 'down', 'down', 'down', 'down'],
               resol = (0.05,0.05,0.05),
               d_space = ((4., 4., (-1, 30.))), 
               file_name = 'data/outputs/fields.pkl',
@@ -48,7 +48,7 @@ def simulate_field(params,
     Z_pos = 0.
     for i, (mag,idx) in enumerate(new_parametrization.items()):
         mag_params = params[idx]
-        if mag in ['?', 'M1']: continue
+        if fSC_mag and mag == 'M1': continue
         elif mag == 'M3'and fSC_mag: 
             Z_pos += 2 * mag_params[0]/100 - z_gap
             continue
@@ -109,6 +109,7 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
     corners /= 100
     dZ /= 100
     z_translation /= 100
+
     tShield['components'].append({
         'corners' : corners.tolist(),
         'field_profile' : field_profile,
@@ -119,8 +120,31 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
     })
 
 
+def contraints_cavern_intersection(corners, dZ, z_translation, cavern_transition):
+    def get_cavern_bounds(z):
+        if z < cavern_transition:
+            y_min = -1.7
+            y_max = 5.8
+            x_min = -3.56
+            x_max = 6.43
+        else:
+            y_min = -3.36
+            y_max = 10
+            x_min = -4.56
+            x_max = 11.43
+        return x_min, x_max, y_min, y_max
+    wall_gap = 0.01
+    corners = corners.reshape(-1, 2)
+    x_min, x_max, y_min, y_max = get_cavern_bounds(z_translation-dZ)
+    corners[:8, 0] = np.clip(corners[:8, 0], x_min + wall_gap, x_max - wall_gap)
+    corners[:8, 1] = np.clip(corners[:8, 1], y_min + wall_gap, y_max - wall_gap)
+    x_min, x_max, y_min, y_max = get_cavern_bounds(z_translation+dZ)
+    corners[8:, 0] = np.clip(corners[8:, 0], x_min + wall_gap, x_max - wall_gap)
+    corners[8:, 1] = np.clip(corners[8:, 1], y_min + wall_gap, y_max - wall_gap)
+    return corners.flatten()
 
-def CreateCavern(shift = 0):
+
+def CreateCavern(shift = 0, length:float = 90.):
     cavern = []
     def cavern_components(x_translation, 
                y_translation, 
@@ -150,15 +174,16 @@ def CreateCavern(shift = 0):
         return [corners_up,corners_right,corners_left,corners_down]
     external_rock = (20,20) #entire space is 40x40
 
-    TCC8_length = 170
+    TCC8_length = max(length, 170.)
     dX_TCC8 = 5
     dY_TCC8 = 3.75
-    TCC8_shift = (2.3,1.75,-TCC8_length/2)
+    TCC8_shift = (1.43,2.05,-TCC8_length/2)
 
-    ECN3_length = 100
+    ECN3_length = max(length, 100.)
     dX_ECN3 = 8
-    dY_ECN3 = 7.5
-    ECN3_shift = (3.5,4, ECN3_length/2)
+    dY_ECN3 = 7
+    ECN3_shift = (3.43,3.64, ECN3_length/2)
+
 
     TCC8 = {"material": "G4_CONCRETE",
             "name": 'TCC8',
@@ -323,6 +348,7 @@ def construct_block(medium, tShield,field_profile, stepGeo):
         'dz' : dZ/100,
         'z_center' : Z/100,
     }
+    #cornersIronBlock = contraints_cavern_intersection(cornersIronBlock/100, dZ/100, Z/100, 22-2.345)
     CreateArb8('IronAfterTarget', medium, dZ, cornersIronBlock, [0.,0.,0.], field_profile, Block, 0, 0, Z, stepGeo)
     tShield['magnets'].append(Block)
 
@@ -430,7 +456,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
 
     for nM in range(n_magnets):
         if nM == 7: continue #remove last small magnet
-        if (dZf[nM] < 1*mm or nM == 3) and fSC_mag:
+        if fSC_mag and (dZf[nM] < 1*mm or nM == 3):
             continue
         if nM == 2 and fSC_mag:
             Ymgap = 5*cm
@@ -471,12 +497,18 @@ def get_design_from_params(params,
                            force_remove_magnetic_field = False,
                            use_field_maps = False,
                            field_map_file = None,
-                           sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':83.2},
+                           sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':82},
                            add_cavern:bool = True,
                            cores_field:int = 1):
     params = np.round(params, 1)
     shield = design_muon_shield(params, fSC_mag, use_field_maps = use_field_maps, field_map_file = field_map_file, cores_field=cores_field)
+    shift = -2.345
+    cavern_transition = 22+shift #m
+    World_dZ = 200 #m
+    if add_cavern: shield["cavern"] = CreateCavern(cavern_transition, length = World_dZ)
+    i=0
     for mag in shield['magnets']:
+        i+=1
         mag['z_center'] = mag['z_center']
         for x in mag['components']:
             if force_remove_magnetic_field:
@@ -484,16 +516,14 @@ def get_design_from_params(params,
                 x['field_profile'] = 'uniform'
             elif x['field_profile'] not in ['uniform','global']: 
                 x['field']['B'] = x['field']['B'].tolist()
+            #if add_cavern: x['corners'] = contraints_cavern_intersection(np.array(x['corners']), x['dz'], x['z_center'], cavern_transition).tolist()
         mag['material'] = 'G4_Fe'
         max_z = mag['dz'] + mag['z_center'] + 0.05
-    fairship_shift = shield['dz']+25
-    z_transition = (-25-shield['dz']+(2*shield['magnets'][0]['dz']+0.8)+0.24+12)
-    if add_cavern: shield["cavern"] = CreateCavern(fairship_shift+z_transition)#CreateCavern(shield['dz']+25) #not perfectly consistent with fairship? 30 cm different
 
-
+    #assert(False)
     print('TOTAL LENGTH', max_z, shield['dz']*2-7)
     shield.update({
-     "worldSizeX": 20, "worldSizeY": 20, "worldSizeZ": 200,
+     "worldSizeX": 40, "worldSizeY": 40, "worldSizeZ": World_dZ,
         "type" : 1,
         "limits" : {
             "max_step_length": 0.05,
@@ -507,8 +537,6 @@ def get_design_from_params(params,
             "dz" : sensitive_film_params['dz'],
             "dx": sensitive_film_params['dx'],
             "dy": sensitive_film_params['dy']}})
-
-
     return shield
 def initialize_geant4(detector, seed = None):
     B = detector['global_field_map'].pop('B').flatten()
@@ -527,24 +555,6 @@ if __name__ == '__main__':
     if file_map_file is not None and os.path.exists(file_map_file):
         os.remove(file_map_file)
     t1 = time()
-    sc_v6 = np.array([40.00, 231.00,   0.00, 353.08, 125.08, 184.83, 150.19, 186.81,  
-         0.,  0., 0., 0.,   0.,   0., 1., 0.,
-         50.00,  50.00, 130.00, 130.00,   2.00,   2.00, 1.00, 10.00,
-        0.,  0.,  0.,  0.,  0.,   0., 1., 0.,
-        45.69,  45.69,  22.18,  22.18,  27.01,  16.24, 3.00, 0.00,
-        0.00,  0.00,  0.00,  0.00,  0.00,  0.00, 1.00, 0.00, 
-        24.80,  48.76,   8.00, 104.73,  15.80,  16.78, 1.00, 0.00,
-        3.00, 100.00, 192.00, 192.00,   2.00,   4.80, 1.00, 0.00,
-        3.00, 100.00,   8.00, 172.73,  46.83,   2.00, 1.00, 0.00])
-    params = np.array([40.0000, 231.0000, 0.0000, 269.1926, 282.1403, 367.0162, 322.7728, 359.3174,
-              0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 1.0000, 0.0000,
-              50.0000, 50.0000, 130.0000, 130.0000, 2.0000, 2.0000, 1.0000, 0.0000,
-              0., 0., 0., 0., 0., 0., 1.0000, 0.0000,
-              21.4247, 21.4247, 125.8893, 125.8893, 30.1958, 3.2143, 3.8597, 0.0000,
-              0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 1.0000, 0.0000,
-              93.8053, 29.9526, 60.7186, 140.0458, 69.8759, 20.0105, 3.3862, 0.7631,
-              64.4989, 85.2994, 141.2064, 147.2664, 64.0734, 23.3233, 1.7772, 28.7906,
-              25.5720, 7.4532, 70.8196, 164.7185, 31.6316, 44.8201, 3.7500, 58.7783])
     params = sc_v6
     detector = get_design_from_params(params, use_field_maps=True,field_map_file = file_map_file, add_cavern=True, cores_field=1)
     t1_init = time()
