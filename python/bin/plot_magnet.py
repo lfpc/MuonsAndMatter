@@ -56,8 +56,8 @@ def plot_magnet(detector,
         ]
         box = Poly3DCollection(edges, facecolors='cyan', linewidths=1, edgecolors='orange', alpha=.15)
         ax.add_collection3d(box)
-    for i,mag in enumerate(magnets):
-        if i in ignore_magnets: continue
+    for m,mag in enumerate(magnets):
+        if m in ignore_magnets: continue
         #print(f'MAG {i}' , mag)
         z1 = mag['z_center']-mag['dz']
         z2 = mag['z_center']+mag['dz']
@@ -65,7 +65,7 @@ def plot_magnet(detector,
         for i, component in enumerate(mag['components']):
             the_dat = component['corners']
             if component['field_profile'] == 'uniform':field = component['field']
-            elif component['field_profile'] == 'global': 
+            elif component['field_profile'] == 'global':
                 field = filter_fields(*detector['global_field_map'],component['corners'],component['z_center'],component['dz'])
                 field = np.mean(field[1],axis=0)
             else: field = np.mean(component['field'][1],axis=0)
@@ -186,7 +186,7 @@ def construct_and_plot(muons,
         use_field_maps = False,
         field_map_file = None,
         cavern = True,
-        kwargs_plot = {}):
+        **kwargs_plot):
     detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, use_field_maps=use_field_maps, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params, add_cavern=cavern)
     plot_magnet(detector,
                 muon_data = muons, 

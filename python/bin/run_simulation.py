@@ -12,7 +12,7 @@ def run(muons,
         input_dist:float = None,
         return_weight = False,
         fSC_mag:bool = True,
-        sensitive_film_params:dict = {'dz': 0.01, 'dx': 10, 'dy': 10, 'position': 82},
+        sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82},
         add_cavern = True,
         use_field_maps = False,
         field_map_file = None,
@@ -45,6 +45,7 @@ def run(muons,
 
     if type(muons) is tuple:
         muons = muons[0]
+        
     detector = get_design_from_params(params = phi,
                                       force_remove_magnetic_field= False,
                                       fSC_mag = fSC_mag,
@@ -57,6 +58,7 @@ def run(muons,
     detector["store_all"] = False
     t1 = time()
     output_data = initialize_geant4(detector, seed)
+    if not draw_magnet: del detector #save memory?
     print('Time to initialize', time()-t1)
     output_data = json.loads(output_data)    
 
@@ -110,7 +112,7 @@ if __name__ == '__main__':
     import pickle
     import multiprocessing as mp
     from time import time
-    from lib.reference_designs.params import sc_v6, optimal_oliver
+    from lib.reference_designs.params import sc_v6, optimal_oliver, new_parametrization
     import os
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=0)
@@ -118,7 +120,7 @@ if __name__ == '__main__':
     parser.add_argument("-seed", type=int, default=None)
     parser.add_argument("--f", type=str, default=DEF_INPUT_FILE)
     parser.add_argument("-tag", type=str, default='geant4')
-    parser.add_argument("-params", nargs='+', default=None)
+    parser.add_argument("-params", type=str, default='sc_v6')
     parser.add_argument("--z", type=float, default=2)
     parser.add_argument("-sens_plane", type=float, default=82)
     parser.add_argument("-real_fields", action = 'store_true')
@@ -132,9 +134,23 @@ if __name__ == '__main__':
     args = parser.parse_args()
     tag = args.tag
     cores = args.c
-    if args.params is None and args.SC_mag: params = sc_v6
-    elif args.params is None: params = optimal_oliver
-    else: params = [float(p) for p in args.params] 
+    if args.params == 'sc_v6': params = sc_v6
+    elif args.params == 'oliver': params = optimal_oliver
+    else:
+        with open(args.params, "r") as txt_file:
+            params = np.array([float(line.strip()) for line in txt_file])
+        params_idx = new_parametrization['M1'] + new_parametrization['M2'] + new_parametrization['M3'] + new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
+    
+        import torch
+        params = torch.tensor(params)
+        if params.size(-1) != 63:
+            new_phi = torch.tensor(sc_v6, dtype=params.dtype)
+            new_phi[torch.as_tensor(params_idx)] = params
+            if args.SC_mag:
+                new_phi[new_parametrization['M2'][2]] = new_phi[new_parametrization['M2'][1]]
+                new_phi[new_parametrization['M2'][4]] = new_phi[new_parametrization['M2'][3]]
+        params = new_phi.numpy()
+    
     def split_array(arr, K):
         N = len(arr)
         base_size = N // K
@@ -189,8 +205,21 @@ if __name__ == '__main__':
         all_results = all_results[:1000]
     if args.plot_magnet:
         sensitive_film_params['position'] = 38
-        if detector is not None:
-            plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'])
+        angle = 120
+        elev = 17
+        if False:#detector is not None:
+            plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = angle, elev = elev)
         else:
-            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, use_field_maps=args.real_fields, field_map_file = args.field_file, cavern = False)#args.add_cavern)
+            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, use_field_maps=args.real_fields, field_map_file = args.field_file, cavern = False, azim = angle, elev = elev)#args.add_cavern)
                                          
+
+params = [
+    [231.0, 301.45819092, 296.64724731, 311.0, 51.0, 129.62980652, 165.00384521],
+    [50.0, 50.0, 119.0, 119.0, 2.0, 2.0, 1.0, 0.0],
+    [100.0, 100.0, 150.0, 1.0, 70.0, 70.0, 0.75, 0.0],
+    [100.0, 1.0, 95.09043121, 1.0, 2.0, 2.0, 0.75, 0.0],
+    [1.0, 100.0, 150.0, 1.0, 2.0, 2.0, 0.75, 0.0],
+    [1.0, 65.55976868, 94.760849, 150.0, 70.0, 55.72589874, 0.75, 0.0],
+    [1.0, 84.20468903, 112.34411621, 1.0, 2.0, 2.0, 1.25, 0.0],
+    [1.0, 100.0, 150.0, 1.0, 2.0, 70.0, 0.75, 0.0]
+]

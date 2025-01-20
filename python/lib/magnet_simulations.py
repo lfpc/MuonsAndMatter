@@ -58,9 +58,9 @@ def get_grid_data(points: np.array, B: np.array, new_points: tuple):
     Bz_out = griddata(points, B[:, 2], new_points, method='nearest', fill_value=0.0).ravel()'''
     new_points = np.column_stack((new_points[0].ravel(), new_points[1].ravel(), new_points[2].ravel()))
     Bx_out, By_out, Bz_out = np.zeros_like(new_points).T
-    hull =  slice(None)#(new_points[:, 0] >= points[:, 0].min()) & (new_points[:, 0] <= points[:, 0].max()) & \
-            #(new_points[:, 1] >= points[:, 1].min()) & (new_points[:, 1] <= points[:, 1].max()) & \
-            #(new_points[:, 2] >= points[:, 2].min()) & (new_points[:, 2] <= points[:, 2].max())
+    hull =  (new_points[:, 0] >= points[:, 0].min()) & (new_points[:, 0] <= points[:, 0].max()) & \
+            (new_points[:, 1] >= points[:, 1].min()) & (new_points[:, 1] <= points[:, 1].max()) & \
+            (new_points[:, 2] >= points[:, 2].min()) & (new_points[:, 2] <= points[:, 2].max())
     tree = cKDTree(points)
     _, idx = tree.query(new_points[hull], k=1)
     Bx_out[hull] = B[idx, 0]

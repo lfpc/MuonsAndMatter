@@ -23,11 +23,14 @@ def get_field(resimulate_fields = False,
     elif exists(file_name):
         print('Using field map from file', file_name)
         with open(file_name, 'rb') as f:
-            fields = pickle.load(f)
+            if only_grid_params: 
+                fields = pickle.load(f)['B']
+            else:
+                fields = pickle.load(f)
     if only_grid_params: 
         d_space = kwargs_field['d_space']
         resol = kwargs_field['resol']
-        fields= {'B': fields['B'],
+        fields= {'B': fields,
                 'range_x': [0,d_space[0], resol[0]],
                 'range_y': [0,d_space[1], resol[1]],
                 'range_z': [d_space[2][0],d_space[2][1], resol[2]]}
@@ -120,7 +123,7 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
     })
 
 
-def contraints_cavern_intersection(corners, dZ, z_translation, cavern_transition):
+def constraints_cavern_intersection(corners, dZ, z_translation, cavern_transition):
     def get_cavern_bounds(z):
         if z < cavern_transition:
             y_min = -1.7
@@ -212,8 +215,8 @@ def create_magnet(magnetName, medium, tShield,
     dY += Ymgap
     # Assuming 0.5A / mm ^ 2 and 10000At needed, about 200cm ^ 2 gaps are necessary
     # Current design safely above this.Will consult with MISiS to get a better minimum.
-    gap = np.ceil(max(100. / dY, gap))
-    gap2 = np.ceil(max(100. / dY2, gap2))
+    #gap = np.ceil(max(100. / dY, gap))
+    #gap2 = np.ceil(max(100. / dY2, gap2))
     coil_gap = gap
     coil_gap2 = gap2
 
@@ -353,7 +356,7 @@ def construct_block(medium, tShield,field_profile, stepGeo):
     tShield['magnets'].append(Block)
 
 def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_file = None, cores_field:int = 1):
-    n_magnets = 8
+    n_magnets = 7
     cm = 1
     mm = 0.1 * cm
     m = 100 * cm
@@ -396,7 +399,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     offset = 6
     n_params = 8
 
-    for i in range(n_magnets-1):
+    for i in range(n_magnets):
         dXIn[i] = params[offset + i * n_params + 1]
         dXOut[i] = params[offset + i * n_params + 2]
         dYIn[i] = params[offset + i * n_params + 3]
@@ -422,14 +425,14 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     dZf[6] = dZ7 - zgap / 2
     Z[6] = Z[5] + dZf[5] + dZf[6] + zgap
 
-    dXIn[7] = dXOut[6] #last small magnet
+    '''dXIn[7] = dXOut[6] #last small magnet
     dYIn[7] = dYOut[6]
     dXOut[7] = dXIn[7]
     dYOut[7] = dYIn[7]
     gapIn[7] = gapOut[6]
     gapOut[7] = gapIn[7]
     dZf[7] = 0.1 * m
-    Z[7] = Z[6] + dZf[6] + dZf[7]
+    Z[7] = Z[6] + dZf[6] + dZf[7]'''
 
     for i in range(n_magnets):
         #????
@@ -446,8 +449,9 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
 
     if use_field_maps: 
         resimulate_field = (field_map_file is None) or (not exists(field_map_file))
-
-        d_space = (4., 4., (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
+        max_x = max(np.max(dXIn + dXIn * ratio_yokes + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokes+gapOut+midGapOut))/100
+        max_y = max(np.max(dYIn + dXIn * ratio_yokes), np.max(dYOut + dXOut * ratio_yokes))/100
+        d_space = (max_x+0.5, max_y+0.5, (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
         resol = (0.05,0.05,0.05)
         field_map = get_field(resimulate_field,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
@@ -462,6 +466,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
             Ymgap = 5*cm
             ironField_s = SC_field * tesla #5.1
         elif nM == 0:
+ 
             Ymgap = 0
             ironField_s = 1.6 * tesla
         else:
@@ -500,13 +505,14 @@ def get_design_from_params(params,
                            sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':82},
                            add_cavern:bool = True,
                            cores_field:int = 1):
-    params = np.round(params, 1)
+    params = np.round(params, 2)
     shield = design_muon_shield(params, fSC_mag, use_field_maps = use_field_maps, field_map_file = field_map_file, cores_field=cores_field)
     shift = -2.345
     cavern_transition = 22+shift #m
     World_dZ = 200 #m
     if add_cavern: shield["cavern"] = CreateCavern(cavern_transition, length = World_dZ)
     i=0
+    max_z = 0
     for mag in shield['magnets']:
         i+=1
         mag['z_center'] = mag['z_center']
@@ -518,10 +524,11 @@ def get_design_from_params(params,
                 x['field']['B'] = x['field']['B'].tolist()
             #if add_cavern: x['corners'] = contraints_cavern_intersection(np.array(x['corners']), x['dz'], x['z_center'], cavern_transition).tolist()
         mag['material'] = 'G4_Fe'
-        max_z = mag['dz'] + mag['z_center'] + 0.05
+        if mag['dz'] + mag['z_center'] > max_z:
+            max_z = mag['dz'] + mag['z_center']
 
     #assert(False)
-    print('TOTAL LENGTH', max_z, shield['dz']*2-7)
+    print('TOTAL LENGTH', max_z, shield['dz']*2)
     shield.update({
      "worldSizeX": 40, "worldSizeY": 40, "worldSizeZ": World_dZ,
         "type" : 1,
