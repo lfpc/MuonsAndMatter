@@ -118,7 +118,7 @@ def plot_magnet(detector,
                 particle = data['pdg_id']  
             else: particle = 13
         else:
-            _,_,_,x,y,z,particle = data
+            _,_,_,x,y,z,particle = data[:7]
             if sensitive_film_position is not None: z = sensitive_film_position*np.ones_like(z)+detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz']
         
         #total_sensitive_hits += 1
@@ -149,12 +149,42 @@ def plot_magnet(detector,
                             [corners[j] for j in [1, 2, 6, 5]]]
                 ax.add_collection3d(Poly3DCollection(edges, facecolors='gray', linewidths=0.07, edgecolors='black', alpha=0.25))
     # Plot horizontal plane at y = -1.7
-    z_plane = -1.7
-    x_range = np.linspace(ax.get_xlim()[0], ax.get_xlim()[1], 100)
-    y_range = np.linspace(ax.get_ylim()[0], ax.get_ylim()[1], 100)
-    X, Y = np.meshgrid(x_range, y_range)
-    Z = np.full_like(X, z_plane)
-    ax.plot_surface(X, Y,Z, color='black', alpha=0.3)
+    if 80 < azim < 100:
+        z_plane1 = -1.7
+        z_plane2 = -3.36
+        x_split = 22 - 2.345
+
+        # First plane
+        x_range1 = np.linspace(ax.get_xlim()[0], x_split, 100)
+        y_range1 = np.linspace(ax.get_ylim()[0], ax.get_ylim()[1], 100)
+        X1, Y1 = np.meshgrid(x_range1, y_range1)
+        Z1 = np.full_like(X1, z_plane1)
+        ax.plot_surface(X1, Y1, Z1, color='black', alpha=0.3)
+
+        # Second plane
+        x_range2 = np.linspace(x_split, ax.get_xlim()[1], 100)
+        y_range2 = np.linspace(ax.get_ylim()[0], ax.get_ylim()[1], 100)
+        X2, Y2 = np.meshgrid(x_range2, y_range2)
+        Z2 = np.full_like(X2, z_plane2)
+        ax.plot_surface(X2, Y2, Z2, color='black', alpha=0.3)
+    elif azim < 10:
+        y_plane1 = -3.57
+        y_plane2 = -4.57
+        x_split = 22 - 2.345
+
+        # First plane
+        x_range1 = np.linspace(ax.get_xlim()[0], x_split, 100)
+        z_range1 = np.linspace(ax.get_zlim()[0], ax.get_zlim()[1], 100)
+        X1, Z1 = np.meshgrid(x_range1, z_range1)
+        Y1 = np.full_like(X1, y_plane1)
+        ax.plot_surface(X1, Y1, Z1, color='black', alpha=0.3)
+
+        # Second plane
+        x_range2 = np.linspace(x_split, ax.get_xlim()[1], 100)
+        z_range2 = np.linspace(ax.get_zlim()[0], ax.get_zlim()[1], 100)
+        X2, Z2 = np.meshgrid(x_range2, z_range2)
+        Y2 = np.full_like(X2, y_plane2)
+        ax.plot_surface(X2, Y2, Z2, color='black', alpha=0.3)
 
     if fixed_zlim: ax.set_xlim(-30+sensitive_film_position, detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz']-5)
     else: ax.set_xlim(40, -5)

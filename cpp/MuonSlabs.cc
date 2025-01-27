@@ -57,7 +57,6 @@ void simulate_muon(double px, double py, double pz, int charge,
     double dy = 0;
 
     if (SmearBeam > 0) {
-        // Create random number generators
         std::mt19937 gen(seed);
         std::normal_distribution<> gauss(0, 1); // mean 0, stddev 1
         std::uniform_real_distribution<> uniform(0, 2);

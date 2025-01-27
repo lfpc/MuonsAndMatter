@@ -112,7 +112,7 @@ if __name__ == '__main__':
     import pickle
     import multiprocessing as mp
     from time import time
-    from lib.reference_designs.params import sc_v6, optimal_oliver, new_parametrization
+    from lib.reference_designs.params import sc_v6, optimal_oliver, new_parametrization, oliver_scaled
     import os
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=0)
@@ -121,7 +121,7 @@ if __name__ == '__main__':
     parser.add_argument("--f", type=str, default=DEF_INPUT_FILE)
     parser.add_argument("-tag", type=str, default='geant4')
     parser.add_argument("-params", type=str, default='sc_v6')
-    parser.add_argument("--z", type=float, default=2)
+    parser.add_argument("--z", type=float, default=None)
     parser.add_argument("-sens_plane", type=float, default=82)
     parser.add_argument("-real_fields", action = 'store_true')
     parser.add_argument("-field_file", type=str, default='data/outputs/fields.pkl') 
@@ -136,20 +136,29 @@ if __name__ == '__main__':
     cores = args.c
     if args.params == 'sc_v6': params = sc_v6
     elif args.params == 'oliver': params = optimal_oliver
+    elif args.params == 'oliver_scaled': params = oliver_scaled
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
         params_idx = new_parametrization['M1'] + new_parametrization['M2'] + new_parametrization['M3'] + new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
-    
-        import torch
-        params = torch.tensor(params)
-        if params.size(-1) != 63:
-            new_phi = torch.tensor(sc_v6, dtype=params.dtype)
-            new_phi[torch.as_tensor(params_idx)] = params
-            if args.SC_mag:
-                new_phi[new_parametrization['M2'][2]] = new_phi[new_parametrization['M2'][1]]
-                new_phi[new_parametrization['M2'][4]] = new_phi[new_parametrization['M2'][3]]
-        params = new_phi.numpy()
+        params = [
+        231.0, 145.88714376, 144.97327917, 233.53443056, 185.12337627, 289.12393279, 178.27166603,
+        50.0, 50.0, 119.0, 119.0, 2.0, 2.0, 1.0, 0.0,
+        55.68631679, 39.18737101, 39.0519151, 64.94001798, 2.18559108, 2.24933776, 1.81442009, 0.0,
+        41.48397928, 29.13140211, 26.76256635, 115., 2.04579784, 2.23057252, 1.83378473, 0.0,
+        8.53668902, 24.10068397, 20.92353585, 18.79892067, 100.0, 2.1116541, 1.85945483, 0.0,
+        5.0, 24.87859129, 30.70114222, 15.07063979, 2.25817831, 2.24777563, 1.86769417, 0.0,
+        41.48397928, 29.13140211, 26.76256635, 115., 2.04579784, 2.23057252, 1.83378473, 0.0,#17.42397096, 24.81168458, 57.660231, 95.16186569, 2.2578048, 2.0182731, 1.84003594, 0.0,
+        41.48397928, 29.13140211, 26.76256635, 115., 2.04579784, 2.23057252, 1.83378473, 0.0]
+        #25.59295856, 59.75732946, 47.92959263, 50.68990891, 2.22702035, 2.05949534, 1.80882961, 0.0]
+    params = np.array(params)
+    if params.size != 63:
+        new_phi = np.array(sc_v6, dtype=params.dtype)
+        new_phi[np.array(params_idx)] = params
+        if args.SC_mag:
+            new_phi[new_parametrization['M2'][2]] = new_phi[new_parametrization['M2'][1]]
+            new_phi[new_parametrization['M2'][4]] = new_phi[new_parametrization['M2'][3]]
+        params = new_phi
     
     def split_array(arr, K):
         N = len(arr)
@@ -168,10 +177,9 @@ if __name__ == '__main__':
     t1_fem = time()
     detector = None
     if args.real_fields: 
-        with mp.Pool(1) as pool:
-            if os.path.exists('data/outputs/fields.pkl'):
-                os.remove('data/outputs/fields.pkl')
-            detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, cores_field=cores)
+        if os.path.exists(args.field_file):
+            os.remove(args.field_file)
+        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, cores_field=cores)
     t2_fem = time()
 
     with gzip.open(input_file, 'rb') as f:
@@ -200,26 +208,18 @@ if __name__ == '__main__':
     all_results = np.concatenate(all_results, axis=0)
     #with gzip.open(f'data/outputs/outputs_{tag}.pkl', "wb") as f:
     #    pickle.dump(all_results, f)
+    print(params)
     print('Data Shape', all_results.shape)
+    print('n_input', data_n[:,7].sum())
+    print('n_hits', all_results[:,7].sum())
     if all_results.shape[0]>1000:
         all_results = all_results[:1000]
     if args.plot_magnet:
         sensitive_film_params['position'] = 38
-        angle = 120
-        elev = 17
+        angle = 90
+        elev = 0
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = angle, elev = elev)
         else:
             result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, use_field_maps=args.real_fields, field_map_file = args.field_file, cavern = False, azim = angle, elev = elev)#args.add_cavern)
                                          
-
-params = [
-    [231.0, 301.45819092, 296.64724731, 311.0, 51.0, 129.62980652, 165.00384521],
-    [50.0, 50.0, 119.0, 119.0, 2.0, 2.0, 1.0, 0.0],
-    [100.0, 100.0, 150.0, 1.0, 70.0, 70.0, 0.75, 0.0],
-    [100.0, 1.0, 95.09043121, 1.0, 2.0, 2.0, 0.75, 0.0],
-    [1.0, 100.0, 150.0, 1.0, 2.0, 2.0, 0.75, 0.0],
-    [1.0, 65.55976868, 94.760849, 150.0, 70.0, 55.72589874, 0.75, 0.0],
-    [1.0, 84.20468903, 112.34411621, 1.0, 2.0, 2.0, 1.25, 0.0],
-    [1.0, 100.0, 150.0, 1.0, 2.0, 70.0, 0.75, 0.0]
-]
