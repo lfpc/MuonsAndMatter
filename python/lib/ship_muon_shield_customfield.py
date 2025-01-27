@@ -5,7 +5,7 @@ from matplotlib.path import Path as polygon_path
 from lib import magnet_simulations
 #import sys
 #sys.path.append('/home/hep/lprate/projects/MuonsAndMatter/python/lib/reference_designs')
-from lib.reference_designs.params import new_parametrization, get_magnet_params, sc_v6
+from lib.reference_designs.params import new_parametrization, get_magnet_params, sc_v6, optimal_oliver
 import pandas as pd
 from os.path import exists
 from time import time
@@ -19,7 +19,7 @@ def get_field(resimulate_fields = False,
             **kwargs_field):
     '''Returns the field map for the given parameters. If from_file is True, the field map is loaded from the file_name.'''
     if resimulate_fields:
-        fields = simulate_field(params, file_name = file_name,**kwargs_field)
+        fields = simulate_field(params, file_name = file_name,**kwargs_field)['B']
     elif exists(file_name):
         print('Using field map from file', file_name)
         with open(file_name, 'rb') as f:
@@ -30,7 +30,7 @@ def get_field(resimulate_fields = False,
     if only_grid_params: 
         d_space = kwargs_field['d_space']
         resol = kwargs_field['resol']
-        fields= {'B': fields,
+        fields= {'B': fields.astype(np.float32),
                 'range_x': [0,d_space[0], resol[0]],
                 'range_y': [0,d_space[1], resol[1]],
                 'range_z': [d_space[2][0],d_space[2][1], resol[2]]}
@@ -51,12 +51,13 @@ def simulate_field(params,
     Z_pos = 0.
     for i, (mag,idx) in enumerate(new_parametrization.items()):
         mag_params = params[idx]
-        if fSC_mag and mag == 'M1': continue
-        elif mag == 'M3'and fSC_mag: 
-            Z_pos += 2 * mag_params[0]/100 - z_gap
-            continue
-        if fSC_mag and mag == 'M2': Ymgap = 0.05; B_goal = 5.1; yoke_type = 'Mag2'
-        elif mag == 'HA': Ymgap=0.; B_goal = 1.6; yoke_type = 'Mag1'
+        if fSC_mag:
+            if mag == 'M1': continue
+            elif mag == 'M3':
+                Z_pos += 2 * mag_params[0]/100 - z_gap
+                continue
+            elif mag == 'M2': Ymgap = 0.05; B_goal = 5.1; yoke_type = 'Mag2'
+        if mag == 'HA': Ymgap=0.; B_goal = 1.6; yoke_type = 'Mag1'
         else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3'
         if field_direction[i] == 'down': B_goal *= -1 
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal=B_goal, yoke_type=yoke_type)
@@ -64,7 +65,7 @@ def simulate_field(params,
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    #if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
+    if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
     fields = magnet_simulations.run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores)
     fields['points'][:,2] += Z_init/100
@@ -175,7 +176,7 @@ def CreateCavern(shift = 0, length:float = 90.):
              [x2, -external_rock[1]],
              [x1, -external_rock[1]]]).flatten(), 2).tolist()
         return [corners_up,corners_right,corners_left,corners_down]
-    external_rock = (20,20) #entire space is 40x40
+    external_rock = (15,15) #entire space is 40x40
 
     TCC8_length = max(length, 170.)
     dX_TCC8 = 5
@@ -331,11 +332,11 @@ def create_magnet(magnetName, medium, tShield,
 
 def construct_block(medium, tShield,field_profile, stepGeo):
     #iron block before the magnet
-    z_gap = 0.1
-    dX = 395.
-    dY = 340.
-    dZ = 40.
-    Z = -40-z_gap
+    z_gap = 1.
+    dX = 356.#395.
+    dY = 170.#340.
+    dZ = 45. - z_gap/2
+    Z = -45.
     cornersIronBlock = np.array([
         -dX, -dY,
         dX, -dY,
@@ -361,8 +362,6 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
     mm = 0.1 * cm
     m = 100 * cm
     tesla = 1
-    fField = 1.7
-    SC_field = 5.1
 
     magnetName = ["MagnAbsorb2", "Magn1", "Magn2", "Magn3", "Magn4", "Magn5", "Magn6", "Magn7"]
 
@@ -452,10 +451,10 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
         max_x = max(np.max(dXIn + dXIn * ratio_yokes + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokes+gapOut+midGapOut))/100
         max_y = max(np.max(dYIn + dXIn * ratio_yokes), np.max(dYOut + dXOut * ratio_yokes))/100
         d_space = (max_x+0.5, max_y+0.5, (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
-        resol = (0.05,0.05,0.05)
+        resol = (0.02,0.02,0.05)
         field_map = get_field(resimulate_field,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
-                              field_direction = fieldDirection,file_name=field_map_file, only_grid_params=True, cores = min(cores_field,n_magnets-1))
+                              field_direction = fieldDirection,file_name=field_map_file, only_grid_params=True, cores = min(cores_field,n_magnets))
         tShield['global_field_map'] = field_map
 
     for nM in range(n_magnets):
@@ -464,14 +463,13 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
             continue
         if nM == 2 and fSC_mag:
             Ymgap = 5*cm
-            ironField_s = SC_field * tesla #5.1
+            ironField_s = 5.1 * tesla #5.1
         elif nM == 0:
- 
             Ymgap = 0
             ironField_s = 1.6 * tesla
         else:
             Ymgap = 0
-            ironField_s = fField * tesla #1.7
+            ironField_s = 1.7 * tesla #1.7
 
         if use_field_maps:# and nM ==3 and fSC_mag:
             field_profile = 'global'
@@ -480,6 +478,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
             field_profile = 'uniform'
             if fieldDirection[nM] == "down":
                 ironField_s = -ironField_s
+            if nM != 0: ironField_s *= ratio_yokes[nM]
             magFieldIron_s = [0., ironField_s, 0.]
             RetField_s = [0., -ironField_s/ratio_yokes[nM], 0.]
             ConRField_s = [-ironField_s/ratio_yokes[nM], 0., 0.]
@@ -510,7 +509,9 @@ def get_design_from_params(params,
     shift = -2.345
     cavern_transition = 22+shift #m
     World_dZ = 200 #m
+    World_dX = World_dY = 30 if add_cavern else 15
     if add_cavern: shield["cavern"] = CreateCavern(cavern_transition, length = World_dZ)
+    z_bias = sensitive_film_params['position']/2
     i=0
     max_z = 0
     for mag in shield['magnets']:
@@ -530,7 +531,7 @@ def get_design_from_params(params,
     #assert(False)
     print('TOTAL LENGTH', max_z, shield['dz']*2)
     shield.update({
-     "worldSizeX": 40, "worldSizeY": 40, "worldSizeZ": World_dZ,
+     "worldSizeX": World_dX, "worldSizeY": World_dY, "worldSizeZ": World_dZ,
         "type" : 1,
         "limits" : {
             "max_step_length": 0.05,
@@ -558,12 +559,12 @@ if __name__ == '__main__':
     from lib.ship_muon_shield_customfield import get_design_from_params
     from muon_slabs import initialize
     import os
-    file_map_file = None#'data/outputs/fields.pkl'
+    file_map_file = 'data/outputs/fields_mm.pkl'
     if file_map_file is not None and os.path.exists(file_map_file):
         os.remove(file_map_file)
     t1 = time()
-    params = sc_v6
-    detector = get_design_from_params(params, use_field_maps=True,field_map_file = file_map_file, add_cavern=True, cores_field=1)
+    params = optimal_oliver
+    detector = get_design_from_params(params, use_field_maps=True,field_map_file = file_map_file, add_cavern=True, cores_field=7, fSC_mag = False)
     t1_init = time()
     output_data = initialize_geant4(detector)
     print('Time to initialize', time()-t1_init)
