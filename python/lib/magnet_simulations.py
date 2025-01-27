@@ -58,8 +58,8 @@ def get_grid_data(points: np.array, B: np.array, new_points: tuple):
     Bz_out = griddata(points, B[:, 2], new_points, method='nearest', fill_value=0.0).ravel()'''
     new_points = np.column_stack((new_points[0].ravel(), new_points[1].ravel(), new_points[2].ravel()))
     Bx_out, By_out, Bz_out = np.zeros_like(new_points).T
-    hull =  (new_points[:, 0] >= points[:, 0].min()) & (new_points[:, 0] <= points[:, 0].max()) & \
-            (new_points[:, 1] >= points[:, 1].min()) & (new_points[:, 1] <= points[:, 1].max()) & \
+    hull =  (new_points[:, 0] <= points[:, 0].max()) & \
+            (new_points[:, 1] <= points[:, 1].max()) & \
             (new_points[:, 2] >= points[:, 2].min()) & (new_points[:, 2] <= points[:, 2].max())
     tree = cKDTree(points)
     _, idx = tree.query(new_points[hull], k=1)
@@ -175,7 +175,7 @@ def run_fem(magn_params:dict,
     end = time.time()
     print('FEM Computation time = {} sec'.format(end - start))
     # points_H, H = solver.compute_field(x, 'H', quad_order=element_order+1)
-    return {'points':points, 'B':B}
+    return {'points':points.round(4).astype(np.float32), 'B':B.astype(np.float32)}
 
 def simulate_and_grid(params, points):
     delta_z = 2.0 if params['B_goal(T)'] > 2 else 1.0
