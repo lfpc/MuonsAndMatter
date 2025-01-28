@@ -14,7 +14,7 @@ def run(muons,
         fSC_mag:bool = True,
         sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82},
         add_cavern = True,
-        use_field_maps = False,
+        simulate_fields = False,
         field_map_file = None,
         return_nan:bool = False,
         seed:int = None,
@@ -31,7 +31,7 @@ def run(muons,
         return_weight (bool, optional): If True, returns the total weight of the muon shield. Defaults to False.
         fSC_mag (bool, optional): Flag to use the hybrid configuration (i.e., with the superconducting magnet) of the muon shield in the simulation. Defaults to True.
         sensitive_film_params (dict, optional): Parameters for the sensitive film. Defaults to {'dz': 0.01, 'dx': 10, 'dy': 10, 'position': 67}. If None, the simulation collects all the data from the muons (not only hits).
-        use_field_maps (bool, optional): Flag to use simulate (FEM) and use field maps in the simulation. Defaults to False.
+        simulate_fields (bool, optional): Flag to use simulate (FEM) and use field maps in the simulation. Defaults to False.
         field_map_file (str, optional): Path to the field map file. Defaults to None.
         return_nan (bool, optional): If True, returns a list of zeros as the output for muons that do not hit the sensitive film. Defaults to False.
         seed (int, optional): Seed for random number generation. Defaults to None.
@@ -49,7 +49,7 @@ def run(muons,
     detector = get_design_from_params(params = phi,
                                       force_remove_magnetic_field= False,
                                       fSC_mag = fSC_mag,
-                                      use_field_maps=use_field_maps,
+                                      simulate_fields=simulate_fields,
                                       sensitive_film_params=sensitive_film_params,
                                       field_map_file = field_map_file,
                                       add_cavern = add_cavern)
@@ -216,5 +216,5 @@ if __name__ == '__main__':
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = angle, elev = elev)
         else:
-            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, use_field_maps=args.real_fields, field_map_file = args.field_file, cavern = False, azim = angle, elev = elev)#args.add_cavern)
+            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=args.real_fields, field_map_file = args.field_file, cavern = False, azim = angle, elev = elev)#args.add_cavern)
                                          

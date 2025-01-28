@@ -21,7 +21,6 @@ def concatenate_files(direc, file_number):
         if f'_{file_number}_' not in file: continue
         with gzip.open(os.path.join(direc,file),'rb') as f:
             all_data.append(pickle.load(f))
-            print('JAKSHDKAJSHDKASHDSA',np.shape(all_data[-1]))
         os.remove(os.path.join(direc,file))
     
     all_data = np.concatenate(all_data,axis=1)
@@ -93,8 +92,8 @@ def get_total_hits(phi,inputs_dir:str,
     n_hits_total = 0
     all_results = {}
     for name in os.listdir(inputs_dir):
-
         n_name = extract_number_from_string(name)
+        if int(n_name) == 0: continue
         print('FILE:', name)
         t1 = time()
         with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:

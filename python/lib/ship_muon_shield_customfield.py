@@ -356,7 +356,7 @@ def construct_block(medium, tShield,field_profile, stepGeo):
     CreateArb8('IronAfterTarget', medium, dZ, cornersIronBlock, [0.,0.,0.], field_profile, Block, 0, 0, Z, stepGeo)
     tShield['magnets'].append(Block)
 
-def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_file = None, cores_field:int = 1):
+def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1):
     n_magnets = 7
     cm = 1
     mm = 0.1 * cm
@@ -446,13 +446,13 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
 
 
 
-    if use_field_maps: 
-        resimulate_field = (field_map_file is None) or (not exists(field_map_file))
+    if field_map_file is not None or simulate_fields: 
+        simulate_field = (field_map_file is None) or (not exists(field_map_file)) or simulate_field
         max_x = max(np.max(dXIn + dXIn * ratio_yokes + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokes+gapOut+midGapOut))/100
         max_y = max(np.max(dYIn + dXIn * ratio_yokes), np.max(dYOut + dXOut * ratio_yokes))/100
         d_space = (max_x+0.5, max_y+0.5, (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
         resol = (0.02,0.02,0.05)
-        field_map = get_field(resimulate_field,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
+        field_map = get_field(simulate_field,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
                               field_direction = fieldDirection,file_name=field_map_file, only_grid_params=True, cores = min(cores_field,n_magnets))
         tShield['global_field_map'] = field_map
@@ -471,7 +471,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
             Ymgap = 0
             ironField_s = 1.7 * tesla
 
-        if use_field_maps:
+        if simulate_fields:
             field_profile = 'global'
             fields_s = [[],[],[]]
         else:
@@ -489,7 +489,7 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
         create_magnet(magnetName[nM], "G4_Fe", tShield, fields_s, field_profile, dXIn[nM], dYIn[nM], dXOut[nM],
                   dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM],ratio_yokes[nM],
                   gapIn[nM], gapOut[nM], Z[nM], nM in [1,7],Ymgap=Ymgap)
-    field_profile = 'global' if use_field_maps else 'uniform'
+    field_profile = 'global' if simulate_fields else 'uniform'
     construct_block("G4_Fe", tShield, field_profile, False)
     return tShield
 
@@ -500,13 +500,13 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
 def get_design_from_params(params, 
                            fSC_mag:bool = True, 
                            force_remove_magnetic_field = False,
-                           use_field_maps = False,
+                           simulate_fields = False,
                            field_map_file = None,
                            sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':82},
                            add_cavern:bool = True,
                            cores_field:int = 1):
     params = np.round(params, 2)
-    shield = design_muon_shield(params, fSC_mag, use_field_maps = use_field_maps, field_map_file = field_map_file, cores_field=cores_field)
+    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field)
     shift = -2.345
     cavern_transition = 22+shift #m
     World_dZ = 200 #m
@@ -565,7 +565,7 @@ if __name__ == '__main__':
         os.remove(file_map_file)
     t1 = time()
     params = optimal_oliver
-    detector = get_design_from_params(params, use_field_maps=True,field_map_file = file_map_file, add_cavern=True, cores_field=7, fSC_mag = False)
+    detector = get_design_from_params(params, simulate_fields=True,field_map_file = file_map_file, add_cavern=True, cores_field=7, fSC_mag = False)
     t1_init = time()
     output_data = initialize_geant4(detector)
     print('Time to initialize', time()-t1_init)
