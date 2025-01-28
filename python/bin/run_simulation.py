@@ -79,10 +79,13 @@ def run(muons,
     
     for i in range(len(px)):
         simulate_muon(px[i], py[i], pz[i], int(charge[i]), x[i],y[i], z[i], SmearBeamRadius, seed if seed else np.random.randint(0,100))
-        if sensitive_film_params is None: #If sensitive film is not present, we collect all the track
+        if sensitive_film_params is None: 
+            #If sensitive film is not present, we collect all the track
             data = collect()
             muon_data += [data]
-        else: #If sensitive film is defined, we collect only the muons that hit the sensitive film
+            
+        else: 
+            #If sensitive film is defined, we collect only the muons that hit the sensitive film
             data_s = collect_from_sensitive()
             if len(data_s['px'])>0 and 13 in np.abs(data_s['pdg_id']): 
                 j = 0
@@ -105,7 +108,7 @@ def run(muons,
 
 
 
-DEF_INPUT_FILE = 'data/inputs.pkl'#'data/oliver_data_enriched.pkl'
+DEF_INPUT_FILE = 'data/enriched_input.pkl'
 if __name__ == '__main__':
     import argparse
     import gzip
@@ -119,7 +122,6 @@ if __name__ == '__main__':
     parser.add_argument("--c", type=int, default=45)
     parser.add_argument("-seed", type=int, default=None)
     parser.add_argument("--f", type=str, default=DEF_INPUT_FILE)
-    parser.add_argument("-tag", type=str, default='geant4')
     parser.add_argument("-params", type=str, default='sc_v6')
     parser.add_argument("--z", type=float, default=None)
     parser.add_argument("-sens_plane", type=float, default=82)
@@ -129,10 +131,10 @@ if __name__ == '__main__':
     parser.add_argument("-remove_cavern", dest = "add_cavern", action = 'store_false')
     parser.add_argument("-plot_magnet", action = 'store_true')
     parser.add_argument("-warm",dest="SC_mag", action = 'store_false')
+    parser.add_argument("-save_data", action = 'store_true')
     parser.add_argument("-return_nan", action = 'store_true')
 
     args = parser.parse_args()
-    tag = args.tag
     cores = args.c
     if args.params == 'sc_v6': params = sc_v6
     elif args.params == 'oliver': params = optimal_oliver
@@ -141,16 +143,6 @@ if __name__ == '__main__':
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
         params_idx = new_parametrization['M1'] + new_parametrization['M2'] + new_parametrization['M3'] + new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
-        params = [
-        231.0, 145.88714376, 144.97327917, 233.53443056, 185.12337627, 289.12393279, 178.27166603,
-        50.0, 50.0, 119.0, 119.0, 2.0, 2.0, 1.0, 0.0,
-        55.68631679, 39.18737101, 39.0519151, 64.94001798, 2.18559108, 2.24933776, 1.81442009, 0.0,
-        41.48397928, 29.13140211, 26.76256635, 115., 2.04579784, 2.23057252, 1.83378473, 0.0,
-        8.53668902, 24.10068397, 20.92353585, 18.79892067, 100.0, 2.1116541, 1.85945483, 0.0,
-        5.0, 24.87859129, 30.70114222, 15.07063979, 2.25817831, 2.24777563, 1.86769417, 0.0,
-        41.48397928, 29.13140211, 26.76256635, 115., 2.04579784, 2.23057252, 1.83378473, 0.0,#17.42397096, 24.81168458, 57.660231, 95.16186569, 2.2578048, 2.0182731, 1.84003594, 0.0,
-        41.48397928, 29.13140211, 26.76256635, 115., 2.04579784, 2.23057252, 1.83378473, 0.0]
-        #25.59295856, 59.75732946, 47.92959263, 50.68990891, 2.22702035, 2.05949534, 1.80882961, 0.0]
     params = np.array(params)
     if params.size != 63:
         new_phi = np.array(sc_v6, dtype=params.dtype)
@@ -171,9 +163,10 @@ if __name__ == '__main__':
     n_muons = args.n
     input_file = args.f
     input_dist = args.z
-    if args.sens_plane is not None: 
+    if args.sens_plane is None or args.sens_plane == 0:
+        sensitive_film_params = None
+    else: 
         sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':args.sens_plane}
-    else: sensitive_film_params = None
     t1_fem = time()
     detector = None
     if args.real_fields: 
@@ -205,15 +198,17 @@ if __name__ == '__main__':
         if len(resulting_data)==0: continue
         all_results += [resulting_data]
     print(f"Weight = {weight} kg")
-    all_results = np.concatenate(all_results, axis=0)
-    #with gzip.open(f'data/outputs/outputs_{tag}.pkl', "wb") as f:
-    #    pickle.dump(all_results, f)
+    try: all_results = np.concatenate(all_results, axis=0)
+    except: pass
     print(params)
-    print('Data Shape', all_results.shape)
+    try: print('Data Shape', all_results.shape)
+    except: print('Data Shape', len(all_results))
     print('n_input', data_n[:,7].sum())
-    print('n_hits', all_results[:,7].sum())
-    if all_results.shape[0]>1000:
-        all_results = all_results[:1000]
+    if args.save_data:
+        with gzip.open(f'data/outputs/outputs_optimal.pkl', "wb") as f:
+            pickle.dump(all_results, f)
+    if not (args.sens_plane is None or args.sens_plane == 0):
+        print('n_hits', all_results[:,7].sum())
     if args.plot_magnet:
         sensitive_film_params['position'] = 38
         angle = 90

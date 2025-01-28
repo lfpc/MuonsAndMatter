@@ -51,25 +51,25 @@ def simulate_field(params,
     Z_pos = 0.
     for i, (mag,idx) in enumerate(new_parametrization.items()):
         mag_params = params[idx]
+        if mag == 'HA': Ymgap=0.; B_goal = 1.6; yoke_type = 'Mag1'
+        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag1'
+        else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3'
         if fSC_mag:
             if mag == 'M1': continue
             elif mag == 'M3':
                 Z_pos += 2 * mag_params[0]/100 - z_gap
                 continue
             elif mag == 'M2': Ymgap = 0.05; B_goal = 5.1; yoke_type = 'Mag2'
-        if mag == 'HA': Ymgap=0.; B_goal = 1.6; yoke_type = 'Mag1'
-        else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3'
-        if field_direction[i] == 'down': B_goal *= -1 
+        if field_direction[i] == 'up': B_goal *= -1 
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal=B_goal, yoke_type=yoke_type)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
+    #if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
     fields = magnet_simulations.run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores)
     fields['points'][:,2] += Z_init/100
-    fields['B'] *= -1 #simulation is inverted?
     print('Magnetic field simulation took', time()-t1, 'seconds')
     if file_name is not None:
         with open(file_name, 'wb') as f:
@@ -463,22 +463,23 @@ def design_muon_shield(params,fSC_mag = True, use_field_maps = False, field_map_
             continue
         if nM == 2 and fSC_mag:
             Ymgap = 5*cm
-            ironField_s = 5.1 * tesla #5.1
+            ironField_s = 5.1 * tesla
         elif nM == 0:
             Ymgap = 0
             ironField_s = 1.6 * tesla
         else:
             Ymgap = 0
-            ironField_s = 1.7 * tesla #1.7
+            ironField_s = 1.7 * tesla
 
-        if use_field_maps:# and nM ==3 and fSC_mag:
+        if use_field_maps:
             field_profile = 'global'
-            fields_s = [[],[],[]]#field_map
+            fields_s = [[],[],[]]
         else:
             field_profile = 'uniform'
             if fieldDirection[nM] == "down":
                 ironField_s = -ironField_s
-            if nM != 0: ironField_s *= ratio_yokes[nM]
+            #change this
+            if nM in [4,5,6]: ironField_s *= ratio_yokes[nM]
             magFieldIron_s = [0., ironField_s, 0.]
             RetField_s = [0., -ironField_s/ratio_yokes[nM], 0.]
             ConRField_s = [-ironField_s/ratio_yokes[nM], 0., 0.]
@@ -511,7 +512,7 @@ def get_design_from_params(params,
     World_dZ = 200 #m
     World_dX = World_dY = 30 if add_cavern else 15
     if add_cavern: shield["cavern"] = CreateCavern(cavern_transition, length = World_dZ)
-    z_bias = sensitive_film_params['position']/2
+    #z_bias = sensitive_film_params['position']/2
     i=0
     max_z = 0
     for mag in shield['magnets']:
