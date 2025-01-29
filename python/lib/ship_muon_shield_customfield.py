@@ -61,12 +61,12 @@ def simulate_field(params,
                 continue
             elif mag == 'M2': Ymgap = 0.05; B_goal = 5.1; yoke_type = 'Mag2'
         if field_direction[i] == 'up': B_goal *= -1 
-        p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal=B_goal, yoke_type=yoke_type)
+        p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal=B_goal, yoke_type=yoke_type, resol = resol)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    #if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
+    if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
     fields = magnet_simulations.run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores)
     fields['points'][:,2] += Z_init/100
@@ -147,6 +147,9 @@ def constraints_cavern_intersection(corners, dZ, z_translation, cavern_transitio
     corners[8:, 1] = np.clip(corners[8:, 1], y_min + wall_gap, y_max - wall_gap)
     return corners.flatten()
 
+def CreateTarget():
+    target = {}
+    return target
 
 def CreateCavern(shift = 0, length:float = 90.):
     cavern = []
@@ -357,7 +360,8 @@ def construct_block(medium, tShield,field_profile, stepGeo):
     tShield['magnets'].append(Block)
 
 def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1):
-    n_magnets = 7
+    extra_magnet = False
+    n_magnets = 7 + int(extra_magnet)
     cm = 1
     mm = 0.1 * cm
     m = 100 * cm
@@ -398,7 +402,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
     offset = 6
     n_params = 8
 
-    for i in range(n_magnets):
+    for i in range(n_magnets - int(extra_magnet)):
         dXIn[i] = params[offset + i * n_params + 1]
         dXOut[i] = params[offset + i * n_params + 2]
         dYIn[i] = params[offset + i * n_params + 3]
@@ -424,14 +428,15 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
     dZf[6] = dZ7 - zgap / 2
     Z[6] = Z[5] + dZf[5] + dZf[6] + zgap
 
-    '''dXIn[7] = dXOut[6] #last small magnet
-    dYIn[7] = dYOut[6]
-    dXOut[7] = dXIn[7]
-    dYOut[7] = dYIn[7]
-    gapIn[7] = gapOut[6]
-    gapOut[7] = gapIn[7]
-    dZf[7] = 0.1 * m
-    Z[7] = Z[6] + dZf[6] + dZf[7]'''
+    if extra_magnet:
+        dXIn[7] = dXOut[6] #last small magnet
+        dYIn[7] = dYOut[6]
+        dXOut[7] = dXIn[7]
+        dYOut[7] = dYIn[7]
+        gapIn[7] = gapOut[6]
+        gapOut[7] = gapIn[7]
+        dZf[7] = 0.1 * m
+        Z[7] = Z[6] + dZf[6] + dZf[7]
 
     for i in range(n_magnets):
         #????
@@ -447,18 +452,17 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
 
 
     if field_map_file is not None or simulate_fields: 
-        simulate_field = (field_map_file is None) or (not exists(field_map_file)) or simulate_field
+        simulate_fields = (field_map_file is None) or (not exists(field_map_file)) or simulate_fields
         max_x = max(np.max(dXIn + dXIn * ratio_yokes + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokes+gapOut+midGapOut))/100
         max_y = max(np.max(dYIn + dXIn * ratio_yokes), np.max(dYOut + dXOut * ratio_yokes))/100
         d_space = (max_x+0.5, max_y+0.5, (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
         resol = (0.02,0.02,0.05)
-        field_map = get_field(simulate_field,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
+        field_map = get_field(simulate_fields,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
                               field_direction = fieldDirection,file_name=field_map_file, only_grid_params=True, cores = min(cores_field,n_magnets))
         tShield['global_field_map'] = field_map
 
     for nM in range(n_magnets):
-        if nM == 7: continue #remove last small magnet
         if fSC_mag and (dZf[nM] < 1*mm or nM == 3):
             continue
         if nM == 2 and fSC_mag:
@@ -478,7 +482,6 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
             field_profile = 'uniform'
             if fieldDirection[nM] == "down":
                 ironField_s = -ironField_s
-            #change this
             if nM in [4,5,6]: ironField_s *= ratio_yokes[nM]
             magFieldIron_s = [0., ironField_s, 0.]
             RetField_s = [0., -ironField_s/ratio_yokes[nM], 0.]
@@ -547,6 +550,7 @@ def get_design_from_params(params,
             "dx": sensitive_film_params['dx'],
             "dy": sensitive_film_params['dy']}})
     return shield
+
 def initialize_geant4(detector, seed = None):
     B = detector['global_field_map'].pop('B').flatten()
     if seed is None: seeds = (np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256))

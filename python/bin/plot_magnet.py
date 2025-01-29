@@ -213,11 +213,11 @@ def construct_and_plot(muons,
         phi, 
         fSC_mag:bool = True,
         sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':83.2},
-        use_field_maps = False,
+        simulate_fields = False,
         field_map_file = None,
         cavern = True,
         **kwargs_plot):
-    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, use_field_maps=use_field_maps, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params, add_cavern=cavern)
+    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, simulate_fields=simulate_fields, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params, add_cavern=cavern)
     plot_magnet(detector,
                 muon_data = muons, 
                 sensitive_film_position = sensitive_film_params['position'],#sensitive_film_params['position'], 

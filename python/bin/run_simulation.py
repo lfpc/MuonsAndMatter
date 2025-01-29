@@ -74,6 +74,7 @@ def run(muons,
 
     if input_dist is not None:
         z = (-input_dist)*np.ones_like(z)
+    z = np.minimum(z, -0.9)
 
     muon_data = []
     
@@ -82,7 +83,9 @@ def run(muons,
         if sensitive_film_params is None: 
             #If sensitive film is not present, we collect all the track
             data = collect()
+            if np.all(data['z']<80): continue
             muon_data += [data]
+            if len(muon_data) > 10000: break
             
         else: 
             #If sensitive film is defined, we collect only the muons that hit the sensitive film
@@ -169,9 +172,9 @@ if __name__ == '__main__':
         sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':args.sens_plane}
     t1_fem = time()
     detector = None
-    if args.real_fields: 
-        if os.path.exists(args.field_file):
-            os.remove(args.field_file)
+    if not args.real_fields:
+        args.field_file = None
+    else: 
         detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, cores_field=cores)
     t2_fem = time()
 
@@ -187,7 +190,7 @@ if __name__ == '__main__':
     t1 = time()
     with mp.Pool(cores) as pool:
         result = pool.starmap(run, [(workload,params,input_dist,True,args.SC_mag,sensitive_film_params,args.add_cavern, 
-                                    args.real_fields,args.field_file,args.return_nan,args.seed, False) for workload in workloads])
+                                    False,args.field_file,args.return_nan,args.seed, False) for workload in workloads])
     t2 = time()
     print(f"Time to FEM: {t2_fem - t1_fem:.2f} seconds.")
     print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")
@@ -203,6 +206,7 @@ if __name__ == '__main__':
     print(params)
     try: print('Data Shape', all_results.shape)
     except: print('Data Shape', len(all_results))
+    all_results = all_results[:10000]
     print('n_input', data_n[:,7].sum())
     if args.save_data:
         with gzip.open(f'data/outputs/outputs_optimal.pkl', "wb") as f:
@@ -210,9 +214,9 @@ if __name__ == '__main__':
     if not (args.sens_plane is None or args.sens_plane == 0):
         print('n_hits', all_results[:,7].sum())
     if args.plot_magnet:
-        sensitive_film_params['position'] = 38
+        sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':38}
         angle = 90
-        elev = 0
+        elev = 90
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = angle, elev = elev)
         else:

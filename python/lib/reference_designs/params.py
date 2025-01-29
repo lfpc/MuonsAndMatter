@@ -58,7 +58,7 @@ def get_magnet_params(params,
                      z_gap:float = 0.1,
                      B_goal:float = 5.1,
                      yoke_type:str = 'Mag1',
-                     
+                     resol = (0.02,0.02,0.05),
                      save_dir = None,):
     # #convert to meters
     ratio_yoke = params[7]
@@ -68,9 +68,9 @@ def get_magnet_params(params,
     d = {'yoke_type': yoke_type,
         'coil_type': 'Racetrack',
         'material': 'bhiron_1', #check material and etc for SC
-        'resol_x(m)': 0.05,
-        'resol_y(m)': 0.05,
-        'resol_z(m)': 0.05,
+        'resol_x(m)': resol[0],
+        'resol_y(m)': resol[1],
+        'resol_z(m)': resol[2],
         #'disc_x': 10,
         #'disc_z': 10,
         'bias': 1.5,

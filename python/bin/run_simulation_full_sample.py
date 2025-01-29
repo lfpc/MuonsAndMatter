@@ -91,9 +91,11 @@ def get_total_hits(phi,inputs_dir:str,
     n_muons_unweighted = 0
     n_hits_total = 0
     all_results = {}
+    print('LENGTH:', SHIP.get_total_length(phi))
+    print('WEIGHT:', SHIP.get_weight(phi))
     for name in os.listdir(inputs_dir):
         n_name = extract_number_from_string(name)
-        if int(n_name) == 0: continue
+        #if not int(n_name) == 0: continue
         print('FILE:', name)
         t1 = time()
         with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:
@@ -134,6 +136,8 @@ def get_loss(phi,inputs_dir:str,
                  simulate_fields=field_map)
     total_loss = 0
     all_results = {}
+    print('LENGTH:', SHIP.get_total_length(phi))
+    print('WEIGHT:', SHIP.get_weight(phi))
     for name in os.listdir(inputs_dir):
         n_name = extract_number_from_string(name)
         print('FILE:', name)
@@ -175,7 +179,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     if args.params == 'sc_v6': params = ShipMuonShieldCluster.sc_v6
-    elif args.params == 'oliver': params = ShipMuonShieldCluster.warm_opt
+    elif args.params == 'oliver': params = ShipMuonShieldCluster.old_warm_opt
+    elif args.params == 'oliver_scaled': params = ShipMuonShieldCluster.warm_opt
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
