@@ -47,31 +47,14 @@ int add(int a, int b) {
 }
 
 void simulate_muon(double px, double py, double pz, int charge,
-                    double x, double y, double z, double SmearBeam = 0, unsigned int seed = 0) {
+                    double x, double y, double z) {
     if (ui_manager == nullptr) {
         G4cout<<"Call initialize(...) before running this function.\n";
         throw std::runtime_error("Forgot to call initialize?");
     }
-
-    double dx = 0;
-    double dy = 0;
-
-    if (SmearBeam > 0) {
-        std::mt19937 gen(seed);
-        std::normal_distribution<> gauss(0, 1); // mean 0, stddev 1
-        std::uniform_real_distribution<> uniform(0, 2);
-
-        double r = SmearBeam + 0.8 * gauss(gen);
-        double _phi = uniform(gen)*M_PI;
-        dx = r * std::cos(_phi);
-        dy = r * std::sin(_phi);
-    }
-    x += dx / 100;
-    y += dy / 100;
     primariesGenerator->setNextMomenta(px, py, pz);
     primariesGenerator->setNextPosition(x, y, z);
     primariesGenerator->setNextCharge(charge);
-
     ui_manager->ApplyCommand(std::string("/run/beamOn ") + std::to_string(1));
 }
 

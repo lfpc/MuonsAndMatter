@@ -20,6 +20,7 @@ def run(muons,
         seed:int = None,
         draw_magnet = False,
         SmearBeamRadius:float = 5., #cm
+        add_target:bool = True,
         kwargs_plot = {}):
     """
         Simulates the passage of muons through the muon shield and collects the resulting data.
@@ -52,7 +53,8 @@ def run(muons,
                                       simulate_fields=simulate_fields,
                                       sensitive_film_params=sensitive_film_params,
                                       field_map_file = field_map_file,
-                                      add_cavern = add_cavern)
+                                      add_cavern = add_cavern,
+                                      add_target = add_target)
 
     detector["store_primary"] = sensitive_film_params is None
     detector["store_all"] = False
@@ -76,17 +78,23 @@ def run(muons,
         z = (-input_dist)*np.ones_like(z)
     z = np.minimum(z, -0.9)
 
+    if SmearBeamRadius > 0: #ring transformation
+        gauss = np.random.normal(0, 1, size=x.shape) 
+        uniform = np.random.uniform(0, 2, size=x.shape)
+        r = SmearBeamRadius + 0.8 * gauss
+        _phi = uniform * np.pi
+        dx = r * np.cos(_phi)
+        dy = r * np.sin(_phi)
+        x += dx / 100
+        y += dy / 100
+
     muon_data = []
-    
     for i in range(len(px)):
-        simulate_muon(px[i], py[i], pz[i], int(charge[i]), x[i],y[i], z[i], SmearBeamRadius, seed if seed else np.random.randint(0,100))
+        simulate_muon(px[i], py[i], pz[i], int(charge[i]), x[i],y[i], z[i])
         if sensitive_film_params is None: 
             #If sensitive film is not present, we collect all the track
             data = collect()
-            if np.all(data['z']<80): continue
             muon_data += [data]
-            if len(muon_data) > 10000: break
-            
         else: 
             #If sensitive film is defined, we collect only the muons that hit the sensitive film
             data_s = collect_from_sensitive()
@@ -175,7 +183,7 @@ if __name__ == '__main__':
     if not args.real_fields:
         args.field_file = None
     else: 
-        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, cores_field=cores)
+        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=cores)
     t2_fem = time()
 
     with gzip.open(input_file, 'rb') as f:
