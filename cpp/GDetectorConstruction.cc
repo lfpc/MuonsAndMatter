@@ -17,6 +17,7 @@
 #include "G4ThreeVector.hh"
 #include "G4TransportationManager.hh"
 #include "G4Box.hh"
+#include "G4Tubs.hh"
 #include "G4LogicalVolume.hh"
 #include "G4NistManager.hh"
 #include "G4PVPlacement.hh"
@@ -103,6 +104,25 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
                 logicG->SetUserLimits(userLimits2);
             }
         
+        }
+    }
+    if (detectorData.isMember("target")) {
+        const Json::Value targets = detectorData["target"];
+        int i = 0;
+        for (const auto& target : targets) {
+            G4double innerRadius = 0;//target["innerRadius"].asDouble() * m;
+            G4double outerRadius = target["radius"].asDouble() * m;
+            G4double dz = target["dz"].asDouble() * m / 2;
+            G4double startAngle = 0*deg;//target["startAngle"].asDouble() * deg;
+            G4double spanningAngle = 360*deg;//target["spanningAngle"].asDouble() * deg;
+            G4double z_center = target["z_center"].asDouble() * m;
+            std::string materialName = target["material"].asString();
+            G4Material* cylinderMaterial = nist->FindOrBuildMaterial(materialName);
+            G4Tubs* solidCylinder = new G4Tubs("TargetCylinder" + std::to_string(i), innerRadius, outerRadius, dz, startAngle, spanningAngle);
+            G4LogicalVolume* logicCylinder = new G4LogicalVolume(solidCylinder, cylinderMaterial, "Cylinder" + std::to_string(i));
+            new G4PVPlacement(0, G4ThreeVector(0, 0, z_center), logicCylinder, "Cylinder" + std::to_string(i), logicWorld, false, 0, true);
+            logicCylinder->SetUserLimits(userLimits2);
+            i++;
         }
     }
     // Process the magnets from the JSON variable

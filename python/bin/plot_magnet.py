@@ -56,6 +56,43 @@ def plot_magnet(detector,
         ]
         box = Poly3DCollection(edges, facecolors='cyan', linewidths=1, edgecolors='orange', alpha=.15)
         ax.add_collection3d(box)
+    if "target" in detector:
+        for target in detector["target"]:
+            z_center = target["z_center"]
+            dz = target["dz"]
+            radius = target["radius"]
+            material = target["material"]
+
+            # Define the color based on the material
+            if material == "G4_W":
+                color = 'darkblue'
+            elif material == "G4_WATER":
+                color = 'lightblue'
+            elif material == "G4_Mo":
+                color = 'brown'
+            else:
+                color = 'gray'  # Default color
+
+            # Define the vertices of the cylinder
+            z1 = z_center - dz
+            z2 = z_center + dz
+            theta = np.linspace(0, 2 * np.pi, 100)
+            x = radius * np.cos(theta)
+            y = radius * np.sin(theta)
+
+            # Create the top and bottom circles
+            top_circle = np.array([z2 * np.ones_like(theta), x, y]).T
+            bottom_circle = np.array([z1 * np.ones_like(theta), x, y]).T
+
+            # Create the side faces
+            side_faces = []
+            for i in range(len(theta) - 1):
+                side_faces.append([bottom_circle[i], bottom_circle[i + 1], top_circle[i + 1], top_circle[i]])
+
+            ax.add_collection3d(Poly3DCollection([top_circle], facecolors=color, linewidths=0.01, edgecolors=color, alpha=0.7))
+            ax.add_collection3d(Poly3DCollection([bottom_circle], facecolors=color, linewidths=0.01, edgecolors=color, alpha=0.7))
+            ax.add_collection3d(Poly3DCollection(side_faces, facecolors=color, linewidths=0.01, edgecolors = color, alpha=0.7))
+    
     for m,mag in enumerate(magnets):
         if m in ignore_magnets: continue
         #print(f'MAG {i}' , mag)

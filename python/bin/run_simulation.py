@@ -224,7 +224,7 @@ if __name__ == '__main__':
     if args.plot_magnet:
         sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':38}
         angle = 90
-        elev = 90
+        elev = 0
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = angle, elev = elev)
         else:

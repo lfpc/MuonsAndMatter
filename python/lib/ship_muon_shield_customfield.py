@@ -123,7 +123,6 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
         "z_center" : z_translation,
     })
 
-
 def constraints_cavern_intersection(corners, dZ, z_translation, cavern_transition):
     def get_cavern_bounds(z):
         if z < cavern_transition:
@@ -147,9 +146,36 @@ def constraints_cavern_intersection(corners, dZ, z_translation, cavern_transitio
     corners[8:, 1] = np.clip(corners[8:, 1], y_min + wall_gap, y_max - wall_gap)
     return corners.flatten()
 
-def CreateTarget():
-    target = {}
-    return target
+def CreateTarget(z_start:float):
+    target_components = []
+    N = 13
+    T = 5
+    materials = N * ["G4_Mo"] + T * ["G4_W"]
+    lengths = [8., 2.5, 2.5, 2.5, 2.5, 
+        2.5, 2.5, 2.5, 5.0, 5.0, 
+        6.5, 8., 8., 5., 8., 
+        10., 20., 35.]
+    h20_l = 0.5 / 100 # H20 slit *17 times
+    diameter  = 30. / 100  # full length in x and y
+    z = z_start
+    for i in range(N+T):
+        L = lengths[i]/100
+        if i!=0:
+            target_components.append({
+            "radius": diameter / 2,
+            "dz": h20_l,
+            "z_center": z + h20_l/2,
+            "material": "G4_WATER",
+            })
+            z += h20_l
+        target_components.append({
+            "radius": diameter / 2,
+            "dz": L,
+            "z_center": z + L/2,
+            "material": materials[i],
+        })
+        z += L
+    return target_components
 
 def CreateCavern(shift = 0, length:float = 90.):
     cavern = []
@@ -452,7 +478,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
 
 
     if field_map_file is not None or simulate_fields: 
-        simulate_fields = (field_map_file is None) or (not exists(field_map_file)) or simulate_fields
+        simulate_fields = (not exists(field_map_file)) or simulate_fields
         max_x = max(np.max(dXIn + dXIn * ratio_yokes + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokes+gapOut+midGapOut))/100
         max_y = max(np.max(dYIn + dXIn * ratio_yokes), np.max(dYOut + dXOut * ratio_yokes))/100
         d_space = (max_x+0.5, max_y+0.5, (-1, np.ceil((Z[-1]+dZf[-1]+50)/100)))
@@ -507,6 +533,7 @@ def get_design_from_params(params,
                            field_map_file = None,
                            sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':82},
                            add_cavern:bool = True,
+                           add_target:bool = True,
                            cores_field:int = 1):
     params = np.round(params, 2)
     shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field)
@@ -515,6 +542,7 @@ def get_design_from_params(params,
     World_dZ = 200 #m
     World_dX = World_dY = 30 if add_cavern else 15
     if add_cavern: shield["cavern"] = CreateCavern(cavern_transition, length = World_dZ)
+    if add_target: shield['target'] = CreateTarget(z_start=shift)
     #z_bias = sensitive_film_params['position']/2
     i=0
     max_z = 0
