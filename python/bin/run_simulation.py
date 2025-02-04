@@ -21,6 +21,8 @@ def run(muons,
         draw_magnet = False,
         SmearBeamRadius:float = 5., #cm
         add_target:bool = True,
+        keep_tracks_of_hits = False,
+        extra_magnet = False,
         kwargs_plot = {}):
     """
         Simulates the passage of muons through the muon shield and collects the resulting data.
@@ -54,13 +56,14 @@ def run(muons,
                                       sensitive_film_params=sensitive_film_params,
                                       field_map_file = field_map_file,
                                       add_cavern = add_cavern,
-                                      add_target = add_target)
+                                      add_target = add_target,
+                                      extra_magnet=extra_magnet)
 
-    detector["store_primary"] = sensitive_film_params is None
+    detector["store_primary"] = sensitive_film_params is None or keep_tracks_of_hits
     detector["store_all"] = False
     t1 = time()
     output_data = initialize_geant4(detector, seed)
-    if not draw_magnet: del detector #save memory?
+    #if not draw_magnet: del detector #save memory?
     print('Time to initialize', time()-t1)
     output_data = json.loads(output_data)    
 
@@ -94,6 +97,15 @@ def run(muons,
         if sensitive_film_params is None: 
             #If sensitive film is not present, we collect all the track
             data = collect()
+            data['pdg_id'] = charge[i]*-13
+            data['W'] = W[i] if muons.shape[-1] == 8 else 1
+            muon_data += [data]
+        elif keep_tracks_of_hits:
+            data = collect()
+            data_s = collect_from_sensitive()
+            if not (len(data_s['px'])>0 and 13 in np.abs(data_s['pdg_id'])): continue 
+            data['pdg_id'] = charge[i]*-13
+            data['W'] = W[i] if muons.shape[-1] == 8 else 1
             muon_data += [data]
         else: 
             #If sensitive film is defined, we collect only the muons that hit the sensitive film
@@ -144,6 +156,8 @@ if __name__ == '__main__':
     parser.add_argument("-warm",dest="SC_mag", action = 'store_false')
     parser.add_argument("-save_data", action = 'store_true')
     parser.add_argument("-return_nan", action = 'store_true')
+    parser.add_argument("-keep_tracks_of_hits", action = 'store_true')
+    parser.add_argument("-extra_magnet", action = 'store_true')
 
     args = parser.parse_args()
     cores = args.c
@@ -183,7 +197,7 @@ if __name__ == '__main__':
     if not args.real_fields:
         args.field_file = None
     else: 
-        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=cores)
+        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=cores, extra_magnet=args.extra_magnet)
     t2_fem = time()
 
     with gzip.open(input_file, 'rb') as f:
@@ -198,7 +212,7 @@ if __name__ == '__main__':
     t1 = time()
     with mp.Pool(cores) as pool:
         result = pool.starmap(run, [(workload,params,input_dist,True,args.SC_mag,sensitive_film_params,args.add_cavern, 
-                                    False,args.field_file,args.return_nan,args.seed, False) for workload in workloads])
+                                    False,args.field_file,args.return_nan,args.seed, False, 5, True, args.keep_tracks_of_hits, args.extra_magnet) for workload in workloads])
     t2 = time()
     print(f"Time to FEM: {t2_fem - t1_fem:.2f} seconds.")
     print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")
@@ -212,20 +226,23 @@ if __name__ == '__main__':
     try: all_results = np.concatenate(all_results, axis=0)
     except: pass
     print(params)
-    try: print('Data Shape', all_results.shape)
-    except: print('Data Shape', len(all_results))
-    all_results = all_results[:10000]
-    print('n_input', data_n[:,7].sum())
+    try: 
+        print('Data Shape', all_results.shape)
+        print('n_hits', all_results[:,7].sum())
+        print('n_input', data_n[:,7].sum())
+    except: 
+        print('Data Shape', len(all_results))
+        print('Input Shape', len(data_n))
+    all_results = all_results[:1000]
     if args.save_data:
         with gzip.open(f'data/outputs/outputs_optimal.pkl', "wb") as f:
             pickle.dump(all_results, f)
-    if not (args.sens_plane is None or args.sens_plane == 0):
-        print('n_hits', all_results[:,7].sum())
+        
     if args.plot_magnet:
-        sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':38}
+        sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':82}
         angle = 90
-        elev = 0
-        if False:#detector is not None:
+        elev = 90
+        if detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = angle, elev = elev)
         else:
             result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=args.real_fields, field_map_file = args.field_file, cavern = False, azim = angle, elev = elev)#args.add_cavern)

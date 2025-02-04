@@ -8,7 +8,6 @@ def plot_magnet(detector,
                 output_file='plots/detector_visualization.png',
                 muon_data = [], 
                 sensitive_film_position = None,
-                fixed_zlim:bool = False, 
                 azim:float = 126,
                 elev:float = 17,
                 ignore_magnets = []):
@@ -150,17 +149,14 @@ def plot_magnet(detector,
             x = data['x']
             y = data['y']
             z = data['z']
-
-            if 'pdg_id' in data: 
-                particle = data['pdg_id']  
-            else: particle = 13
+            particle = data['pdg_id']  
         else:
             _,_,_,x,y,z,particle = data[:7]
             if sensitive_film_position is not None: z = sensitive_film_position*np.ones_like(z)+detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz']
         
         #total_sensitive_hits += 1
-        ax.scatter(z[particle>0], x[particle>0], y[particle>0], color='blue', label=f'Muon {i + 1}', s=0.5)
-        ax.scatter(z[particle<0], x[particle<0], y[particle<0], color='orange', label=f'AntiMuon {i + 1}', s=0.5)
+        ax.scatter(z[particle>0], x[particle>0], y[particle>0], color='blue', label=f'Muon {i + 1}', s=0.2, alpha=0.3)
+        ax.scatter(z[particle<0], x[particle<0], y[particle<0], color='orange', label=f'AntiMuon {i + 1}', s=0.2, alpha=0.3)
     
     # Plot cavern
     if "cavern" in detector:
@@ -186,7 +182,7 @@ def plot_magnet(detector,
                             [corners[j] for j in [1, 2, 6, 5]]]
                 ax.add_collection3d(Poly3DCollection(edges, facecolors='gray', linewidths=0.07, edgecolors='black', alpha=0.25))
     # Plot horizontal plane at y = -1.7
-    if 80 < azim < 100:
+    if 80 < azim < 100 and -10 < elev < 20:
         z_plane1 = -1.7
         z_plane2 = -3.36
         x_split = 22 - 2.345
@@ -204,7 +200,7 @@ def plot_magnet(detector,
         X2, Y2 = np.meshgrid(x_range2, y_range2)
         Z2 = np.full_like(X2, z_plane2)
         ax.plot_surface(X2, Y2, Z2, color='black', alpha=0.3)
-    elif azim < 10:
+    elif azim < 10 or 80< elev<100 :
         y_plane1 = -3.57
         y_plane2 = -4.57
         x_split = 22 - 2.345
@@ -223,14 +219,10 @@ def plot_magnet(detector,
         Y2 = np.full_like(X2, y_plane2)
         ax.plot_surface(X2, Y2, Z2, color='black', alpha=0.3)
 
-    if fixed_zlim: ax.set_xlim(-30+sensitive_film_position, detector['magnets'][0]['z_center'] - detector['magnets'][0]['dz']-5)
+    if sensitive_film_position is not None: ax.set_xlim(3+sensitive_film_position, -5)
     else: ax.set_xlim(40, -5)
-    ax.set_ylim(-5, 10)
-    ax.set_zlim(-5, 10)
-
-    # Adjust the view angle and zoom level
-    # ax.view_init(elev=20., azim=30)  # Adjust elevation and azimuth
-    # ax.dist = 6 # Smaller values zoom in, larger values zoom out
+    ax.set_ylim(-5, 7)
+    ax.set_zlim(-5, 7)
 
     ax.set_xlabel('Z (m)')
     ax.set_ylabel('X (m)')

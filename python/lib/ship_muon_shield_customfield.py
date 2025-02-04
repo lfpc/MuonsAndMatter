@@ -66,7 +66,7 @@ def simulate_field(params,
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
+    #if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
     fields = magnet_simulations.run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores)
     fields['points'][:,2] += Z_init/100
@@ -385,8 +385,7 @@ def construct_block(medium, tShield,field_profile, stepGeo):
     CreateArb8('IronAfterTarget', medium, dZ, cornersIronBlock, [0.,0.,0.], field_profile, Block, 0, 0, Z, stepGeo)
     tShield['magnets'].append(Block)
 
-def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1):
-    extra_magnet = False
+def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1,extra_magnet = False):
     n_magnets = 7 + int(extra_magnet)
     cm = 1
     mm = 0.1 * cm
@@ -534,9 +533,10 @@ def get_design_from_params(params,
                            sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':82},
                            add_cavern:bool = True,
                            add_target:bool = True,
-                           cores_field:int = 1):
+                           cores_field:int = 1,
+                           extra_magnet = False):
     params = np.round(params, 2)
-    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field)
+    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, extra_magnet = extra_magnet)
     shift = -2.345
     cavern_transition = 22+shift #m
     World_dZ = 200 #m

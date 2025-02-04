@@ -106,7 +106,7 @@ def get_total_hits(phi,inputs_dir:str,
 
         n_muons_total += n_muons
         time1 = time()
-        n_hits = SHIP(phi,file = n_name).item()
+        n_hits = SHIP(phi,file = n_name).item()-1
         print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
         #concatenate_files(outputs_dir, n_name)
         n_hits_total += n_hits
@@ -173,6 +173,7 @@ if __name__ == '__main__':
     #parser.add_argument("--z", type=float, default=0.1)
     #parser.add_argument("--sens_plane", type=float, default=57)
     parser.add_argument("-warm", dest = "hybrid",action = 'store_false')
+    parser.add_argument("-extra_magnet", action = 'store_true')
     parser.add_argument("-field_map", action = 'store_true')
     parser.add_argument("-calc_loss", action = 'store_true')
     parser.add_argument("-only_files", action = 'store_true')
