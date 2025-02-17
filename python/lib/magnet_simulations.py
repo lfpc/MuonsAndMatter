@@ -12,6 +12,7 @@ from scipy.interpolate import griddata
 from scipy.spatial import cKDTree
 import gzip, pickle
 import roxie_evaluator
+#import snoopy
 import multiprocessing as mp
 
 
@@ -177,6 +178,43 @@ def run_fem(magn_params:dict,
     # points_H, H = solver.compute_field(x, 'H', quad_order=element_order+1)
     return {'points':points.round(4).astype(np.float32), 'B':B.astype(np.float32)}
 
+def run_fem_snoopy(magn_params:dict,
+            materials_dir = None):
+    """Runs the finite element method to compute the magnetic field.
+    Parameters:
+    magn_params (dict): Dictionary containing the magnets parameters.
+    materials_dir (str, optional): Directory containing the materials. Defaults is None, returning the data dir in tha parent dir.
+    Returns:
+    dict: A dictionary containing the position points and the computed magnetic field 'B'.
+    """
+    if ('B_goal(T)' in magn_params) and ('NI(A)' not in magn_params):
+        NI, valid = roxie_evaluator.get_NI(magn_params['B_goal(T)'],
+                                            magn_params['Xmgap1(m)'],
+                                            magn_params['Xcore1(m)'],
+                                            magn_params['Xvoid1(m)'],
+                                            magn_params['Xyoke1(m)'],
+                                            magn_params['Xmgap2(m)'],
+                                            magn_params['Xcore2(m)'],
+                                            magn_params['Xvoid2(m)'],
+                                            magn_params['Xyoke2(m)'],
+                                            magn_params['Ycore1(m)'],
+                                            magn_params['Yvoid1(m)'],
+                                            magn_params['Yyoke1(m)'],
+                                            magn_params['Ycore2(m)'],
+                                            magn_params['Yvoid2(m)'],
+                                            magn_params['Yyoke2(m)'],
+                                            magn_params['Z_len(m)'],
+                                            magn_params['yoke_type'],
+                                            #mu_iron
+                                            )
+    print('NI = {}'.format(NI))
+    magn_params['NI(A)'] = NI
+    start = time.time()
+    points, B = snoopy.get_vector_field_mag_1(magn_params, 0, materials_directory=materials_dir)
+    end = time.time()
+    print('FEM Computation time = {} sec'.format(end - start))
+    return {'points':points.round(4).astype(np.float32), 'B':B.astype(np.float32)}
+
 def simulate_and_grid(params, points):
     delta_z = 2.0 if params['B_goal(T)'] > 2 else 1.0
     return get_grid_data(**run_fem(params, delta_air = (1.0,1.0,delta_z)), new_points=points)[1]
@@ -212,13 +250,7 @@ def run(magn_params:dict,
     with mp.Pool(cores) as pool:
         B = pool.starmap(simulate_and_grid,[({k:v[i] for k,v in magn_params.items()},points) for i in range(n_magnets)])
     B = np.sum(B, axis=0)
-    
-    '''B = 0
-    for i in range(n_magnets):
-        print('Simulating magnet {}'.format(i+1))
-        params = {k:v[i] for k,v in magn_params.items()}
-        delta_z = 2.0 if params['B_goal(T)'] > 2 else 1.0
-        B += get_grid_data(**run_fem(params, delta_air = (1.0,1.0,delta_z)), new_points=points)[1]'''
+
     points = np.column_stack([points[i].ravel() for i in range(3)])
     if apply_symmetry:
         points,B = get_symmetry(points, B, reorder = True)

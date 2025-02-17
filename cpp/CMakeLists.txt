@@ -30,6 +30,7 @@ set(SOURCE_FILES
         CustomSteppingAction.cc
         CustomEventAction.cc
         BoxyDetectorConstruction.cc
+        ToyDetectorConstruction.cc
         GDetectorConstruction.cc
         SlimFilm.cc
         SlimFilmSensitiveDetector.cc

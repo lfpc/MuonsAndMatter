@@ -15,6 +15,7 @@
 #include "FTFP_BERT.hh"
 #include "CustomEventAction.hh"
 #include "BoxyDetectorConstruction.hh"
+#include "ToyDetectorConstruction.hh"
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 #include <G4UIExecutive.hh>
@@ -228,6 +229,8 @@ std::string initialize( int rseed_0,
         }
         else if (type == 0)
             detector = new BoxyDetectorConstruction(detectorData);
+        else if (type == 4)
+            detector = new ToyDetectorConstruction(detectorData, B_map);
         else if (type == 1)
             detector = new GDetectorConstruction(detectorData, B_map);
         else if (type == 2) {
@@ -245,7 +248,7 @@ std::string initialize( int rseed_0,
 
     std::cout<<"Detector initializing..."<<std::endl;
     runManager->SetUserInitialization(detector);
-
+    std::cout<<"Detector initialized"<<std::endl;
     auto physicsList = new FTFP_BERT;
 
 //    auto physicsList = new QGSP_BERT_HP_PEN();
@@ -255,24 +258,32 @@ std::string initialize( int rseed_0,
         physicsList->RegisterPhysics(new G4StepLimiterPhysics());
     }
     runManager->SetUserInitialization(physicsList);
+    std::cout<<"Physics list initialized"<<std::endl;
     customEventAction = new CustomEventAction();
+    std::cout<<"Event action initialized"<<std::endl;
     primariesGenerator = new PrimaryGeneratorAction();
+    std::cout<<"Primary generator initialized"<<std::endl;
     steppingAction = new CustomSteppingAction();
+    std::cout<<"Stepping action initialized"<<std::endl;
     primariesGenerator->setSteppingAction(steppingAction);
     customEventAction->setSteppingAction(steppingAction);
     steppingAction->setStoreAll(storeAll);
     steppingAction->setStorePrimary(storePrimary);
+    std::cout<<"Store all: "<<storeAll<<std::endl;
 //    auto actionInitialization = new B4aActionInitialization(detector, eventAction, primariesGenerator);
 //    runManager->SetUserInitialization(actionInitialization);
 
     runManager->SetUserAction(primariesGenerator);
     runManager->SetUserAction(steppingAction);
     runManager->SetUserAction(customEventAction);
+    std::cout<<"User actions set"<<std::endl;
 
     // Get the pointer to the User Interface manager
     ui_manager = G4UImanager::GetUIpointer();
+    std::cout<<"UI manager initialized"<<std::endl;
 
     ui_manager->ApplyCommand(std::string("/run/initialize"));
+    std::cout<<"Run initialized"<<std::endl;
     ui_manager->ApplyCommand(std::string("/run/printProgress 100"));
 
     std::cout<<"Initialized"<<std::endl;

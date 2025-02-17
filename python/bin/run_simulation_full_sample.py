@@ -19,29 +19,12 @@ def concatenate_files(direc, file_number):
     all_data = []
     for file in os.listdir(direc):
         if f'_{file_number}_' not in file: continue
-        with gzip.open(os.path.join(direc,file),'rb') as f:
+        with open(os.path.join(direc,file),'rb') as f:
             all_data.append(pickle.load(f))
         os.remove(os.path.join(direc,file))
-    
     all_data = np.concatenate(all_data,axis=1)
-    with gzip.open(os.path.join(direc,f'muons_data_{file_number}.pkl'),'wb') as f:
+    with open(os.path.join(direc,f'muons_data_{file_number}.pkl'),'wb') as f:
         pickle.dump(all_data,f)
-
-def test(phi,inputs_dir:str,
-        outputs_dir:str, 
-        cores:int = 512,
-        seed = 1,
-        tag = ''):
-    SHIP = ShipMuonShieldCluster(cores = cores,
-                 loss_with_weight = False,
-                 manager_ip='34.65.198.159',
-                 port=444,
-                 seed = seed)
-    time1 = time()
-    SHIP(phi).item()
-    print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
-    print('saved new file')
-    print('TIME:', time.time()-t1)
 
 def get_files(phi,inputs_dir:str,
         outputs_dir:str, 
@@ -60,7 +43,7 @@ def get_files(phi,inputs_dir:str,
         n_name = extract_number_from_string(name)
         print('FILE:', name)
         t1 = time()
-        with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:
+        with open(os.path.join(inputs_dir,name), 'rb') as f:
             factor = pickle.load(f)[:,-1]
         SHIP.n_samples = factor.shape[0]
         time1 = time()
@@ -108,12 +91,12 @@ def get_total_hits(phi,inputs_dir:str,
         time1 = time()
         n_hits = SHIP(phi,file = n_name).item()-1
         print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
-        #concatenate_files(outputs_dir, n_name)
+        concatenate_files(outputs_dir, n_name)
         n_hits_total += n_hits
         n_muons_unweighted += len(factor)
         all_results[n_name] = (n_muons,n_hits)
-        with gzip.open(os.path.join(outputs_dir,f'num_muons_hits_{tag}.pkl'), "wb") as f:
-            pickle.dump(all_results, f)
+        #with open(os.path.join(outputs_dir,f'num_muons_hits_{tag}.pkl'), "wb") as f:
+        #    pickle.dump(all_results, f)
         print('TIME:', time()-t1)
         print('N EVENTS: ', len(factor))
         print('N MUONS: ', n_muons)

@@ -19,6 +19,7 @@
 #include "G4PhysListFactory.hh"
 #include "G4ParticleTypes.hh"
 #include "BoxyDetectorConstruction.hh"
+#include "ToyDetectorConstruction.hh"
 #include "GDetectorConstruction.hh"
 
 
