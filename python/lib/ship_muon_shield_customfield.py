@@ -5,7 +5,7 @@ from matplotlib.path import Path as polygon_path
 from lib import magnet_simulations
 #import sys
 #sys.path.append('/home/hep/lprate/projects/MuonsAndMatter/python/lib/reference_designs')
-from lib.reference_designs.params import new_parametrization, get_magnet_params, sc_v6, optimal_oliver
+from lib.reference_designs.params import new_parametrization,  sc_v6, optimal_oliver
 import pandas as pd
 from os.path import exists
 from time import time
@@ -40,7 +40,7 @@ def simulate_field(params,
               Z_init = 0,
               fSC_mag:bool = True,
               z_gap = 0.1,
-              field_direction = [ 'up', 'up', 'up', 'up', 'down', 'down', 'down', 'down'],
+              #field_direction = [ 'up', 'up', 'up', 'up', 'down', 'down', 'down', 'down'],
               resol = (0.05,0.05,0.05),
               d_space = ((4., 4., (-1, 30.))), 
               file_name = 'data/outputs/fields.pkl',
@@ -51,22 +51,24 @@ def simulate_field(params,
     Z_pos = 0.
     for i, (mag,idx) in enumerate(new_parametrization.items()):
         mag_params = params[idx]
-        if mag == 'HA': Ymgap=0.; B_goal = 1.6; yoke_type = 'Mag1'
-        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag1'
-        else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3'
+        if mag == 'HA': Ymgap=0.; yoke_type = 'Mag1'; NI = 11821
+        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; NI = 12560; yoke_type = 'Mag1'
+        else: Ymgap = 0.; NI = 12560; yoke_type = 'Mag3'
         if fSC_mag:
             if mag == 'M1': continue
             elif mag == 'M3':
                 Z_pos += 2 * mag_params[0]/100 - z_gap
                 continue
-            elif mag == 'M2': Ymgap = 0.05; B_goal = 5.1; yoke_type = 'Mag2'
-        if field_direction[i] == 'up': B_goal *= -1 
-        p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal=B_goal, yoke_type=yoke_type, resol = resol)
+            elif mag == 'M2': Ymgap = 0.05; NI = 3.20E06; yoke_type = 'Mag2'
+        #if field_direction[i] == 'up': B_goal *= -1
+        yoke_type = 'Mag1'
+        p = magnet_simulations.get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, NI=NI, yoke_type=yoke_type, resol = resol)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    #if file_name is not None: all_params.to_csv('data/magnet_params.csv', index=False)
+    all_params.to_csv('data/magnet_params.csv', index=False)
+    all_params = pd.read_csv('/home/hep/lprate/projects/snoo.py/files/parameters/baseline_1.csv')
     all_params = all_params.to_dict(orient='list')
     fields = magnet_simulations.run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores)
     fields['points'][:,2] += Z_init/100
@@ -484,7 +486,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         resol = (0.02,0.02,0.05)
         field_map = get_field(simulate_fields,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
-                              field_direction = fieldDirection,file_name=field_map_file, only_grid_params=True, cores = min(cores_field,n_magnets))
+                              file_name=field_map_file, only_grid_params=True, cores = min(cores_field,n_magnets))
         tShield['global_field_map'] = field_map
 
     for nM in range(n_magnets):
@@ -592,9 +594,7 @@ if __name__ == '__main__':
     from lib.ship_muon_shield_customfield import get_design_from_params
     from muon_slabs import initialize
     import os
-    file_map_file = 'data/outputs/fields_mm.pkl'
-    if file_map_file is not None and os.path.exists(file_map_file):
-        os.remove(file_map_file)
+    file_map_file = 'data/outputs/fields.pkl'
     t1 = time()
     params = optimal_oliver
     detector = get_design_from_params(params, simulate_fields=True,field_map_file = file_map_file, add_cavern=True, cores_field=7, fSC_mag = False)

@@ -11,11 +11,68 @@ import gmsh
 from scipy.interpolate import griddata
 from scipy.spatial import cKDTree
 import gzip, pickle
-import roxie_evaluator
+#import roxie_evaluator
 #import snoopy
 import multiprocessing as mp
 
-
+def get_magnet_params(params, 
+                     Ymgap:float = 0.05,
+                     z_gap:float = 0.1,
+                     NI:float = 12_000,
+                     yoke_type:str = 'Mag1',
+                     resol = (0.02,0.02,0.05),
+                     B_goal:float = None,
+                     materials_directory = None,
+                     save_dir = None):
+    # #convert to meters
+    ratio_yoke = params[7]
+    params /= 100
+    Xmgap = params[8]
+    d = {
+    'yoke_type': yoke_type,
+    'coil_material': 'hts_pencake.json' if yoke_type == 'Mag2' else 'copper_water_cooled.json',
+    'max_turns': 12 if yoke_type == 'Mag2' else 10,
+    'J_tar(A/mm2)': 320 if yoke_type == 'Mag2' else 10,
+    'NI(A)': NI,
+    'coil_diam(mm)': 20 if yoke_type == 'Mag2' else 9,
+    'insulation(mm)': 8 if yoke_type == 'Mag2' else 0.5,
+    'yoke_spacer(mm)': 5,
+    'material': 'aisi1010.json',
+    'field_density': 5,
+    'delta_x(m)': 1 if yoke_type == 'Mag2' else 0.5,
+    'delta_y(m)': 1 if yoke_type == 'Mag2' else 0.5,
+    'delta_z(m)': 1 if yoke_type == 'Mag2' else 0.5,
+    'resol_x(m)': resol[0],
+    'resol_y(m)': resol[1],
+    'resol_z(m)': resol[2],
+    'Z_pos(m)': -1*params[0],
+    'Xmgap1(m)': Xmgap,
+    'Xmgap2(m)': Xmgap,
+    'Z_len(m)': 2 * params[0] - z_gap,
+    'Xcore1(m)': params[1] + Xmgap,
+    'Xvoid1(m)': params[1] + params[5] + Xmgap,
+    'Xyoke1(m)': params[1] + params[5] + ratio_yoke * params[1] + Xmgap,
+    'Xcore2(m)': params[2] + Xmgap,
+    'Xvoid2(m)': params[2] + params[6] + Xmgap,
+    'Xyoke2(m)': params[2] + params[6] + ratio_yoke * params[2] + Xmgap,
+    'Ycore1(m)': params[3],
+    'Yvoid1(m)': params[3] + Ymgap,
+    'Yyoke1(m)': params[3] + ratio_yoke * params[1] + Ymgap,
+    'Ycore2(m)': params[4],
+    'Yvoid2(m)': params[4] + Ymgap,
+    'Yyoke2(m)': params[4] + ratio_yoke * params[2] + Ymgap
+    }
+    if B_goal is not None:
+        if materials_directory is None:
+            materials_directory = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
+        d['NI(A)'] = snoopy.get_NI(B_goal, pd.DataFrame([d]),0, materials_directory = materials_directory)
+    if save_dir is not None:
+        from csv import DictWriter
+        with open(save_dir/"parameters.csv", "w", newline="") as f:
+            w = DictWriter(f, d.keys())
+            w.writeheader()
+            w.writerow(d)
+    return d
 
 def get_symmetry(points:np.array, B:np.array, reorder:bool = True):
    '''Applies symmetry to the computed magnetic field.'''
@@ -51,7 +108,7 @@ def construct_grid(limits = ((0., 0., -5.),(2.5, 3.5, 5.)),
     Z[Z == max_z] = max_z #- eps
     return X, Y, Z
 
-def get_grid_data(points: np.array, B: np.array, new_points: tuple):
+def get_grid_data(points: np.array, B: np.array,cost, new_points: tuple):
     '''Interpolates the magnetic field data to a new grid.'''
     t1 = time.time()
     '''Bx_out = griddata(points, B[:, 0], new_points, method='nearest', fill_value=0.0).ravel()
@@ -69,9 +126,9 @@ def get_grid_data(points: np.array, B: np.array, new_points: tuple):
     Bz_out[hull] = B[idx, 2]
     new_B = np.column_stack((Bx_out, By_out, Bz_out))
     print('Griddind / Interpolation time = {} sec'.format(time.time() - t1))
-    return new_points, new_B
+    return new_points, new_B, cost
 
-def run_fem(magn_params:dict,
+def run_fem_old(magn_params:dict,
             delta_air = (1.0,1.0,1.0),
             materials_dir = None):
     """Runs the finite element method to compute the magnetic field.
@@ -178,7 +235,7 @@ def run_fem(magn_params:dict,
     # points_H, H = solver.compute_field(x, 'H', quad_order=element_order+1)
     return {'points':points.round(4).astype(np.float32), 'B':B.astype(np.float32)}
 
-def run_fem_snoopy(magn_params:dict,
+def run_fem(magn_params:dict,
             materials_dir = None):
     """Runs the finite element method to compute the magnetic field.
     Parameters:
@@ -187,37 +244,17 @@ def run_fem_snoopy(magn_params:dict,
     Returns:
     dict: A dictionary containing the position points and the computed magnetic field 'B'.
     """
-    if ('B_goal(T)' in magn_params) and ('NI(A)' not in magn_params):
-        NI, valid = roxie_evaluator.get_NI(magn_params['B_goal(T)'],
-                                            magn_params['Xmgap1(m)'],
-                                            magn_params['Xcore1(m)'],
-                                            magn_params['Xvoid1(m)'],
-                                            magn_params['Xyoke1(m)'],
-                                            magn_params['Xmgap2(m)'],
-                                            magn_params['Xcore2(m)'],
-                                            magn_params['Xvoid2(m)'],
-                                            magn_params['Xyoke2(m)'],
-                                            magn_params['Ycore1(m)'],
-                                            magn_params['Yvoid1(m)'],
-                                            magn_params['Yyoke1(m)'],
-                                            magn_params['Ycore2(m)'],
-                                            magn_params['Yvoid2(m)'],
-                                            magn_params['Yyoke2(m)'],
-                                            magn_params['Z_len(m)'],
-                                            magn_params['yoke_type'],
-                                            #mu_iron
-                                            )
-    print('NI = {}'.format(NI))
-    magn_params['NI(A)'] = NI
+    materials_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
     start = time.time()
-    points, B = snoopy.get_vector_field_mag_1(magn_params, 0, materials_directory=materials_dir)
+    points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_1(magn_params, 0, materials_directory=materials_dir)
+    C_i, C_c, C_edf = snoopy.compute_prices(magn_params, 0, M_i, M_c, Q,materials_directory = materials_dir)
+    cost = C_i + C_c + C_edf
     end = time.time()
     print('FEM Computation time = {} sec'.format(end - start))
-    return {'points':points.round(4).astype(np.float32), 'B':B.astype(np.float32)}
+    return {'points':points.round(4).astype(np.float32), 'B':B.astype(np.float32), 'cost':cost}
 
 def simulate_and_grid(params, points):
-    delta_z = 2.0 if params['B_goal(T)'] > 2 else 1.0
-    return get_grid_data(**run_fem(params, delta_air = (1.0,1.0,delta_z)), new_points=points)[1]
+    return get_grid_data(**run_fem(params), new_points=points)[1]
 
 def run(magn_params:dict,
         resol = (0.05, 0.05, 0.05),
@@ -243,12 +280,12 @@ def run(magn_params:dict,
     dict: A dictionary containing the computed points and magnetic field 'B'.
     """
     
-    n_magnets = len(magn_params['B_goal(T)'])
+    n_magnets = len(magn_params['yoke_type'])
     print('Starting simulation for {} magnets'.format(n_magnets))
     limits_quadrant = ((0., 0., d_space[2][0]), (d_space[0],d_space[1], d_space[2][1]))
     points = construct_grid(limits=limits_quadrant, resol=resol)
     with mp.Pool(cores) as pool:
-        B = pool.starmap(simulate_and_grid,[({k:v[i] for k,v in magn_params.items()},points) for i in range(n_magnets)])
+        B = pool.starmap(simulate_and_grid,[({k:[v[i]] for k,v in magn_params.items()},points) for i in range(n_magnets)])
     B = np.sum(B, axis=0)
 
     points = np.column_stack([points[i].ravel() for i in range(3)])
@@ -257,7 +294,7 @@ def run(magn_params:dict,
     if plot_results:
         pv.start_xvfb()
         pl = pv.Plotter()
-        roxie_evaluator.plot_vector_field(pl, points[:, [2, 0, 1]] , B[:, [2, 0, 1]] , title='B in T', mag=0.1)
+        #roxie_evaluator.plot_vector_field(pl, points[:, [2, 0, 1]] , B[:, [2, 0, 1]] , title='B in T', mag=0.1)
         #pl.add_mesh(points[:, [2, 0, 1]] , point_size=1.0, render_points_as_spheres=True, color='red')
         pl.show_grid(ztitle='Y [m]', xtitle='Z [m]', ytitle='X [m]')
         pl.add_axes(zlabel='Y [m]', xlabel='Z [m]', ylabel='X [m]')

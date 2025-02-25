@@ -233,7 +233,6 @@ if __name__ == '__main__':
     except: 
         print('Data Shape', len(all_results))
         print('Input Shape', len(data_n))
-    all_results = all_results[:1000]
     if args.save_data:
         with gzip.open(f'data/outputs/outputs_optimal.pkl', "wb") as f:
             pickle.dump(all_results, f)

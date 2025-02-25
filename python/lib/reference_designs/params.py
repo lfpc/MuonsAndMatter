@@ -53,59 +53,6 @@ new_parametrization = {'HA': [0, 7, 8, 9, 10, 11, 12, 13, 14],
 SC_idx =  [new_parametrization['HA'][0]] + new_parametrization['M2'][:-2] + [new_parametrization['M3'][0]]+\
            new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
 
-def get_magnet_params(params, 
-                     Ymgap:float = 0.05,
-                     z_gap:float = 0.1,
-                     B_goal:float = 5.1,
-                     yoke_type:str = 'Mag1',
-                     resol = (0.02,0.02,0.05),
-                     save_dir = None,):
-    # #convert to meters
-    ratio_yoke = params[7]
-    params /= 100
-    Xmgap = params[8]
-    NI = 1.6E+06 if yoke_type == 'Mag2'else 50 #CHANGE FOR WARM CONFIGURATION
-    d = {'yoke_type': yoke_type,
-        'coil_type': 'Racetrack',
-        'material': 'bhiron_1', #check material and etc for SC
-        'resol_x(m)': resol[0],
-        'resol_y(m)': resol[1],
-        'resol_z(m)': resol[2],
-        #'disc_x': 10,
-        #'disc_z': 10,
-        'bias': 1.5,
-        'mu_r': 1,
-        #'J(A/mm2)': 50, 
-        'N1': 3,
-        'N2': 10,
-        'NI(A)':NI,
-        'delta_x(mm)': 1,
-        'delta_y(mm)': 1,
-        'B_goal(T)': B_goal,
-        'Z_pos(m)': -1*params[0],
-        'Xmgap1(m)': Xmgap,
-        'Xmgap2(m)': Xmgap,
-        'Z_len(m)': 2 * params[0] - z_gap,
-        'Xcore1(m)': params[1] + Xmgap,
-        'Xvoid1(m)': params[1] + params[5] + Xmgap,
-        'Xyoke1(m)': params[1] + params[5] + ratio_yoke * params[1] + Xmgap,
-        'Xcore2(m)': params[2] + Xmgap,
-        'Xvoid2(m)': params[2] + params[6] + Xmgap,
-        'Xyoke2(m)': params[2] + params[6] + ratio_yoke * params[2] + Xmgap,
-        'Ycore1(m)': params[3],
-        'Yvoid1(m)': params[3] + Ymgap,
-        'Yyoke1(m)': params[3] + ratio_yoke * params[1] + Ymgap,
-        'Ycore2(m)': params[4],
-        'Yvoid2(m)': params[4] + Ymgap,
-        'Yyoke2(m)': params[4] + ratio_yoke * params[2] + Ymgap}
-    if save_dir is not None:
-        from csv import DictWriter
-        with open(save_dir/"parameters.csv", "w", newline="") as f:
-            w = DictWriter(f, d.keys())
-            w.writeheader()
-            w.writerow(d)
-    return d
-
 
 
 bounds_min = [51, 51, 51, 51, 51, 51, 51, 51,

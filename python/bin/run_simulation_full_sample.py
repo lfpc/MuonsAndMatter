@@ -19,8 +19,9 @@ def concatenate_files(direc, file_number):
     all_data = []
     for file in os.listdir(direc):
         if f'_{file_number}_' not in file: continue
-        with open(os.path.join(direc,file),'rb') as f:
-            all_data.append(pickle.load(f))
+        data = np.load(os.path.join(direc, file))
+        if data.shape != (8,):
+            all_data.append(data)
         os.remove(os.path.join(direc,file))
     all_data = np.concatenate(all_data,axis=1)
     with open(os.path.join(direc,f'muons_data_{file_number}.pkl'),'wb') as f:
