@@ -138,7 +138,7 @@ if __name__ == '__main__':
     import pickle
     import multiprocessing as mp
     from time import time
-    from lib.reference_designs.params import sc_v6, optimal_oliver, new_parametrization, oliver_scaled
+    from lib.reference_designs.params import sc_v6, optimal_oliver, new_parametrization, oliver_scaled, TOTAL_PARAMS
     import os
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=0)
@@ -169,7 +169,7 @@ if __name__ == '__main__':
             params = np.array([float(line.strip()) for line in txt_file])
         params_idx = new_parametrization['M1'] + new_parametrization['M2'] + new_parametrization['M3'] + new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
     params = np.array(params)
-    if params.size != 63:
+    if params.size != TOTAL_PARAMS:
         new_phi = np.array(sc_v6, dtype=params.dtype)
         new_phi[np.array(params_idx)] = params
         if args.SC_mag:
@@ -223,8 +223,8 @@ if __name__ == '__main__':
         if len(resulting_data)==0: continue
         all_results += [resulting_data]
     print(f"Weight = {weight} kg")
-    try: all_results = np.concatenate(all_results, axis=0)
-    except: pass
+    all_results = np.concatenate(all_results, axis=0)
+    pass
     print(params)
     try: 
         print('Data Shape', all_results.shape)
@@ -236,8 +236,8 @@ if __name__ == '__main__':
     if args.save_data:
         with gzip.open(f'data/outputs/outputs_optimal.pkl', "wb") as f:
             pickle.dump(all_results, f)
-        
     if args.plot_magnet:
+        all_results = all_results[:1000]
         sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':82}
         angle = 90
         elev = 90

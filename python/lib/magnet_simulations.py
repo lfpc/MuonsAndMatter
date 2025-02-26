@@ -6,28 +6,32 @@
 import os
 import numpy as np
 import pyvista as pv
-import time
-import gmsh
+from time import time
 from scipy.interpolate import griddata
+import pandas as pd
 from scipy.spatial import cKDTree
 import gzip, pickle
 #import roxie_evaluator
-#import snoopy
+import snoopy
 import multiprocessing as mp
+from lib.reference_designs.params import new_parametrization
 
 def get_magnet_params(params, 
                      Ymgap:float = 0.05,
                      z_gap:float = 0.1,
-                     NI:float = 12_000,
                      yoke_type:str = 'Mag1',
                      resol = (0.02,0.02,0.05),
-                     B_goal:float = None,
+                     B_goal:float = 1.7,
                      materials_directory = None,
                      save_dir = None):
     # #convert to meters
     ratio_yoke = params[7]
     params /= 100
     Xmgap = params[8]
+    if len(params) <= 9:
+        NI = None
+        if yoke_type == 'Mag2': NI = 3.20E+06
+    else: NI = params[9]
     d = {
     'yoke_type': yoke_type,
     'coil_material': 'hts_pencake.json' if yoke_type == 'Mag2' else 'copper_water_cooled.json',
@@ -62,10 +66,10 @@ def get_magnet_params(params,
     'Yvoid2(m)': params[4] + Ymgap,
     'Yyoke2(m)': params[4] + ratio_yoke * params[2] + Ymgap
     }
-    if B_goal is not None:
+    if NI is None:
         if materials_directory is None:
             materials_directory = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
-        d['NI(A)'] = snoopy.get_NI(B_goal, pd.DataFrame([d]),0, materials_directory = materials_directory)
+        d['NI(A)'] = snoopy.get_NI(B_goal, pd.DataFrame([d]),0, materials_directory = materials_directory)[0]
     if save_dir is not None:
         from csv import DictWriter
         with open(save_dir/"parameters.csv", "w", newline="") as f:
@@ -110,7 +114,7 @@ def construct_grid(limits = ((0., 0., -5.),(2.5, 3.5, 5.)),
 
 def get_grid_data(points: np.array, B: np.array,cost, new_points: tuple):
     '''Interpolates the magnetic field data to a new grid.'''
-    t1 = time.time()
+    t1 = time()
     '''Bx_out = griddata(points, B[:, 0], new_points, method='nearest', fill_value=0.0).ravel()
     By_out = griddata(points, B[:, 1], new_points, method='nearest', fill_value=0.0).ravel()
     Bz_out = griddata(points, B[:, 2], new_points, method='nearest', fill_value=0.0).ravel()'''
@@ -125,115 +129,18 @@ def get_grid_data(points: np.array, B: np.array,cost, new_points: tuple):
     By_out[hull] = B[idx, 1]
     Bz_out[hull] = B[idx, 2]
     new_B = np.column_stack((Bx_out, By_out, Bz_out))
-    print('Griddind / Interpolation time = {} sec'.format(time.time() - t1))
+    print('Griddind / Interpolation time = {} sec'.format(time() - t1))
     return new_points, new_B, cost
 
-def run_fem_old(magn_params:dict,
-            delta_air = (1.0,1.0,1.0),
-            materials_dir = None):
-    """Runs the finite element method to compute the magnetic field.
-    Parameters:
-    magn_params (dict): Dictionary containing the magnets parameters.
-    delta_air (tuple, optional): Dimensions of block of air outside the magnets to simulate. Defaults to (1.0,1.0,1.0).
-    materials_dir (str, optional): Directory containing the materials. Defaults is None, returning the data dir in tha parent dir.
-    Returns:
-    dict: A dictionary containing the position points and the computed magnetic field 'B'.
-    """
-    if materials_dir is None:
-        materials_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
-
-    mu_air = roxie_evaluator.ConstantPermeability(4*np.pi*1e-7)
-    mu_iron = roxie_evaluator.Permeability(os.path.join(materials_dir, magn_params['material'] + '.csv'))
-
-    lc = 2e-1 # mesh size parameter #2e-1
-    element_order = 1# element oder
-    max_iter = 50 # maximum number of newton iterations
-    tolerance = 1e-3 # the tolerance for the cg solver
-    gmsh.clear()
-    if not gmsh.isInitialized():
-        print('Initializing gmsh')
-        gmsh.initialize()
-        gmsh.model.add("make_SHiP_magnet_mesh")
-
-    delta_x, delta_y, delta_z = delta_air
-
-    if magn_params['yoke_type'] == 'Mag2':
-        NI = magn_params['NI(A)']
-        valid = True #?
-        mu = [mu_iron, mu_iron, mu_air, mu_air]
-        make_core_fn = roxie_evaluator.make_SHIP_sc_iron_core
-
-    elif magn_params['yoke_type'] in ['Mag1','Mag3']: 
-        NI, valid = roxie_evaluator.get_NI(magn_params['B_goal(T)'],
-                                        magn_params['Xmgap1(m)'],
-                                        magn_params['Xcore1(m)'],
-                                        magn_params['Xvoid1(m)'],
-                                        magn_params['Xyoke1(m)'],
-                                        magn_params['Xmgap2(m)'],
-                                        magn_params['Xcore2(m)'],
-                                        magn_params['Xvoid2(m)'],
-                                        magn_params['Xyoke2(m)'],
-                                        magn_params['Ycore1(m)'],
-                                        magn_params['Yvoid1(m)'],
-                                        magn_params['Yyoke1(m)'],
-                                        magn_params['Ycore2(m)'],
-                                        magn_params['Yvoid2(m)'],
-                                        magn_params['Yyoke2(m)'],
-                                        magn_params['Z_len(m)'],
-                                        magn_params['yoke_type'],
-                                        mu_iron)
-        mu = [mu_iron, mu_air]
-        make_core_fn = roxie_evaluator.make_SHIP_iron_core
-                                
-    print('NI = {}'.format(NI))
-
-    if not valid:
-      print('\n')
-      print('**************************************************************')
-      print('WARNING! The core and return yoke dimensions are inconsistent!')
-      print('**************************************************************')
-      print('\n')
-
-   
-   # make the mesh
-
-    gmsh_model, term_1, term_2 = make_core_fn( magn_params['Xmgap1(m)'],
-                                                magn_params['Xcore1(m)'],
-                                                magn_params['Xvoid1(m)'],
-                                                magn_params['Xyoke1(m)'],
-                                                magn_params['Xmgap2(m)'],
-                                                magn_params['Xcore2(m)'],
-                                                magn_params['Xvoid2(m)'],
-                                                magn_params['Xyoke2(m)'],
-                                                magn_params['Ycore1(m)'],
-                                                magn_params['Yvoid1(m)'],
-                                                magn_params['Yyoke1(m)'],
-                                                magn_params['Ycore2(m)'],
-                                                magn_params['Yvoid2(m)'],
-                                                magn_params['Yyoke2(m)'],
-                                                magn_params['Z_len(m)'],
-                                                delta_x,
-                                                delta_y,
-                                                delta_z,
-                                                Z_pos=magn_params['Z_pos(m)'],
-                                                element_order=element_order,
-                                                lc=lc,
-                                                show=False)
-
-
-    # Make the solver
-    solver = roxie_evaluator.PoissonSolver(gmsh_model.mesh, mu, (term_1, term_2),
-                                            max_iter=max_iter, quad_order=element_order+1)
-
-    # solve the problem
-    start = time.time()
-    x = solver.solve(NI, tolerance=tolerance, use_cg=True) #difference hear
-    # compute the field map
-    points, B = solver.compute_field(x, 'B', quad_order=5)
-    end = time.time()
-    print('FEM Computation time = {} sec'.format(end - start))
-    # points_H, H = solver.compute_field(x, 'H', quad_order=element_order+1)
-    return {'points':points.round(4).astype(np.float32), 'B':B.astype(np.float32)}
+def get_vector_field(magn_params,materials_dir):
+    if magn_params['yoke_type'][0] == 'Mag1':
+        points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_1(magn_params, 0, materials_directory=materials_dir)
+    elif magn_params['yoke_type'][0] == 'Mag2':
+        points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_2(magn_params, 0, materials_directory=materials_dir)
+    elif magn_params['yoke_type'][0] == 'Mag3':
+        points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_3(magn_params, 0, materials_directory=materials_dir)
+    else: raise ValueError(f'Invalid yoke type - Received yoke_type {magn_params["yoke_type"][0]}')
+    return points, B, M_i, M_c, Q, J
 
 def run_fem(magn_params:dict,
             materials_dir = None):
@@ -245,11 +152,11 @@ def run_fem(magn_params:dict,
     dict: A dictionary containing the position points and the computed magnetic field 'B'.
     """
     materials_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
-    start = time.time()
-    points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_1(magn_params, 0, materials_directory=materials_dir)
+    start = time()
+    points, B, M_i, M_c, Q, J = get_vector_field(magn_params, materials_dir)
     C_i, C_c, C_edf = snoopy.compute_prices(magn_params, 0, M_i, M_c, Q,materials_directory = materials_dir)
     cost = C_i + C_c + C_edf
-    end = time.time()
+    end = time()
     print('FEM Computation time = {} sec'.format(end - start))
     return {'points':points.round(4).astype(np.float32), 'B':B.astype(np.float32), 'cost':cost}
 
@@ -258,7 +165,7 @@ def simulate_and_grid(params, points):
 
 def run(magn_params:dict,
         resol = (0.05, 0.05, 0.05),
-        d_space = ((2.5, 2.5, (-0.,4.))),
+        d_space = ((4., 4., (-1, 30.))),
         plot_results:bool = False,
         save_results:bool = False,
         output_file:str = './outputs',
@@ -284,9 +191,15 @@ def run(magn_params:dict,
     print('Starting simulation for {} magnets'.format(n_magnets))
     limits_quadrant = ((0., 0., d_space[2][0]), (d_space[0],d_space[1], d_space[2][1]))
     points = construct_grid(limits=limits_quadrant, resol=resol)
+
+    num_processes = min(cores, n_magnets)
+    threads_per_process = max(1, cores // num_processes)
+    os.environ["OMP_NUM_THREADS"] = str(threads_per_process)
+
     with mp.Pool(cores) as pool:
         B = pool.starmap(simulate_and_grid,[({k:[v[i]] for k,v in magn_params.items()},points) for i in range(n_magnets)])
     B = np.sum(B, axis=0)
+
 
     points = np.column_stack([points[i].ravel() for i in range(3)])
     if apply_symmetry:
@@ -308,7 +221,46 @@ def run(magn_params:dict,
         print('Results saved to', output_file)
     return {'points':points, 'B':B}
     
-   
+def simulate_field(params,
+              Z_init = 0,
+              fSC_mag:bool = True,
+              z_gap = 0.1,
+              #field_direction = [ 'up', 'up', 'up', 'up', 'down', 'down', 'down', 'down'],
+              resol = (0.05,0.05,0.05),
+              d_space = ((4., 4., (-1, 30.))), 
+              file_name = 'data/outputs/fields.pkl',
+              cores = 1):
+    '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
+    t1 = time()
+    all_params = pd.DataFrame()
+    Z_pos = 0.
+    for i, (mag,idx) in enumerate(new_parametrization.items()):
+        mag_params = params[idx]
+        if mag == 'HA': Ymgap=0.; yoke_type = 'Mag1'; B_goal = 1.6
+        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag1'
+        else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3'
+        if fSC_mag:
+            if mag == 'M1': continue
+            elif mag == 'M3':
+                Z_pos += 2 * mag_params[0]/100 - z_gap
+                continue
+            elif mag == 'M2': 
+                Ymgap = 0.05; yoke_type = 'Mag2'
+        p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal = B_goal, yoke_type=yoke_type, resol = resol)
+        p['Z_pos(m)'] = Z_pos
+        all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
+        Z_pos += p['Z_len(m)'] + z_gap
+        if mag == 'M2': Z_pos += z_gap
+    all_params.to_csv('data/magnet_params.csv', index=False)
+    all_params = all_params.to_dict(orient='list')
+    fields = run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores)
+    fields['points'][:,2] += Z_init/100
+    print('Magnetic field simulation took', time()-t1, 'seconds')
+    if file_name is not None:
+        with open(file_name, 'wb') as f:
+            pickle.dump(fields, f)
+            print('Fields saved to', file_name)
+    return fields
    
 
 
@@ -321,9 +273,9 @@ if __name__ == '__main__':
    import pandas as pd
    magn_params = pd.read_csv(parameters_filename).to_dict(orient='list')
    print(magn_params)
-   t1 = time.time()
+   t1 = time()
    d = run(magn_params,output_file = output_file, apply_symmetry=False, plot_results=False, save_results=True)
-   print('total_time: ', time.time() - t1, ' sec')
+   print('total_time: ', time() - t1, ' sec')
    points = d['points']
    print('limits: ', points.min(axis=0), points.max(axis=0))
    print('shape: ', points.shape)
