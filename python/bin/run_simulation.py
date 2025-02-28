@@ -10,7 +10,7 @@ from time import time
 def run(muons, 
         phi, 
         input_dist:float = None,
-        return_weight = False,
+        return_cost = False,
         fSC_mag:bool = True,
         sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82},
         add_cavern = True,
@@ -31,7 +31,7 @@ def run(muons,
                          position (x, y, z), charge, and optionally weight.
         phi: List of 72 parameters for the detector design. 
         input_dist (float, optional): If different than None, define the distance to set the initial z position of all muons. If None (default), the z position is taken from the file.
-        return_weight (bool, optional): If True, returns the total weight of the muon shield. Defaults to False.
+        return_cost (bool, optional): If True, returns the total weight of the muon shield. Defaults to False.
         fSC_mag (bool, optional): Flag to use the hybrid configuration (i.e., with the superconducting magnet) of the muon shield in the simulation. Defaults to True.
         sensitive_film_params (dict, optional): Parameters for the sensitive film. Defaults to {'dz': 0.01, 'dx': 10, 'dy': 10, 'position': 67}. If None, the simulation collects all the data from the muons (not only hits).
         simulate_fields (bool, optional): Flag to use simulate (FEM) and use field maps in the simulation. Defaults to False.
@@ -42,7 +42,7 @@ def run(muons,
         kwargs_plot (dict, optional): Additional keyword arguments for plotting.
         Returns:
         ndarray: Array of simulated muon data (momentum, position, particle ID and possibly weight (if presented in the input)). 
-        float (optional): Total weight of the muon shield if return_weight is True.
+        float (optional): Total weight of the muon shield if return_cost is True.
     """
     
 
@@ -58,6 +58,7 @@ def run(muons,
                                       add_cavern = add_cavern,
                                       add_target = add_target,
                                       extra_magnet=extra_magnet)
+    cost = detector['cost']
 
     detector["store_primary"] = sensitive_film_params is None or keep_tracks_of_hits
     detector["store_all"] = False
@@ -126,12 +127,14 @@ def run(muons,
                 muon_data = muon_data, 
                 sensitive_film_position = sensitive_film_params['position'], 
                 **kwargs_plot)
-    if return_weight: return muon_data, output_data['weight_total']
+    print('TOTAL COST:', cost)
+    print('MASS:', output_data['weight_total'])
+    if return_cost: return muon_data, cost
     else: return muon_data
 
 
 
-DEF_INPUT_FILE = 'data/enriched_input.pkl'
+DEF_INPUT_FILE = 'data/muons/enriched_input.pkl'
 if __name__ == '__main__':
     import argparse
     import gzip
@@ -167,16 +170,15 @@ if __name__ == '__main__':
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
-        params_idx = new_parametrization['M1'] + new_parametrization['M2'] + new_parametrization['M3'] + new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
+        params_idx = new_parametrization['M1'][:-1] + new_parametrization['M2'][:-1] + new_parametrization['M3'][:-1] + new_parametrization['M4'][:-1] + new_parametrization['M5'][:-1] + new_parametrization['M6'][:-1]
     params = np.array(params)
     if params.size != TOTAL_PARAMS:
-        new_phi = np.array(sc_v6, dtype=params.dtype)
+        new_phi = np.array(oliver_scaled, dtype=params.dtype)
         new_phi[np.array(params_idx)] = params
         if args.SC_mag:
             new_phi[new_parametrization['M2'][2]] = new_phi[new_parametrization['M2'][1]]
             new_phi[new_parametrization['M2'][4]] = new_phi[new_parametrization['M2'][3]]
         params = new_phi
-    
     def split_array(arr, K):
         N = len(arr)
         base_size = N // K
@@ -184,7 +186,6 @@ if __name__ == '__main__':
         sizes = [base_size + 1 if i < remainder else base_size for i in range(K)]
         splits = np.split(arr, np.cumsum(sizes)[:-1])
         return splits
-
     n_muons = args.n
     input_file = args.f
     input_dist = args.z
@@ -216,16 +217,15 @@ if __name__ == '__main__':
     t2 = time()
     print(f"Time to FEM: {t2_fem - t1_fem:.2f} seconds.")
     print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")
-    
+    print(params)
     all_results = []
     for rr in result:
-        resulting_data,weight = rr
+        resulting_data,cost = rr
         if len(resulting_data)==0: continue
         all_results += [resulting_data]
-    print(f"Weight = {weight} kg")
     all_results = np.concatenate(all_results, axis=0)
     pass
-    print(params)
+    
     try: 
         print('Data Shape', all_results.shape)
         print('n_hits', all_results[:,7].sum())
@@ -233,6 +233,7 @@ if __name__ == '__main__':
     except: 
         print('Data Shape', len(all_results))
         print('Input Shape', len(data_n))
+    print(f"Cost = {cost} kg")
     if args.save_data:
         with gzip.open(f'data/outputs/outputs_optimal.pkl', "wb") as f:
             pickle.dump(all_results, f)

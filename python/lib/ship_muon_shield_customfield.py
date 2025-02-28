@@ -1,10 +1,259 @@
 import numpy as np
 import pickle
 from lib import magnet_simulations
-from os.path import exists
+from os.path import exists, join
 from time import time
 from muon_slabs import initialize
 import json
+
+from snoopy import RacetrackCoil, compute_prices
+
+def estimate_electrical_cost(params,
+                             yoke_type,
+                             z_gap = 10,
+                             Ymgap = 0.,
+                             lc=0.2,
+                            materials_directory='data/materials',
+                            yoke_spacer = 5,
+                            electricity_costs = 5.0/72000.0,
+                            runtime = 72000):
+    '''Estimate material quantities for the magnet 1 template without running simulation.
+    
+    :params parameters:
+       The parameters of one magnet
+
+    :return:
+       A tuple containing (M_coil, Q, current_density)
+    '''
+
+    if yoke_type == 'Mag2':
+        coil_material = 'hts_pencake.json'
+        coil_diam = 20
+        insulation = 8
+        J_tar = 320
+        max_turns = 12
+    else:
+        coil_material = 'copper_water_cooled.json'
+        coil_diam = 9
+        insulation = 0.5
+        J_tar = 10
+        max_turns = 10
+
+    with open(join(materials_directory, coil_material)) as f:
+        conductor_material_data = json.load(f)
+
+    # Get the target current density
+    J_tar = J_tar*1e6
+
+    current = params[9]
+    ratio_yoke = params[7]
+    params /= 100
+    z_gap /= 100
+    X_mgap_1 = X_mgap_2 = params[8]
+    X_core_1 = params[1] + X_mgap_1
+    X_void_1 = params[1] + params[5] + X_mgap_1
+    X_yoke_1 = params[1] + params[5] + ratio_yoke * params[1] + X_mgap_1
+    X_core_2 = params[2] + X_mgap_2
+    X_void_2 = params[2] + params[6] + X_mgap_2
+    X_yoke_2 = params[2] + params[6] + ratio_yoke * params[2] + X_mgap_2
+    Y_core_1 = params[3]
+    Y_void_1 = params[3] + Ymgap
+    Y_yoke_1 = params[3] + ratio_yoke * params[1] + Ymgap
+    Y_core_2 = params[4]
+    Y_void_2 = params[4] + Ymgap
+    Y_yoke_2 = params[4] + ratio_yoke * params[2] + Ymgap
+    Z_len = 2*params[0] - z_gap
+    Z_pos = 0
+    
+    yoke_spacer = yoke_spacer*1e-3
+    ins = insulation*1e-3
+    coil_radius = 0.5*coil_diam*1e-3
+    max_turns = np.int64(max_turns)
+
+
+    # Make coil objects to calculate parameters
+    # Determine the slot size
+    slot_size = 2*min(Y_core_1, Y_core_2)
+
+    # Determine number of conductors
+    num_cond = np.int32(slot_size/2/(coil_radius+ins))
+    if num_cond > max_turns:
+        num_cond = max_turns
+
+    # Vertical positions
+    y = np.linspace(-0.5*slot_size + coil_radius + ins,
+                   0.5*slot_size - coil_radius - ins, num_cond)
+
+    # Calculate turn perimeter
+    if yoke_type == "Mag1":
+        if X_mgap_1 == 0.0 or X_mgap_2 == 0.0:
+            # Single coil around core
+            kp = np.array([[-X_core_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len             ],
+                       [-X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                       [ X_core_2,          Z_pos + Z_len + yoke_spacer + ins + coil_radius    ],
+                       [ X_core_2 + yoke_spacer + ins + coil_radius,   Z_pos + Z_len           ],
+                       [ X_core_1 + yoke_spacer + ins + coil_radius,   Z_pos                   ],
+                       [ X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                       [-X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
+                       [-X_core_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
+            
+            coil = RacetrackCoil(kp, y, coil_radius, current/num_cond)
+            turn_perimeter = coil.get_length()
+        else:
+            # Two coils around core
+            kp_1 = np.array([[X_mgap_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len + coil_radius],
+                           [X_mgap_2, Z_pos + Z_len + yoke_spacer + ins + coil_radius],
+                           [X_core_2, Z_pos + Z_len + yoke_spacer + ins + coil_radius],
+                           [X_core_2 + yoke_spacer + ins + coil_radius, Z_pos + Z_len],
+                           [X_core_1 + yoke_spacer + ins + coil_radius, Z_pos],
+                           [X_core_1, Z_pos-yoke_spacer - ins - coil_radius],
+                           [X_mgap_1, Z_pos-yoke_spacer - ins - coil_radius],
+                           [X_mgap_1 - yoke_spacer - ins - coil_radius, Z_pos]])
+            
+            kp_2 = kp_1.copy()
+            kp_2[:, 0] *= -1.0
+            
+            coil1 = RacetrackCoil(kp_1, y, coil_radius, current/num_cond)
+            coil2 = RacetrackCoil(kp_2, y, coil_radius, current/num_cond)
+            turn_perimeter = coil1.get_length() + coil2.get_length()
+    
+    elif yoke_type == "Mag2":
+        # Single coil around core for Mag2
+        kp = np.array([[-X_core_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len],
+                      [-X_core_2, Z_pos + Z_len + yoke_spacer + ins + coil_radius],
+                      [X_core_2, Z_pos + Z_len + yoke_spacer + ins + coil_radius],
+                      [X_core_2 + yoke_spacer + ins + coil_radius, Z_pos + Z_len],
+                      [X_core_1 + yoke_spacer + ins + coil_radius, Z_pos],
+                      [X_core_1, Z_pos-yoke_spacer - ins - coil_radius],
+                      [-X_core_1, Z_pos-yoke_spacer - ins - coil_radius],
+                      [-X_core_1 - yoke_spacer - ins - coil_radius, Z_pos]])
+        
+        coil = RacetrackCoil(kp, y, coil_radius, current/num_cond)
+        turn_perimeter = coil.get_length()
+    
+    elif yoke_type == "Mag3":
+        # Two coils on legs for Mag3
+        kp_1 = np.array([[X_void_2 - yoke_spacer - ins - coil_radius, Z_pos + Z_len],
+                       [X_void_2, Z_pos + Z_len + yoke_spacer + ins + coil_radius],
+                       [X_yoke_2, Z_pos + Z_len + yoke_spacer + ins + coil_radius],
+                       [X_yoke_2 + yoke_spacer + ins + coil_radius, Z_pos + Z_len],
+                       [X_yoke_1 + yoke_spacer + ins + coil_radius, Z_pos],
+                       [X_yoke_1, Z_pos-yoke_spacer - ins - coil_radius],
+                       [X_void_1, Z_pos-yoke_spacer - ins - coil_radius],
+                       [X_void_1 - yoke_spacer - ins - coil_radius, Z_pos]])
+        
+        kp_2 = kp_1.copy()
+        kp_2[:, 0] *= -1.0
+        
+        coil1 = RacetrackCoil(kp_1, y, coil_radius, current/num_cond)
+        coil2 = RacetrackCoil(kp_2, y, coil_radius, current/num_cond)
+        turn_perimeter = coil1.get_length() + coil2.get_length()
+
+    # Calculate horizontal slot size
+    slot_size_horz = min(X_void_1 - X_core_1, X_void_2 - X_core_2)
+    
+    # Available space for coils
+    A_geo = slot_size_horz*slot_size*conductor_material_data["filling_factor"]
+
+    # Coil size from target current density
+    A_coil = current/J_tar/conductor_material_data["filling_factor"]
+    
+    
+
+    # Current density (for monitoring)
+    current_density = current/min([A_geo, A_coil])/conductor_material_data["filling_factor"]
+
+    # Coil mass
+    M_coil = A_coil*turn_perimeter*conductor_material_data['density(g/m3)']
+
+    # Power consumption
+    Q = current*current*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_coil
+
+    
+    C_coil = 1e-3*M_coil*(conductor_material_data["material_cost(CHF/kg)"]
+                     +  conductor_material_data["manufacturing_cost(CHF/kg)"])
+    
+    C_edf = Q*electricity_costs*runtime
+    print("************************************")
+    print('The coil mass is {:.2f} kg'.format(M_coil*1e-3))
+    print('The coil surface is = {:.2f} m2'.format(A_coil))
+    print('The coil perimeter is = {:.2f} m'.format(turn_perimeter))
+    print('The current density is = {} A/mm2'.format(current_density*1e-6))
+    print('The power consumption = {:.2f} W'.format(Q))
+    print('COSTS', C_coil, C_edf)
+    return C_coil + C_edf
+
+
+
+def get_iron_cost(phi, Ymgap = 0,zGap = 10, material = 'aisi1010.json', materials_directory='data/materials'):
+    '''Get the weight of the muon shield.'''
+
+    dZ = phi[0] - zGap/2
+    dX = phi[1]
+    dX2 = phi[2]
+    dY = phi[3]
+    dY2 = phi[4]
+    gap = phi[5]
+    gap2 = phi[6]
+    ratio_yoke = phi[7]
+
+
+    with open(join(materials_directory,material)) as f:
+        iron_material_data = json.load(f)
+    density = iron_material_data['density(g/m3)']*1E-9
+
+    from scipy.spatial import ConvexHull
+    def compute_solid_volume(vertices):
+        """Compute the volume of the convex solid formed by two non-aligned rectangles using ConvexHull."""
+        hull = ConvexHull(vertices)
+        return hull.volume
+
+
+    
+    volume = 0
+    corners = np.array([
+        [dX, 0, 0],
+        [dX, dY, 0],
+        [0, dY, 0],
+        [0, 0, 0],
+        [dX2,0, 2*dZ],
+        [dX2, dY2, 2*dZ],
+        [0, dY2, 2*dZ],
+        [0, 0, 2*dZ]
+    ])
+    volume += compute_solid_volume(corners)
+    corners = np.array([
+        [dX+gap, 0, 0],
+        [dX+gap+dX*ratio_yoke, 0, 0],
+        [dX+gap+dX*ratio_yoke, dY+Ymgap, 0],
+        [dX+gap, dY+Ymgap, 0],
+        [dX2+gap2, 0, 2*dZ],
+        [dX2+gap2+dX2*ratio_yoke, 0, 2*dZ],
+        [dX2+gap2+dX2*ratio_yoke, dY2+Ymgap, 2*dZ],
+        [dX2+gap2, dY2+Ymgap, 2*dZ],
+    ])
+    volume += compute_solid_volume(corners)
+
+    corners = np.array([
+        [0, dY, 0],
+        [dX+gap+dX*ratio_yoke, dY, 0],
+        [dX+gap+dX*ratio_yoke, dY+dX*ratio_yoke, 0],
+        [0, dY+dX*ratio_yoke, 0],
+        [0, dY2, 2*dZ],
+        [dX2+gap2+dX2*ratio_yoke, dY2, 2*dZ],
+        [dX2+gap2+dX2*ratio_yoke, dY2+dX2*ratio_yoke, 2*dZ],
+        [0, dY2+dX2*ratio_yoke, 2*dZ],
+    ])
+    volume += compute_solid_volume(corners)
+    
+    M_iron = 4*volume*density
+    C_iron = M_iron*(iron_material_data["material_cost(CHF/kg)"]
+                     +  iron_material_data["manufacturing_cost(CHF/kg)"])
+    print('The iron mass is = {:.2f} kg'.format(M_iron))   
+    return C_iron
+
+
+
 
 def get_field(resimulate_fields = False,
             params = None,
@@ -13,18 +262,16 @@ def get_field(resimulate_fields = False,
             **kwargs_field):
     '''Returns the field map for the given parameters. If from_file is True, the field map is loaded from the file_name.'''
     if resimulate_fields:
-        fields = magnet_simulations.simulate_field(params, file_name = file_name,**kwargs_field)['B']
+        fields = magnet_simulations.simulate_field(params, file_name = file_name,**kwargs_field)
     elif exists(file_name):
         print('Using field map from file', file_name)
         with open(file_name, 'rb') as f:
-            if only_grid_params: 
-                fields = pickle.load(f)['B']
-            else:
-                fields = pickle.load(f)
+            fields = pickle.load(f)
     if only_grid_params: 
         d_space = kwargs_field['d_space']
         resol = kwargs_field['resol']
-        fields= {'B': fields.astype(np.float32),
+        #cost = fields.pop('cost')
+        fields= {'B': fields.pop('B'),
                 'range_x': [0,d_space[0], resol[0]],
                 'range_y': [0,d_space[1], resol[1]],
                 'range_z': [d_space[2][0],d_space[2][1], resol[2]]}
@@ -194,26 +441,24 @@ def create_magnet(magnetName, medium, tShield,
                   fields,field_profile, dX,
                   dY, dX2, dY2, dZ, middleGap,
                   middleGap2,ratio_yoke, gap,
-                  gap2, Z, stepGeo, Ymgap = 5):
+                  gap2, Z, stepGeo, Ymgap = 0):
     dY += Ymgap
     # Assuming 0.5A / mm ^ 2 and 10000At needed, about 200cm ^ 2 gaps are necessary
     # Current design safely above this.Will consult with MISiS to get a better minimum.
     #gap = np.ceil(max(100. / dY, gap))
     #gap2 = np.ceil(max(100. / dY2, gap2))
     coil_gap = gap
-    coil_gap2 = gap2
-
-    anti_overlap = 0.1 # gap between fields in the corners for mitred joints (Geant goes crazy when
+    coil_gap2 = gap2 = 0.1 # gap between fields in the corners for mitred joints (Geant goes crazy when
     # they touch each other)
 
 
     cornersMainL = np.array([
-        middleGap, -(dY + ratio_yoke*dX - anti_overlap), middleGap, dY + ratio_yoke*dX - anti_overlap,
-        dX + middleGap, dY - anti_overlap, dX + middleGap,
-        -(dY - anti_overlap),
-        middleGap2, -(dY2 + dX2*ratio_yoke - anti_overlap), middleGap2, dY2 + dX2*ratio_yoke - anti_overlap,
-        dX2 + middleGap2, dY2 - anti_overlap, dX2 + middleGap2,
-        -(dY2 - anti_overlap)])
+        middleGap, -(dY + ratio_yoke*dX), middleGap, dY + ratio_yoke*dX,
+        dX + middleGap, dY, dX + middleGap,
+        -(dY),
+        middleGap2, -(dY2 + dX2*ratio_yoke), middleGap2, dY2 + dX2*ratio_yoke,
+        dX2 + middleGap2, dY2, dX2 + middleGap2,
+        -(dY2)])
 
     cornersTL = np.array((middleGap + dX,dY,
                             middleGap,dY + dX*ratio_yoke,
@@ -230,12 +475,12 @@ def create_magnet(magnetName, medium, tShield,
                             dX2 + middleGap2 + coil_gap2,
                             dY2))
 
-    cornersMainSideL = np.array((dX + middleGap + gap, -(dY - anti_overlap), dX + middleGap + gap,
-                                dY - anti_overlap, dX + ratio_yoke*dX + middleGap + gap, dY + ratio_yoke*dX - anti_overlap,
-                                dX + ratio_yoke*dX + middleGap + gap, -(dY + ratio_yoke*dX - anti_overlap), dX2 + middleGap2 + gap2,
-                                -(dY2 - anti_overlap), dX2 + middleGap2 + gap2, dY2 - anti_overlap,
-                                dX2 + ratio_yoke*dX2 + middleGap2 + gap2, dY2 + ratio_yoke*dX2 - anti_overlap, dX2 + ratio_yoke*dX2 + middleGap2 + gap2,
-                                -(dY2 + ratio_yoke*dX2 - anti_overlap)))
+    cornersMainSideL = np.array((dX + middleGap + gap, -(dY), dX + middleGap + gap,
+                                dY, dX + ratio_yoke*dX + middleGap + gap, dY + ratio_yoke*dX,
+                                dX + ratio_yoke*dX + middleGap + gap, -(dY + ratio_yoke*dX), dX2 + middleGap2 + gap2,
+                                -(dY2), dX2 + middleGap2 + gap2, dY2,
+                                dX2 + ratio_yoke*dX2 + middleGap2 + gap2, dY2 + ratio_yoke*dX2, dX2 + ratio_yoke*dX2 + middleGap2 + gap2,
+                                -(dY2 + ratio_yoke*dX2)))
 
     cornersMainR = np.zeros(16, np.float64)
     cornersCLBA = np.zeros(16, np.float64)
@@ -338,6 +583,8 @@ def construct_block(medium, tShield,field_profile, stepGeo):
     CreateArb8('IronAfterTarget', medium, dZ, cornersIronBlock, [0.,0.,0.], field_profile, Block, 0, 0, Z, stepGeo)
     tShield['magnets'].append(Block)
 
+
+
 def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1,extra_magnet = False):
     n_magnets = 7 + int(extra_magnet)
     cm = 1
@@ -373,6 +620,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
     Z = np.zeros(n_magnets)
     midGapIn= np.zeros(n_magnets)
     midGapOut= np.zeros(n_magnets)
+    NI = np.zeros(n_magnets)
     HmainSideMagIn= np.zeros(n_magnets)
     HmainSideMagOut= np.zeros(n_magnets)
 
@@ -382,14 +630,15 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
     n_params = 9
 
     for i in range(n_magnets - int(extra_magnet)):
-        dXIn[i] = params[offset + i * n_params + 1]
-        dXOut[i] = params[offset + i * n_params + 2]
-        dYIn[i] = params[offset + i * n_params + 3]
-        dYOut[i] = params[offset + i * n_params + 4]
-        gapIn[i] = params[offset + i * n_params + 5]
-        gapOut[i] = params[offset + i * n_params + 6]
-        ratio_yokes[i] = params[offset + i * n_params + 7]
-        midGapIn[i] = params[offset + i * n_params + 8]
+        dXIn[i] = params[offset + i * n_params]
+        dXOut[i] = params[offset + i * n_params + 1]
+        dYIn[i] = params[offset + i * n_params + 2]
+        dYOut[i] = params[offset + i * n_params + 3]
+        gapIn[i] = params[offset + i * n_params + 4]
+        gapOut[i] = params[offset + i * n_params + 5]
+        ratio_yokes[i] = params[offset + i * n_params + 6]
+        midGapIn[i] = params[offset + i * n_params + 7]
+        NI[i] = params[offset + i * n_params + 8]
         midGapOut[i] = midGapIn[i]
 
     dZf[0] = dZ1 - zgap / 2
@@ -427,9 +676,6 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         'magnets':[],
         'global_field_map': {'B': np.array([])},
     }
-
-
-
     if field_map_file is not None or simulate_fields: 
         simulate_fields = (not exists(field_map_file)) or simulate_fields
         max_x = max(np.max(dXIn + dXIn * ratio_yokes + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokes+gapOut+midGapOut))/100
@@ -438,11 +684,13 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         resol = (0.02,0.02,0.05)
         field_map = get_field(simulate_fields,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
-                              file_name=field_map_file, only_grid_params=True, cores = min(cores_field,n_magnets))
+                              file_name=field_map_file, only_grid_params=True, NI_from_B_goal = True,
+                              cores = min(cores_field,n_magnets))
         tShield['global_field_map'] = field_map
-
-    for nM in range(n_magnets):
-        if fSC_mag and (dZf[nM] < 1*mm or nM == 3):
+        #tShield['cost'] = cost
+    cost = 0
+    for nM in range(0,n_magnets):
+        if fSC_mag and (nM in [1,3]):
             continue
         if nM == 2 and fSC_mag:
             Ymgap = 5*cm
@@ -471,6 +719,11 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         create_magnet(magnetName[nM], "G4_Fe", tShield, fields_s, field_profile, dXIn[nM], dYIn[nM], dXOut[nM],
                   dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM],ratio_yokes[nM],
                   gapIn[nM], gapOut[nM], Z[nM], nM in [1,7],Ymgap=Ymgap)
+        yoke_type = 'Mag1' if nM in [0,1,2,3] else 'Mag3'
+        if fSC_mag and nM==2: yoke_type = 'Mag2'
+        cost += get_iron_cost([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokes[nM], midGapIn[nM], NI[nM]], Ymgap=Ymgap, zGap=zgap)        
+        cost += estimate_electrical_cost(np.array([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokes[nM], midGapIn[nM], NI[nM]]), Ymgap=Ymgap, z_gap=zgap, yoke_type=yoke_type)
+    tShield['cost'] = cost
     field_profile = 'global' if simulate_fields else 'uniform'
     construct_block("G4_Fe", tShield, field_profile, False)
     return tShield
@@ -537,7 +790,7 @@ def initialize_geant4(detector, seed = None):
     B = detector['global_field_map'].pop('B').flatten()
     if seed is None: seeds = (np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256))
     else: seeds = (seed, seed, seed, seed)
-    output_data = initialize(*seeds,json.dumps(detector, default=lambda o: float(o) if isinstance(o, np.float32) else o), np.asarray(B))
+    output_data = initialize(*seeds,json.dumps(detector,default=lambda o: float(o) if isinstance(o, np.float32) else o), np.asarray(B)) #
     return output_data
 
 if __name__ == '__main__':

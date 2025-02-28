@@ -21,17 +21,16 @@ def get_magnet_params(params,
                      z_gap:float = 0.1,
                      yoke_type:str = 'Mag1',
                      resol = (0.02,0.02,0.05),
-                     B_goal:float = 1.7,
+                     B_goal:float = None,
                      materials_directory = None,
                      save_dir = None):
     # #convert to meters
     ratio_yoke = params[7]
+    if B_goal is not None:
+        NI = None
+    else: NI = params[9]
     params /= 100
     Xmgap = params[8]
-    if len(params) <= 9:
-        NI = None
-        if yoke_type == 'Mag2': NI = 3.20E+06
-    else: NI = params[9]
     d = {
     'yoke_type': yoke_type,
     'coil_material': 'hts_pencake.json' if yoke_type == 'Mag2' else 'copper_water_cooled.json',
@@ -68,7 +67,7 @@ def get_magnet_params(params,
     }
     if NI is None:
         if materials_directory is None:
-            materials_directory = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
+            materials_directory = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
         d['NI(A)'] = snoopy.get_NI(B_goal, pd.DataFrame([d]),0, materials_directory = materials_directory)[0]
     if save_dir is not None:
         from csv import DictWriter
@@ -112,7 +111,7 @@ def construct_grid(limits = ((0., 0., -5.),(2.5, 3.5, 5.)),
     Z[Z == max_z] = max_z #- eps
     return X, Y, Z
 
-def get_grid_data(points: np.array, B: np.array,cost, new_points: tuple):
+def get_grid_data(points: np.array, B: np.array, new_points: tuple):
     '''Interpolates the magnetic field data to a new grid.'''
     t1 = time()
     '''Bx_out = griddata(points, B[:, 0], new_points, method='nearest', fill_value=0.0).ravel()
@@ -130,7 +129,7 @@ def get_grid_data(points: np.array, B: np.array,cost, new_points: tuple):
     Bz_out[hull] = B[idx, 2]
     new_B = np.column_stack((Bx_out, By_out, Bz_out))
     print('Griddind / Interpolation time = {} sec'.format(time() - t1))
-    return new_points, new_B, cost
+    return new_points, new_B
 
 def get_vector_field(magn_params,materials_dir):
     if magn_params['yoke_type'][0] == 'Mag1':
@@ -140,7 +139,7 @@ def get_vector_field(magn_params,materials_dir):
     elif magn_params['yoke_type'][0] == 'Mag3':
         points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_3(magn_params, 0, materials_directory=materials_dir)
     else: raise ValueError(f'Invalid yoke type - Received yoke_type {magn_params["yoke_type"][0]}')
-    return points, B, M_i, M_c, Q, J
+    return points.round(4).astype(np.float16), B.round(4).astype(np.float16), M_i, M_c, Q, J
 
 def run_fem(magn_params:dict,
             materials_dir = None):
@@ -151,14 +150,14 @@ def run_fem(magn_params:dict,
     Returns:
     dict: A dictionary containing the position points and the computed magnetic field 'B'.
     """
-    materials_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data')
+    materials_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
     start = time()
     points, B, M_i, M_c, Q, J = get_vector_field(magn_params, materials_dir)
     C_i, C_c, C_edf = snoopy.compute_prices(magn_params, 0, M_i, M_c, Q,materials_directory = materials_dir)
     cost = C_i + C_c + C_edf
     end = time()
     print('FEM Computation time = {} sec'.format(end - start))
-    return {'points':points.round(4).astype(np.float32), 'B':B.astype(np.float32), 'cost':cost}
+    return {'points':points, 'B':B}
 
 def simulate_and_grid(params, points):
     return get_grid_data(**run_fem(params), new_points=points)[1]
@@ -195,10 +194,11 @@ def run(magn_params:dict,
     num_processes = min(cores, n_magnets)
     threads_per_process = max(1, cores // num_processes)
     os.environ["OMP_NUM_THREADS"] = str(threads_per_process)
-
     with mp.Pool(cores) as pool:
-        B = pool.starmap(simulate_and_grid,[({k:[v[i]] for k,v in magn_params.items()},points) for i in range(n_magnets)])
+        B = pool.starmap(simulate_and_grid, [({k: [v[i]] for k, v in magn_params.items()}, points) for i in range(0,n_magnets)])
+    #B, cost = zip(*results)
     B = np.sum(B, axis=0)
+    #cost = np.sum(cost)
 
 
     points = np.column_stack([points[i].ravel() for i in range(3)])
@@ -225,9 +225,9 @@ def simulate_field(params,
               Z_init = 0,
               fSC_mag:bool = True,
               z_gap = 0.1,
-              #field_direction = [ 'up', 'up', 'up', 'up', 'down', 'down', 'down', 'down'],
               resol = (0.05,0.05,0.05),
               d_space = ((4., 4., (-1, 30.))), 
+              NI_from_B_goal:bool = False,
               file_name = 'data/outputs/fields.pkl',
               cores = 1):
     '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
@@ -236,16 +236,16 @@ def simulate_field(params,
     Z_pos = 0.
     for i, (mag,idx) in enumerate(new_parametrization.items()):
         mag_params = params[idx]
-        if mag == 'HA': Ymgap=0.; yoke_type = 'Mag1'; B_goal = 1.6
-        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag1'
-        else: Ymgap = 0.; B_goal = 1.7; yoke_type = 'Mag3'
+        if mag == 'HA': Ymgap=0.; yoke_type = 'Mag1'; B_goal = 1.6 if NI_from_B_goal else None
+        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.7 if NI_from_B_goal else None; yoke_type = 'Mag1'
+        else: Ymgap = 0.; B_goal = 1.7 if NI_from_B_goal else None; yoke_type = 'Mag3'
         if fSC_mag:
             if mag == 'M1': continue
             elif mag == 'M3':
                 Z_pos += 2 * mag_params[0]/100 - z_gap
                 continue
             elif mag == 'M2': 
-                Ymgap = 0.05; yoke_type = 'Mag2'
+                Ymgap = 0.05; yoke_type = 'Mag2'; mag_params[-1] = 3.20E+06; B_goal = None
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal = B_goal, yoke_type=yoke_type, resol = resol)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
