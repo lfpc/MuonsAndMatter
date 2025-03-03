@@ -16,6 +16,23 @@ import snoopy
 import multiprocessing as mp
 from lib.reference_designs.params import new_parametrization
 
+def get_fixed_params(yoke_type = 'Mag1'):
+    return {
+    'yoke_type': yoke_type,
+    'coil_material': 'hts_pencake.json' if yoke_type == 'Mag2' else 'copper_water_cooled.json',
+    'max_turns': 12 if yoke_type == 'Mag2' else 10,
+    'J_tar(A/mm2)': 320 if yoke_type == 'Mag2' else 10,
+    'coil_diam(mm)': 20 if yoke_type == 'Mag2' else 9,
+    'insulation(mm)': 8 if yoke_type == 'Mag2' else 0.5,
+    'yoke_spacer(mm)': 5,
+    'material': 'aisi1010.json',
+    'field_density': 5,
+    'delta_x(m)': 1 if yoke_type == 'Mag2' else 0.5,
+    'delta_y(m)': 1 if yoke_type == 'Mag2' else 0.5,
+    'delta_z(m)': 1 if yoke_type == 'Mag2' else 0.5}
+
+
+
 def get_magnet_params(params, 
                      Ymgap:float = 0.05,
                      z_gap:float = 0.1,
@@ -31,20 +48,9 @@ def get_magnet_params(params,
     else: NI = params[9]
     params /= 100
     Xmgap = params[8]
-    d = {
-    'yoke_type': yoke_type,
-    'coil_material': 'hts_pencake.json' if yoke_type == 'Mag2' else 'copper_water_cooled.json',
-    'max_turns': 12 if yoke_type == 'Mag2' else 10,
-    'J_tar(A/mm2)': 320 if yoke_type == 'Mag2' else 10,
+    d = get_fixed_params(yoke_type)
+    d.update({
     'NI(A)': NI,
-    'coil_diam(mm)': 20 if yoke_type == 'Mag2' else 9,
-    'insulation(mm)': 8 if yoke_type == 'Mag2' else 0.5,
-    'yoke_spacer(mm)': 5,
-    'material': 'aisi1010.json',
-    'field_density': 5,
-    'delta_x(m)': 1 if yoke_type == 'Mag2' else 0.5,
-    'delta_y(m)': 1 if yoke_type == 'Mag2' else 0.5,
-    'delta_z(m)': 1 if yoke_type == 'Mag2' else 0.5,
     'resol_x(m)': resol[0],
     'resol_y(m)': resol[1],
     'resol_z(m)': resol[2],
@@ -64,7 +70,7 @@ def get_magnet_params(params,
     'Ycore2(m)': params[4],
     'Yvoid2(m)': params[4] + Ymgap,
     'Yyoke2(m)': params[4] + ratio_yoke * params[2] + Ymgap
-    }
+    })
     if NI is None:
         if materials_directory is None:
             materials_directory = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
@@ -251,15 +257,18 @@ def simulate_field(params,
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    all_params.to_csv('data/magnet_params.csv', index=False)
+    #all_params.to_csv('data/magnet_params.csv', index=False)
     all_params = all_params.to_dict(orient='list')
     fields = run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores)
     fields['points'][:,2] += Z_init/100
     print('Magnetic field simulation took', time()-t1, 'seconds')
     if file_name is not None:
-        with open(file_name, 'wb') as f:
-            pickle.dump(fields, f)
-            print('Fields saved to', file_name)
+        #with open(file_name, 'wb') as f:
+        #    pickle.dump(fields, f)
+        np.save(file_name, fields['B'].astype(np.float16))
+        print('Fields saved to', file_name)
+        file_name = file_name.replace('fields', 'points')
+        np.save(file_name, fields['points'].astype(np.float16))
     return fields
    
 

@@ -2,19 +2,20 @@ import numpy as np
 import pickle
 from lib import magnet_simulations
 from os.path import exists, join
+from os import getenv
 from time import time
 from muon_slabs import initialize
 import json
 
 from snoopy import RacetrackCoil, compute_prices
 
+
+MATERIALS_DIR = join(getenv('PROJECTS_DIR'),'MuonsAndMatter/data/materials')
 def estimate_electrical_cost(params,
                              yoke_type,
-                             z_gap = 10,
                              Ymgap = 0.,
-                             lc=0.2,
-                            materials_directory='data/materials',
-                            yoke_spacer = 5,
+                             z_gap = 10,
+                            materials_directory=MATERIALS_DIR,
                             electricity_costs = 5.0/72000.0,
                             runtime = 72000):
     '''Estimate material quantities for the magnet 1 template without running simulation.
@@ -26,24 +27,18 @@ def estimate_electrical_cost(params,
        A tuple containing (M_coil, Q, current_density)
     '''
 
-    if yoke_type == 'Mag2':
-        coil_material = 'hts_pencake.json'
-        coil_diam = 20
-        insulation = 8
-        J_tar = 320
-        max_turns = 12
-    else:
-        coil_material = 'copper_water_cooled.json'
-        coil_diam = 9
-        insulation = 0.5
-        J_tar = 10
-        max_turns = 10
+    mag_params = magnet_simulations.get_fixed_params(yoke_type)
+
+    coil_material = mag_params['coil_material']
+    coil_radius = 0.5*mag_params['coil_diam(mm)']*1e-3
+    ins = mag_params['insulation(mm)']*1e-3
+    J_tar = mag_params['J_tar(A/mm2)']*1e6
+    max_turns = int(mag_params['max_turns'])
+    yoke_spacer = mag_params['yoke_spacer(mm)']*1e-3
+
 
     with open(join(materials_directory, coil_material)) as f:
         conductor_material_data = json.load(f)
-
-    # Get the target current density
-    J_tar = J_tar*1e6
 
     current = params[9]
     ratio_yoke = params[7]
@@ -65,10 +60,6 @@ def estimate_electrical_cost(params,
     Z_len = 2*params[0] - z_gap
     Z_pos = 0
     
-    yoke_spacer = yoke_spacer*1e-3
-    ins = insulation*1e-3
-    coil_radius = 0.5*coil_diam*1e-3
-    max_turns = np.int64(max_turns)
 
 
     # Make coil objects to calculate parameters
@@ -174,18 +165,12 @@ def estimate_electrical_cost(params,
                      +  conductor_material_data["manufacturing_cost(CHF/kg)"])
     
     C_edf = Q*electricity_costs*runtime
-    print("************************************")
-    print('The coil mass is {:.2f} kg'.format(M_coil*1e-3))
-    print('The coil surface is = {:.2f} m2'.format(A_coil))
-    print('The coil perimeter is = {:.2f} m'.format(turn_perimeter))
-    print('The current density is = {} A/mm2'.format(current_density*1e-6))
-    print('The power consumption = {:.2f} W'.format(Q))
-    print('COSTS', C_coil, C_edf)
+
     return C_coil + C_edf
 
 
 
-def get_iron_cost(phi, Ymgap = 0,zGap = 10, material = 'aisi1010.json', materials_directory='data/materials'):
+def get_iron_cost(phi, Ymgap = 0,zGap = 10, material = 'aisi1010.json', materials_directory=MATERIALS_DIR):
     '''Get the weight of the muon shield.'''
 
     dZ = phi[0] - zGap/2
@@ -265,13 +250,14 @@ def get_field(resimulate_fields = False,
         fields = magnet_simulations.simulate_field(params, file_name = file_name,**kwargs_field)
     elif exists(file_name):
         print('Using field map from file', file_name)
-        with open(file_name, 'rb') as f:
-            fields = pickle.load(f)
+        fields = np.load(file_name).astype(np.float16)
+        #with open(file_name, 'rb') as f:
+        #    fields = pickle.load(f)
     if only_grid_params: 
         d_space = kwargs_field['d_space']
         resol = kwargs_field['resol']
         #cost = fields.pop('cost')
-        fields= {'B': fields.pop('B'),
+        fields= {'B': fields,#.pop('B'),
                 'range_x': [0,d_space[0], resol[0]],
                 'range_y': [0,d_space[1], resol[1]],
                 'range_z': [d_space[2][0],d_space[2][1], resol[2]]}
@@ -482,16 +468,16 @@ def create_magnet(magnetName, medium, tShield,
                                 dX2 + ratio_yoke*dX2 + middleGap2 + gap2, dY2 + ratio_yoke*dX2, dX2 + ratio_yoke*dX2 + middleGap2 + gap2,
                                 -(dY2 + ratio_yoke*dX2)))
 
-    cornersMainR = np.zeros(16, np.float64)
-    cornersCLBA = np.zeros(16, np.float64)
-    cornersMainSideR = np.zeros(16, np.float64)
-    cornersCLTA = np.zeros(16, np.float64)
-    cornersCRBA = np.zeros(16, np.float64)
-    cornersCRTA = np.zeros(16, np.float64)
+    cornersMainR = np.zeros(16, np.float16)
+    cornersCLBA = np.zeros(16, np.float16)
+    cornersMainSideR = np.zeros(16, np.float16)
+    cornersCLTA = np.zeros(16, np.float16)
+    cornersCRBA = np.zeros(16, np.float16)
+    cornersCRTA = np.zeros(16, np.float16)
 
-    cornersTR = np.zeros(16, np.float64)
-    cornersBL = np.zeros(16, np.float64)
-    cornersBR = np.zeros(16, np.float64)
+    cornersTR = np.zeros(16, np.float16)
+    cornersBL = np.zeros(16, np.float16)
+    cornersBR = np.zeros(16, np.float16)
 
 
     # Use symmetries to define remaining magnets
@@ -684,7 +670,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         resol = (0.02,0.02,0.05)
         field_map = get_field(simulate_fields,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
-                              file_name=field_map_file, only_grid_params=True, NI_from_B_goal = True,
+                              file_name=field_map_file, only_grid_params=True, NI_from_B_goal = False,
                               cores = min(cores_field,n_magnets))
         tShield['global_field_map'] = field_map
         #tShield['cost'] = cost

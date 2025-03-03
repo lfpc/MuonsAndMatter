@@ -64,7 +64,7 @@ def run(muons,
     detector["store_all"] = False
     t1 = time()
     output_data = initialize_geant4(detector, seed)
-    #if not draw_magnet: del detector #save memory?
+    if not draw_magnet: del detector #save memory?
     print('Time to initialize', time()-t1)
     output_data = json.loads(output_data)    
 
@@ -143,6 +143,7 @@ if __name__ == '__main__':
     from time import time
     from lib.reference_designs.params import sc_v6, optimal_oliver, new_parametrization, oliver_scaled, TOTAL_PARAMS
     import os
+    from functools import partial
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=0)
     parser.add_argument("--c", type=int, default=45)
@@ -152,7 +153,7 @@ if __name__ == '__main__':
     parser.add_argument("--z", type=float, default=None)
     parser.add_argument("-sens_plane", type=float, default=82)
     parser.add_argument("-real_fields", action = 'store_true')
-    parser.add_argument("-field_file", type=str, default='data/outputs/fields.pkl') 
+    parser.add_argument("-field_file", type=str, default='data/outputs/fields_mm.npy') 
     parser.add_argument("-shuffle_input", action = 'store_true')
     parser.add_argument("-remove_cavern", dest = "add_cavern", action = 'store_false')
     parser.add_argument("-plot_magnet", action = 'store_true')
@@ -170,7 +171,7 @@ if __name__ == '__main__':
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
-        params_idx = new_parametrization['M1'][:-1] + new_parametrization['M2'][:-1] + new_parametrization['M3'][:-1] + new_parametrization['M4'][:-1] + new_parametrization['M5'][:-1] + new_parametrization['M6'][:-1]
+        params_idx = new_parametrization['M1'] + new_parametrization['M2'] + new_parametrization['M3'] + new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
     params = np.array(params)
     if params.size != TOTAL_PARAMS:
         new_phi = np.array(oliver_scaled, dtype=params.dtype)
@@ -198,7 +199,8 @@ if __name__ == '__main__':
     if not args.real_fields:
         args.field_file = None
     else: 
-        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=cores, extra_magnet=args.extra_magnet)
+        core_fields = 8
+        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet)
     t2_fem = time()
 
     with gzip.open(input_file, 'rb') as f:
@@ -212,9 +214,25 @@ if __name__ == '__main__':
     workloads = split_array(data_n,cores)
     t1 = time()
     with mp.Pool(cores) as pool:
-        result = pool.starmap(run, [(workload,params,input_dist,True,args.SC_mag,sensitive_film_params,args.add_cavern, 
-                                    False,args.field_file,args.return_nan,args.seed, False, 5, True, args.keep_tracks_of_hits, args.extra_magnet) for workload in workloads])
-    t2 = time()
+        run_partial = partial(run, 
+                              phi=params, 
+                              input_dist=input_dist, 
+                              return_cost=True, 
+                              fSC_mag=args.SC_mag, 
+                              sensitive_film_params=sensitive_film_params, 
+                              add_cavern=args.add_cavern, 
+                              simulate_fields=False, 
+                              field_map_file=args.field_file, 
+                              return_nan=args.return_nan, 
+                              seed=args.seed, 
+                              draw_magnet=False, 
+                              SmearBeamRadius=5, 
+                              add_target=True, 
+                              keep_tracks_of_hits=args.keep_tracks_of_hits, 
+                              extra_magnet=args.extra_magnet)
+
+        result = pool.map(run_partial, workloads)
+        t2 = time()
     print(f"Time to FEM: {t2_fem - t1_fem:.2f} seconds.")
     print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")
     print(params)
@@ -233,7 +251,7 @@ if __name__ == '__main__':
     except: 
         print('Data Shape', len(all_results))
         print('Input Shape', len(data_n))
-    print(f"Cost = {cost} kg")
+    print(f"Cost = {cost} CHF")
     if args.save_data:
         with gzip.open(f'data/outputs/outputs_optimal.pkl', "wb") as f:
             pickle.dump(all_results, f)
@@ -241,9 +259,9 @@ if __name__ == '__main__':
         all_results = all_results[:1000]
         sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':82}
         angle = 90
-        elev = 90
-        if detector is not None:
+        elev = 0
+        if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = angle, elev = elev)
         else:
-            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=args.real_fields, field_map_file = args.field_file, cavern = False, azim = angle, elev = elev)#args.add_cavern)
+            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = args.field_file, cavern = False, azim = angle, elev = elev)#args.add_cavern)
                                          
