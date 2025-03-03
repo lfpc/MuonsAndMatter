@@ -4,6 +4,7 @@
    Compute the field map for the NC magnets.
 """
 import os
+os.environ["OMP_NUM_THREADS"] = "1"
 import numpy as np
 import pyvista as pv
 from time import time
@@ -197,9 +198,6 @@ def run(magn_params:dict,
     limits_quadrant = ((0., 0., d_space[2][0]), (d_space[0],d_space[1], d_space[2][1]))
     points = construct_grid(limits=limits_quadrant, resol=resol)
 
-    num_processes = min(cores, n_magnets)
-    threads_per_process = max(1, cores // num_processes)
-    os.environ["OMP_NUM_THREADS"] = str(threads_per_process)
     with mp.Pool(cores) as pool:
         B = pool.starmap(simulate_and_grid, [({k: [v[i]] for k, v in magn_params.items()}, points) for i in range(0,n_magnets)])
     #B, cost = zip(*results)

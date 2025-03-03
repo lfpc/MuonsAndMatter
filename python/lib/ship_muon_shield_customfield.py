@@ -308,30 +308,6 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
         'dz' : dZ,
         "z_center" : z_translation,
     })
-
-def constraints_cavern_intersection(corners, dZ, z_translation, cavern_transition):
-    def get_cavern_bounds(z):
-        if z < cavern_transition:
-            y_min = -1.7
-            y_max = 5.8
-            x_min = -3.56
-            x_max = 6.43
-        else:
-            y_min = -3.36
-            y_max = 10
-            x_min = -4.56
-            x_max = 11.43
-        return x_min, x_max, y_min, y_max
-    wall_gap = 0.01
-    corners = corners.reshape(-1, 2)
-    x_min, x_max, y_min, y_max = get_cavern_bounds(z_translation-dZ)
-    corners[:8, 0] = np.clip(corners[:8, 0], x_min + wall_gap, x_max - wall_gap)
-    corners[:8, 1] = np.clip(corners[:8, 1], y_min + wall_gap, y_max - wall_gap)
-    x_min, x_max, y_min, y_max = get_cavern_bounds(z_translation+dZ)
-    corners[8:, 0] = np.clip(corners[8:, 0], x_min + wall_gap, x_max - wall_gap)
-    corners[8:, 1] = np.clip(corners[8:, 1], y_min + wall_gap, y_max - wall_gap)
-    return corners.flatten()
-
 def CreateTarget(z_start:float):
     target_components = []
     N = 13
@@ -731,7 +707,7 @@ def get_design_from_params(params,
     params = np.round(params, 2)
     shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, extra_magnet = extra_magnet)
     shift = -2.345
-    cavern_transition = 22+shift #m
+    cavern_transition = 20.518+shift #m
     World_dZ = 200 #m
     World_dX = World_dY = 30 if add_cavern else 15
     if add_cavern: shield["cavern"] = CreateCavern(cavern_transition, length = World_dZ)
