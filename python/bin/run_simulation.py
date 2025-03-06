@@ -180,6 +180,8 @@ if __name__ == '__main__':
             new_phi[new_parametrization['M2'][2]] = new_phi[new_parametrization['M2'][1]]
             new_phi[new_parametrization['M2'][4]] = new_phi[new_parametrization['M2'][3]]
         params = new_phi
+    #params[0] += 75
+    #params[4] -= 75
     def split_array(arr, K):
         N = len(arr)
         base_size = N // K
@@ -259,7 +261,7 @@ if __name__ == '__main__':
         all_results = all_results[:1000]
         sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':82}
         angle = 90
-        elev = 0
+        elev = 90
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = angle, elev = elev)
         else:

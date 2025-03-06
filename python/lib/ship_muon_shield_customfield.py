@@ -410,8 +410,7 @@ def create_magnet(magnetName, medium, tShield,
     #gap = np.ceil(max(100. / dY, gap))
     #gap2 = np.ceil(max(100. / dY2, gap2))
     coil_gap = gap
-    coil_gap2 = gap2 = 0.1 # gap between fields in the corners for mitred joints (Geant goes crazy when
-    # they touch each other)
+    coil_gap2 = gap2 
 
 
     cornersMainL = np.array([

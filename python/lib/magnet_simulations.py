@@ -6,7 +6,6 @@
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
 import numpy as np
-import pyvista as pv
 from time import time
 from scipy.interpolate import griddata
 import pandas as pd
@@ -208,16 +207,6 @@ def run(magn_params:dict,
     points = np.column_stack([points[i].ravel() for i in range(3)])
     if apply_symmetry:
         points,B = get_symmetry(points, B, reorder = True)
-    if plot_results:
-        pv.start_xvfb()
-        pl = pv.Plotter()
-        #roxie_evaluator.plot_vector_field(pl, points[:, [2, 0, 1]] , B[:, [2, 0, 1]] , title='B in T', mag=0.1)
-        #pl.add_mesh(points[:, [2, 0, 1]] , point_size=1.0, render_points_as_spheres=True, color='red')
-        pl.show_grid(ztitle='Y [m]', xtitle='Z [m]', ytitle='X [m]')
-        pl.add_axes(zlabel='Y [m]', xlabel='Z [m]', ylabel='X [m]')
-        pl.view_isometric() 
-        pl.save_graphic(os.path.join(output_file,'plot_nc.pdf'))
-        print('Plot saved to', os.path.join(output_file,'plot_nc.pdf'))
 
     if save_results:
         with gzip.open(output_file, 'wb') as f:
@@ -255,7 +244,8 @@ def simulate_field(params,
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    #all_params.to_csv('data/magnet_params.csv', index=False)
+    #try: all_params.to_csv('data/magnet_params.csv', index=False)
+    # except: pass
     all_params = all_params.to_dict(orient='list')
     fields = run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores)
     fields['points'][:,2] += Z_init/100
