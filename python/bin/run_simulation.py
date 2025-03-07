@@ -141,7 +141,7 @@ if __name__ == '__main__':
     import pickle
     import multiprocessing as mp
     from time import time
-    from lib.reference_designs.params import sc_v6, optimal_oliver, new_parametrization, oliver_scaled, TOTAL_PARAMS
+    from lib.reference_designs.params import sc_v6, optimal_oliver, new_parametrization, oliver_scaled, TOTAL_PARAMS, melvin
     import os
     from functools import partial
     parser = argparse.ArgumentParser()
@@ -168,6 +168,7 @@ if __name__ == '__main__':
     if args.params == 'sc_v6': params = sc_v6
     elif args.params == 'oliver': params = optimal_oliver
     elif args.params == 'oliver_scaled': params = oliver_scaled
+    elif args.params == 'melvin': params = melvin
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
@@ -243,8 +244,8 @@ if __name__ == '__main__':
         resulting_data,cost = rr
         if len(resulting_data)==0: continue
         all_results += [resulting_data]
-    all_results = np.concatenate(all_results, axis=0)
-    pass
+    try: all_results = np.concatenate(all_results, axis=0)
+    except: all_results = []
     
     try: 
         print('Data Shape', all_results.shape)

@@ -642,7 +642,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         max_x = max(np.max(dXIn + dXIn * ratio_yokes + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokes+gapOut+midGapOut))/100
         max_y = max(np.max(dYIn + dXIn * ratio_yokes), np.max(dYOut + dXOut * ratio_yokes))/100
         d_space = (max_x+0.5, max_y+0.5, (-1, np.ceil((Z[-1]+dZf[-1]+50+10)/100)))
-        resol = (0.02,0.02,0.05)
+        resol = (0.01,0.01,0.05)
         field_map = get_field(simulate_fields,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
                               file_name=field_map_file, only_grid_params=True, NI_from_B_goal = False,

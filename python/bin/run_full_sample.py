@@ -76,7 +76,7 @@ def get_total_hits(phi,inputs_dir:str,
     n_hits_total = 0
     all_results = {}
     print('LENGTH:', SHIP.get_total_length(phi))
-    print('WEIGHT:', SHIP.get_weight(phi))
+    print('COST:', SHIP.get_total_cost(phi))
     for name in os.listdir(inputs_dir):
         n_name = extract_number_from_string(name)
         #if not int(n_name) == 0: continue
@@ -143,7 +143,7 @@ def get_loss(phi,inputs_dir:str,
 new_parametrization = ShipMuonShieldCluster.parametrization
 if __name__ == '__main__':
     INPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/full_sample'
-    OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs/full_sample'
+    OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs/results'
     import argparse
     import gzip
     import pickle
@@ -166,15 +166,13 @@ if __name__ == '__main__':
     if args.params == 'sc_v6': params = ShipMuonShieldCluster.sc_v6
     elif args.params == 'oliver': params = ShipMuonShieldCluster.old_warm_opt
     elif args.params == 'oliver_scaled': params = ShipMuonShieldCluster.warm_opt
+    elif args.params == 'melvin': params = ShipMuonShieldCluster.warm_opt_scaled
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
         params_idx = new_parametrization['M1'] + new_parametrization['M2'] + new_parametrization['M3'] + new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
 
-        params = torch.as_tensor(params, dtype=torch.float32)
-    
-    #input_dist = args.z
-    #sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':args.sens_plane}
+    params = torch.as_tensor(params, dtype=torch.float32)
 
     t1 = time()
     if args.calc_loss:

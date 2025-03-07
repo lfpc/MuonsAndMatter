@@ -244,8 +244,8 @@ def simulate_field(params,
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    #try: all_params.to_csv('data/magnet_params.csv', index=False)
-    # except: pass
+    try: all_params.to_csv('data/magnet_params.csv', index=False)
+    except: pass
     all_params = all_params.to_dict(orient='list')
     fields = run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores)
     fields['points'][:,2] += Z_init/100
