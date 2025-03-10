@@ -37,7 +37,8 @@ def get_files(phi,inputs_dir:str,
                  manager_ip='34.65.198.159',
                  port=444,
                  seed = seed,
-                 simulate_fields=field_map
+                 simulate_fields=field_map,
+                 apply_det_loss = False
                  )
 
     for name in os.listdir(inputs_dir):
@@ -70,6 +71,7 @@ def get_total_hits(phi,inputs_dir:str,
                  seed = seed,
                  simulate_fields=field_map,
                  fSC_mag = hybrid,
+                 apply_det_loss = False
                  )
     n_muons_total = 0
     n_muons_unweighted = 0
@@ -117,7 +119,8 @@ def get_loss(phi,inputs_dir:str,
                  manager_ip='34.65.198.159',
                  port=444,
                  seed = seed,
-                 simulate_fields=field_map)
+                 simulate_fields=field_map,
+                 apply_det_loss = False)
     total_loss = 0
     all_results = {}
     print('LENGTH:', SHIP.get_total_length(phi))

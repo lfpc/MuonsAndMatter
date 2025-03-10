@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from lib.ship_muon_shield_customfield import get_design_from_params, filter_fields
+from lib.ship_muon_shield_customfield import get_design_from_params
 from lib.magnet_simulations import get_symmetry
 
 def plot_magnet(detector, 
