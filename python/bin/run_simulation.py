@@ -141,7 +141,7 @@ if __name__ == '__main__':
     import pickle
     import multiprocessing as mp
     from time import time
-    from lib.reference_designs.params import sc_v6, optimal_oliver, new_parametrization, oliver_scaled, TOTAL_PARAMS, melvin
+    from lib.reference_designs.params import *
     import os
     from functools import partial
     parser = argparse.ArgumentParser()
@@ -169,20 +169,29 @@ if __name__ == '__main__':
     elif args.params == 'oliver': params = optimal_oliver
     elif args.params == 'oliver_scaled': params = oliver_scaled
     elif args.params == 'melvin': params = melvin
+    elif args.params == 'opt_warm': params = opt_warm
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
         params_idx = new_parametrization['M1'] + new_parametrization['M2'] + new_parametrization['M3'] + new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
-    params = np.array(params)
-    if params.size != TOTAL_PARAMS:
-        new_phi = np.array(oliver_scaled, dtype=params.dtype)
-        new_phi[np.array(params_idx)] = params
-        if args.SC_mag:
-            new_phi[new_parametrization['M2'][2]] = new_phi[new_parametrization['M2'][1]]
-            new_phi[new_parametrization['M2'][4]] = new_phi[new_parametrization['M2'][3]]
-        params = new_phi
-    #params[0] += 75
-    #params[4] -= 75
+        params_idx = new_parametrization['M1'][:9] + new_parametrization['M1'][12:] + \
+                              new_parametrization['M2'][:9] + new_parametrization['M2'][12:] + \
+                              new_parametrization['M3'][:9] + new_parametrization['M3'][12:] + \
+                              new_parametrization['M4'][:9] + new_parametrization['M4'][12:] + \
+                              new_parametrization['M5'][:9] + new_parametrization['M5'][12:] + \
+                              new_parametrization['M6'][:9] + new_parametrization['M6'][12:]
+        if params.size != TOTAL_PARAMS:
+            new_phi = np.array(oliver_scaled, dtype=params.dtype)
+            new_phi[np.array(params_idx)] = params
+            if args.SC_mag:
+                new_phi[new_parametrization['M2'][2]] = new_phi[new_parametrization['M2'][1]]
+                new_phi[new_parametrization['M2'][4]] = new_phi[new_parametrization['M2'][3]]
+            for m,idx in new_parametrization.items():
+                new_phi[idx[11]] = new_phi[idx[12]]
+                new_phi[idx[9]] = new_phi[idx[1]]*new_phi[idx[7]]
+                new_phi[idx[10]] = new_phi[idx[2]]*new_phi[idx[8]]
+            params = new_phi
+    params = np.asarray(params)
     def split_array(arr, K):
         N = len(arr)
         base_size = N // K
@@ -266,5 +275,5 @@ if __name__ == '__main__':
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = angle, elev = elev)
         else:
-            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = args.field_file, cavern = False, azim = angle, elev = elev)#args.add_cavern)
+            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = None, cavern = False, azim = angle, elev = elev)#args.add_cavern)
                                          

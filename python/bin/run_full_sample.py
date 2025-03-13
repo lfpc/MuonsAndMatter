@@ -71,7 +71,7 @@ def get_total_hits(phi,inputs_dir:str,
                  seed = seed,
                  simulate_fields=field_map,
                  fSC_mag = hybrid,
-                 apply_det_loss = False
+                 fields_file = os.path.join(PROJECTS_DIR,'MuonsAndMatter/data/outputs/fields.npy'),
                  )
     n_muons_total = 0
     n_muons_unweighted = 0
@@ -81,18 +81,19 @@ def get_total_hits(phi,inputs_dir:str,
     print('COST:', SHIP.get_total_cost(phi))
     for name in os.listdir(inputs_dir):
         n_name = extract_number_from_string(name)
-        #if not int(n_name) == 0: continue
+        if int(n_name)==0: continue
         print('FILE:', name)
         t1 = time()
         with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:
             factor = pickle.load(f)[:,-1]
         SHIP.n_samples = factor.shape[0]
         n_muons = factor.sum()
+        print(f'n_events_input: {SHIP.n_samples}')
         print(f'n_particles: {n_muons}')
 
         n_muons_total += n_muons
         time1 = time()
-        n_hits = SHIP(phi,file = n_name).item()-1
+        n_hits = SHIP.simulate(phi,file = n_name).item()-1
         print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
         concatenate_files(outputs_dir, n_name)
         n_hits_total += n_hits
@@ -157,8 +158,6 @@ if __name__ == '__main__':
     parser.add_argument("-inputs_dir", type=str, default=INPUTS_DIR)
     parser.add_argument("-outputs_dir", type=str, default=OUTPUTS_DIR)
     parser.add_argument("-params", type=str, default='sc_v6')
-    #parser.add_argument("--z", type=float, default=0.1)
-    #parser.add_argument("--sens_plane", type=float, default=57)
     parser.add_argument("-warm", dest = "hybrid",action = 'store_false')
     parser.add_argument("-extra_magnet", action = 'store_true')
     parser.add_argument("-field_map", action = 'store_true')
@@ -168,7 +167,7 @@ if __name__ == '__main__':
     
     if args.params == 'sc_v6': params = ShipMuonShieldCluster.sc_v6
     elif args.params == 'oliver': params = ShipMuonShieldCluster.old_warm_opt
-    elif args.params == 'oliver_scaled': params = ShipMuonShieldCluster.warm_opt
+    elif args.params == 'warm_opt': params = ShipMuonShieldCluster.warm_opt
     elif args.params == 'melvin': params = ShipMuonShieldCluster.warm_opt_scaled
     else:
         with open(args.params, "r") as txt_file:

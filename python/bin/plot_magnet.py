@@ -185,7 +185,7 @@ def plot_magnet(detector,
     if 80 < azim < 100 and -10 < elev < 20:
         z_plane1 = -1.7
         z_plane2 = -3.36
-        x_split = 22 - 2.345
+        x_split = 20.518 - 2.345
 
         # First plane
         x_range1 = np.linspace(ax.get_xlim()[0], x_split, 100)
@@ -200,10 +200,18 @@ def plot_magnet(detector,
         X2, Y2 = np.meshgrid(x_range2, y_range2)
         Z2 = np.full_like(X2, z_plane2)
         ax.plot_surface(X2, Y2, Z2, color='black', alpha=0.3)
+
+        z_plane1 = 5.8
+        z_plane2 = 10.6
+        Z1 = np.full_like(X1, z_plane1)
+        ax.plot_surface(X1, Y1, Z1, color='black', alpha=0.3)
+        X2, Y2 = np.meshgrid(x_range2, y_range2)
+        Z2 = np.full_like(X2, z_plane2)
+        ax.plot_surface(X2, Y2, Z2, color='black', alpha=0.3)
     elif azim < 10 or 80< elev<100 :
         y_plane1 = -3.57
         y_plane2 = -4.57
-        x_split = 22 - 2.345
+        x_split = 20.518 - 2.345
 
         # First plane
         x_range1 = np.linspace(ax.get_xlim()[0], x_split, 100)
@@ -215,6 +223,15 @@ def plot_magnet(detector,
         # Second plane
         x_range2 = np.linspace(x_split, ax.get_xlim()[1], 100)
         z_range2 = np.linspace(ax.get_zlim()[0], ax.get_zlim()[1], 100)
+        X2, Z2 = np.meshgrid(x_range2, z_range2)
+        Y2 = np.full_like(X2, y_plane2)
+        ax.plot_surface(X2, Y2, Z2, color='black', alpha=0.3)
+
+        y_plane1 = 6.43
+        y_plane2 = 11.43
+        X1, Z1 = np.meshgrid(x_range1, z_range1)
+        Y1 = np.full_like(X1, y_plane1)
+        ax.plot_surface(X1, Y1, Z1, color='black', alpha=0.3)
         X2, Z2 = np.meshgrid(x_range2, z_range2)
         Y2 = np.full_like(X2, y_plane2)
         ax.plot_surface(X2, Y2, Z2, color='black', alpha=0.3)

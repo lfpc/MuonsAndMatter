@@ -16,6 +16,8 @@ import snoopy
 import multiprocessing as mp
 from lib.reference_designs.params import new_parametrization
 
+
+RESOL_DEF = (0.02,0.02,0.05)
 def get_fixed_params(yoke_type = 'Mag1'):
     return {
     'yoke_type': yoke_type,
@@ -37,17 +39,19 @@ def get_magnet_params(params,
                      Ymgap:float = 0.05,
                      z_gap:float = 0.1,
                      yoke_type:str = 'Mag1',
-                     resol = (0.02,0.02,0.05),
+                     resol = RESOL_DEF,
                      B_goal:float = None,
                      materials_directory = None,
                      save_dir = None):
     # #convert to meters
-    ratio_yoke = params[7]
+    ratio_yoke_1 = params[7]
+    ratio_yoke_2 = params[8]
     if B_goal is not None:
         NI = None
-    else: NI = params[9]
+    else: NI = params[13]
     params /= 100
-    Xmgap = params[8]
+    Xmgap_1 = params[11]
+    Xmgap_2 = params[12]
     d = get_fixed_params(yoke_type)
     d.update({
     'NI(A)': NI,
@@ -55,21 +59,21 @@ def get_magnet_params(params,
     'resol_y(m)': resol[1],
     'resol_z(m)': resol[2],
     'Z_pos(m)': -1*params[0],
-    'Xmgap1(m)': Xmgap,
-    'Xmgap2(m)': Xmgap,
+    'Xmgap1(m)': Xmgap_1,
+    'Xmgap2(m)': Xmgap_2,
     'Z_len(m)': 2 * params[0] - z_gap,
-    'Xcore1(m)': params[1] + Xmgap,
-    'Xvoid1(m)': params[1] + params[5] + Xmgap,
-    'Xyoke1(m)': params[1] + params[5] + ratio_yoke * params[1] + Xmgap,
-    'Xcore2(m)': params[2] + Xmgap,
-    'Xvoid2(m)': params[2] + params[6] + Xmgap,
-    'Xyoke2(m)': params[2] + params[6] + ratio_yoke * params[2] + Xmgap,
+    'Xcore1(m)': params[1] + Xmgap_1,
+    'Xvoid1(m)': params[1] + params[5] + Xmgap_2,
+    'Xyoke1(m)': params[1] + params[5] + ratio_yoke_1 * params[1] + Xmgap_1,
+    'Xcore2(m)': params[2] + Xmgap_2,
+    'Xvoid2(m)': params[2] + params[6] + Xmgap_2,
+    'Xyoke2(m)': params[2] + params[6] + ratio_yoke_2 * params[2] + Xmgap_2,
     'Ycore1(m)': params[3],
     'Yvoid1(m)': params[3] + Ymgap,
-    'Yyoke1(m)': params[3] + ratio_yoke * params[1] + Ymgap,
+    'Yyoke1(m)': params[3] + params[9] + Ymgap,
     'Ycore2(m)': params[4],
     'Yvoid2(m)': params[4] + Ymgap,
-    'Yyoke2(m)': params[4] + ratio_yoke * params[2] + Ymgap
+    'Yyoke2(m)': params[4] + params[10] + Ymgap
     })
     if NI is None:
         if materials_directory is None:
@@ -102,7 +106,7 @@ def get_symmetry(points:np.array, B:np.array, reorder:bool = True):
    return points, B
 
 def construct_grid(limits = ((0., 0., -5.),(2.5, 3.5, 5.)), 
-                   resol = (0.05, 0.05, 0.05),
+                   resol = RESOL_DEF,
                    eps:float = 1e-12):
     '''Constructs a grid based on the limits and resolution given.'''
     (min_x, min_y, min_z), (max_x, max_y, max_z) = limits
@@ -111,10 +115,10 @@ def construct_grid(limits = ((0., 0., -5.),(2.5, 3.5, 5.)),
                             np.arange(min_y, max_y + r_y, r_y),
                             np.arange(min_z, max_z + r_z, r_z))
     # to avoid evaluating at 0
-    X[X == 0.0] = eps
-    Y[Y == 0.0] = eps
-    Z[Z == min_z] = min_z #+ eps
-    Z[Z == max_z] = max_z #- eps
+    #X[X == 0.0] = eps
+    #Y[Y == 0.0] = eps
+    #Z[Z == min_z] = min_z #+ eps
+    #Z[Z == max_z] = max_z #- eps
     return X, Y, Z
 
 def get_grid_data(points: np.array, B: np.array, new_points: tuple):
@@ -169,7 +173,7 @@ def simulate_and_grid(params, points):
     return get_grid_data(**run_fem(params), new_points=points)[1]
 
 def run(magn_params:dict,
-        resol = (0.05, 0.05, 0.05),
+        resol = RESOL_DEF,
         d_space = ((4., 4., (-1, 30.))),
         plot_results:bool = False,
         save_results:bool = False,
@@ -218,7 +222,7 @@ def simulate_field(params,
               Z_init = 0,
               fSC_mag:bool = True,
               z_gap = 0.1,
-              resol = (0.05,0.05,0.05),
+              resol = RESOL_DEF,
               d_space = ((4., 4., (-1, 30.))), 
               NI_from_B_goal:bool = False,
               file_name = 'data/outputs/fields.pkl',
@@ -244,7 +248,7 @@ def simulate_field(params,
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
         if mag == 'M2': Z_pos += z_gap
-    try: all_params.to_csv('data/magnet_params.csv', index=False)
+    try: all_params.to_csv(os.path.join(os.environ.get('PROJECTS_DIR', '../'), 'MuonsAndMatter/data/magnet_params.csv'), index=False)
     except: pass
     all_params = all_params.to_dict(orient='list')
     fields = run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores)
@@ -264,14 +268,14 @@ def simulate_field(params,
 if __name__ == '__main__':
    
    MAIN_DIR = '/home/hep/lprate/projects/roxie_ship'
-   parameters_filename = os.path.join(MAIN_DIR,'inputs', 'parameters.csv')
-   output_file = os.path.join(MAIN_DIR,'outputs')
+   parameters_filename = "/home/hep/lprate/projects/MuonsAndMatter/data/magnet_params.csv"
+   output_file = "/home/hep/lprate/projects/MuonsAndMatter/data/outputs/fields_mm.npy"
 
    import pandas as pd
    magn_params = pd.read_csv(parameters_filename).to_dict(orient='list')
    print(magn_params)
    t1 = time()
-   d = run(magn_params,output_file = output_file, apply_symmetry=False, plot_results=False, save_results=True)
+   d = run(magn_params,resol = RESOL_DEF,output_file = output_file, save_results=True, cores = 7)
    print('total_time: ', time() - t1, ' sec')
    points = d['points']
    print('limits: ', points.min(axis=0), points.max(axis=0))

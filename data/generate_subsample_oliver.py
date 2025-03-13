@@ -2,17 +2,24 @@ import gzip
 import numpy as np
 import pickle
 from tqdm import tqdm
+import os
 
 # Define input and output files
-input_file = "full_sample/full_sample_0.pkl"  # Input pickle file (gzip compressed)
-output_file = "enriched_input.pkl"
+output_file = "enriched_subsample.pkl"
+N_subsamples = int(5E5)
 
-# Load data from the pickle file
-with gzip.open(input_file, 'rb') as f:
-    data = pickle.load(f)
-
+data = []
+for file_name in os.listdir('full_sample')[:5]:
+    print(file_name)
+    with gzip.open(f'full_sample/{file_name}', 'rb') as f:
+        data.append(pickle.load(f))
+data = np.concatenate(data)
+data[:,-1] = np.ones(len(data))
 # Extract px, py, pz from the loaded data
 px,py,pz,x,y,z,pdg,weight = data.T
+
+
+
 
 # Initialize 2D histogram
 hist, xedges, yedges = np.histogram2d([], [], bins=[100, 100], range=[[0, 350], [0, 6]])
@@ -65,6 +72,9 @@ for i in tqdm(range(len(px_sel))):
 # Combine initial and additional data
 additional_data = np.array(additional_data)
 all_data = np.concatenate((data_to_pickle, additional_data), axis=0)
+print("Data SHAPE before cut", all_data.shape)
+sample_indices = np.random.choice(len(all_data), N_subsamples, replace=False)
+all_data = all_data[sample_indices]
 
 # Save the data to a pickle file
 with gzip.open(output_file, 'wb') as f:
