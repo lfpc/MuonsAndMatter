@@ -231,11 +231,11 @@ def get_iron_cost(phi, Ymgap = 0,zGap = 10, material = 'aisi1010.json', material
         [X_mgap_1, dY, 0],
         [X_mgap_1 + dX + gap + dX * ratio_yoke_1, dY, 0],
         [X_mgap_1 + dX + gap + dX * ratio_yoke_1, dY + dY_yoke_1, 0],
-        [X_mgap_1, dY + dX * ratio_yoke_1, 0],
+        [X_mgap_1, dY + dY_yoke_1, 0],
         [X_mgap_2, dY2, 2 * dZ],
         [X_mgap_2 + dX2 + gap2 + dX2 * ratio_yoke_2, dY2, 2 * dZ],
         [X_mgap_2 + dX2 + gap2 + dX2 * ratio_yoke_2, dY2 + dY_yoke_2, 2 * dZ],
-        [X_mgap_2, dY2 + dX2 * ratio_yoke_2, 2 * dZ],
+        [X_mgap_2, dY2 + dY_yoke_2, 2 * dZ],
     ])
     volume += compute_solid_volume(corners)
     
