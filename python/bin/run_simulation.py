@@ -5,7 +5,7 @@ from lib.ship_muon_shield_customfield import get_design_from_params, get_field, 
 from muon_slabs import simulate_muon, collect, kill_secondary_tracks, collect_from_sensitive
 from plot_magnet import plot_magnet, construct_and_plot
 from time import time
-
+from lib.reference_designs.params import new_parametrization
 
 def run(muons, 
         phi, 
@@ -122,6 +122,7 @@ def run(muons,
                 muon_data += [[0]*muons.shape[-1]]
 
     muon_data = np.asarray(muon_data)
+    
     if draw_magnet: 
         plot_magnet(detector,
                 muon_data = muon_data, 
@@ -134,7 +135,7 @@ def run(muons,
 
 
 
-DEF_INPUT_FILE = 'data/muons/enriched_input.pkl'
+DEF_INPUT_FILE = 'data/muons/subsample_4M.pkl'
 if __name__ == '__main__':
     import argparse
     import gzip
@@ -162,6 +163,8 @@ if __name__ == '__main__':
     parser.add_argument("-return_nan", action = 'store_true')
     parser.add_argument("-keep_tracks_of_hits", action = 'store_true')
     parser.add_argument("-extra_magnet", action = 'store_true')
+    parser.add_argument("-angle", type=float, default=90)
+    parser.add_argument("-elev", type=float, default=90)
 
     args = parser.parse_args()
     cores = args.c
@@ -173,13 +176,12 @@ if __name__ == '__main__':
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
-        params_idx = new_parametrization['M1'] + new_parametrization['M2'] + new_parametrization['M3'] + new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
-        params_idx = new_parametrization['M1'][:9] + new_parametrization['M1'][12:] + \
-                              new_parametrization['M2'][:9] + new_parametrization['M2'][12:] + \
-                              new_parametrization['M3'][:9] + new_parametrization['M3'][12:] + \
-                              new_parametrization['M4'][:9] + new_parametrization['M4'][12:] + \
-                              new_parametrization['M5'][:9] + new_parametrization['M5'][12:] + \
-                              new_parametrization['M6'][:9] + new_parametrization['M6'][12:]
+        params_idx = new_parametrization['M1'][1:9] + new_parametrization['M1'][12:13] + \
+                              new_parametrization['M2'][1:9] + new_parametrization['M2'][12:13] + \
+                              new_parametrization['M3'][1:9] + new_parametrization['M3'][12:13] + \
+                              new_parametrization['M4'][:9] + new_parametrization['M4'][12:13] + \
+                              new_parametrization['M5'][:9] + new_parametrization['M5'][12:13] + \
+                              new_parametrization['M6'][:9] + new_parametrization['M6'][12:13]
         if params.size != TOTAL_PARAMS:
             new_phi = np.array(oliver_scaled, dtype=params.dtype)
             new_phi[np.array(params_idx)] = params
@@ -244,6 +246,7 @@ if __name__ == '__main__':
                               extra_magnet=args.extra_magnet)
 
         result = pool.map(run_partial, workloads)
+        cost = 0
         t2 = time()
     print(f"Time to FEM: {t2_fem - t1_fem:.2f} seconds.")
     print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")
@@ -270,10 +273,8 @@ if __name__ == '__main__':
     if args.plot_magnet:
         all_results = all_results[:1000]
         sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':82}
-        angle = 90
-        elev = 90
         if False:#detector is not None:
-            plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = angle, elev = elev)
+            plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = args.angle, elev = args.elev)
         else:
-            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = None, cavern = False, azim = angle, elev = elev)#args.add_cavern)
+            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = None, cavern = False, azim = args.angle, elev = args.elev)#args.add_cavern)
                                          

@@ -23,7 +23,7 @@ def get_fixed_params(yoke_type = 'Mag1'):
     'yoke_type': yoke_type,
     'coil_material': 'hts_pencake.json' if yoke_type == 'Mag2' else 'copper_water_cooled.json',
     'max_turns': 12 if yoke_type == 'Mag2' else 10,
-    'J_tar(A/mm2)': 320 if yoke_type == 'Mag2' else 10,
+    'J_tar(A/mm2)': 320 if yoke_type == 'Mag2' else -1,
     'coil_diam(mm)': 20 if yoke_type == 'Mag2' else 9,
     'insulation(mm)': 8 if yoke_type == 'Mag2' else 0.5,
     'yoke_spacer(mm)': 5,
@@ -224,7 +224,7 @@ def simulate_field(params,
               z_gap = 0.1,
               resol = RESOL_DEF,
               d_space = ((4., 4., (-1, 30.))), 
-              NI_from_B_goal:bool = False,
+              NI_from_B_goal:bool = True,
               file_name = 'data/outputs/fields.pkl',
               cores = 1):
     '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
@@ -233,9 +233,9 @@ def simulate_field(params,
     Z_pos = 0.
     for i, (mag,idx) in enumerate(new_parametrization.items()):
         mag_params = params[idx]
-        if mag == 'HA': Ymgap=0.; yoke_type = 'Mag1'; B_goal = 1.6 if NI_from_B_goal else None
-        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.7 if NI_from_B_goal else None; yoke_type = 'Mag1'
-        else: Ymgap = 0.; B_goal = 1.7 if NI_from_B_goal else None; yoke_type = 'Mag3'
+        if mag == 'HA': Ymgap=0.; yoke_type = 'Mag1'; B_goal = 1.9 if NI_from_B_goal else None
+        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag1'
+        else: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag3'
         if fSC_mag:
             if mag == 'M1': continue
             elif mag == 'M3':
