@@ -672,6 +672,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         #tShield['cost'] = cost
     cost = 0
     for nM in range(0,n_magnets):
+        if dZf[nM] < 1 or dXIn[nM] < 1: continue
         if fSC_mag and (nM in [1,3]):
             continue
         if nM == 2 and fSC_mag:
@@ -749,7 +750,6 @@ def get_design_from_params(params,
         if mag['dz'] + mag['z_center'] > max_z:
             max_z = mag['dz'] + mag['z_center']
 
-    print('TOTAL LENGTH', max_z, shield['dz']*2)
     shield.update({
      "worldSizeX": World_dX, "worldSizeY": World_dY, "worldSizeZ": World_dZ,
         "type" : 1,

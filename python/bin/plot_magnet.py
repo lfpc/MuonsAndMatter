@@ -147,31 +147,26 @@ def plot_magnet(detector,
     #total_sensitive_hits = 0
     cmap_muon = cm.get_cmap('Blues')
     cmap_antimuon = cm.get_cmap('Oranges')
+    norm = mcolors.Normalize(vmin=0, vmax=250)  
     for i, data in enumerate(muon_data):
         if isinstance(data,dict):
             x = data['x']
             y = data['y']
             z = data['z']
-            p = np.sqrt(data['px']**2 + data['py']**2 + data['pz']**2)
+            p = np.sqrt(data['px']**2 + data['py']**2 + data['pz']**2)[0]
             particle = data['pdg_id']  
-            alpha = 0.3#np.clip(p[0]/350, 0.02, 1.0)
-            # Normalize p values to range [0,1] for colormap
-            norm = mcolors.Normalize(vmin=0, vmax=250)  # Adjust vmax if needed
-            if particle>0:
-                color = cmap_muon(norm(p[0]))
-            else:
-                color = cmap_antimuon(norm(p[0]))
             alpha = 0.3
+
             
         else:
             px,py,pz,x,y,z,particle = data[:7]
             p = np.sqrt(px**2 + py**2 + pz**2)
             if sensitive_film_position is not None: z = sensitive_film_position*np.ones_like(z)+detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz']
             alpha = 0.3
-            if particle>0:
-                color ='blue'
-            else:
-                color = 'orange'
+        if particle>0:
+            color = cmap_muon(norm(p))
+        else:
+            color = cmap_antimuon(norm(p))
 
         
         #total_sensitive_hits += 1
@@ -181,12 +176,13 @@ def plot_magnet(detector,
     sm_muon = cm.ScalarMappable(cmap=cmap_muon, norm=norm)
     sm_antimuon = cm.ScalarMappable(cmap=cmap_antimuon, norm=norm)
     sm_muon.set_array([])
-    cbar_muon = plt.colorbar(sm_muon, ax=ax, shrink=0.5, pad=0.02)  # Reduced shrink and pad
-    cbar_muon.set_label("Initial Momentum (p0) - Muons")
-
+    cbar_muon = plt.colorbar(sm_muon, ax=ax, shrink=0.5)  # Reduced shrink and pad
+    cbar_muon.set_label("Muons")
     sm_antimuon.set_array([])
-    cbar_antimuon = plt.colorbar(sm_antimuon, ax=ax, shrink=0.5, pad=0.08)  # Adjusted shrink and pad
-    cbar_antimuon.set_label("Initial Momentum (p0) - AntiMuons")
+    cbar_antimuon = plt.colorbar(sm_antimuon, ax=ax, shrink=0.5)  # Adjusted shrink and pad
+    cbar_antimuon.set_label("Anti-muons")
+    cbar_muon.ax.set_position([0.85, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
+    cbar_antimuon.ax.set_position([0.88, 0.15, 0.02, 0.7])  # Move closer
     # Plot cavern
     if "cavern" in detector:
         for cavern in detector["cavern"]:

@@ -90,6 +90,7 @@ def get_total_hits(phi,inputs_dir:str,
     print('COST:', SHIP.get_total_cost(phi))
     for name in os.listdir(inputs_dir)[:n_files]:
         n_name = extract_number_from_string(name)
+        if n_name == 0: continue
         print('FILE:', name)
         t1 = time()
         with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:
@@ -176,10 +177,11 @@ if __name__ == '__main__':
     elif args.params == 'oliver': params = ShipMuonShieldCluster.old_warm_opt
     elif args.params == 'warm_opt': params = ShipMuonShieldCluster.warm_opt
     elif args.params == 'melvin': params = ShipMuonShieldCluster.warm_opt_scaled
+    elif args.params == 'melvin_2': params = ShipMuonShieldCluster.warm_opt_scaled_2
+    elif args.params == 'warm_baseline': params = ShipMuonShieldCluster.warm_scaled_baseline
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
-        params_idx = new_parametrization['M1'] + new_parametrization['M2'] + new_parametrization['M3'] + new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
 
     params = torch.as_tensor(params, dtype=torch.float32)
 

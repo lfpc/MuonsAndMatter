@@ -172,16 +172,16 @@ if __name__ == '__main__':
     elif args.params == 'oliver': params = optimal_oliver
     elif args.params == 'oliver_scaled': params = oliver_scaled
     elif args.params == 'melvin': params = melvin
-    elif args.params == 'opt_warm': params = opt_warm
+    elif args.params == 'new_optim': params = new_optim
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
-        params_idx = new_parametrization['M1'][1:9] + new_parametrization['M1'][12:13] + \
-                              new_parametrization['M2'][1:9] + new_parametrization['M2'][12:13] + \
-                              new_parametrization['M3'][1:9] + new_parametrization['M3'][12:13] + \
-                              new_parametrization['M4'][:9] + new_parametrization['M4'][12:13] + \
-                              new_parametrization['M5'][:9] + new_parametrization['M5'][12:13] + \
-                              new_parametrization['M6'][:9] + new_parametrization['M6'][12:13]
+        params_idx = new_parametrization['M1'][:9] + new_parametrization['M1'][12:13] + \
+                    new_parametrization['M2'][:9] + new_parametrization['M2'][12:13] + \
+                    new_parametrization['M3'][:9] + new_parametrization['M3'][12:13] + \
+                    new_parametrization['M4'][:9] + new_parametrization['M4'][12:13] + \
+                    new_parametrization['M5'][:9] + new_parametrization['M5'][12:13] + \
+                    new_parametrization['M6'][:9] + new_parametrization['M6'][12:13]
         if params.size != TOTAL_PARAMS:
             new_phi = np.array(oliver_scaled, dtype=params.dtype)
             new_phi[np.array(params_idx)] = params
