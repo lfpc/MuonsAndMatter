@@ -560,7 +560,7 @@ def construct_block(medium, tShield,field_profile, stepGeo):
 
 
 
-def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1,extra_magnet = False):
+def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1,extra_magnet = False, use_diluted = False ):
     n_magnets = 7 + int(extra_magnet)
     cm = 1
     mm = 0.1 * cm
@@ -667,13 +667,15 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         field_map = get_field(simulate_fields,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
                               file_name=field_map_file, only_grid_params=True, NI_from_B_goal = NI_from_B,
-                              cores = min(cores_field,n_magnets))
+                              cores = min(cores_field,n_magnets), use_diluted = use_diluted)
         tShield['global_field_map'] = field_map
         #tShield['cost'] = cost
     cost = 0
     for nM in range(0,n_magnets):
         if fSC_mag and (nM in [1,3]):
             continue
+        if use_diluted and nM ==  4 :
+            continue 
         if nM == 2 and fSC_mag:
             Ymgap = 5*cm
             ironField_s = 5.1 * tesla
@@ -723,9 +725,10 @@ def get_design_from_params(params,
                            add_cavern:bool = True,
                            add_target:bool = True,
                            cores_field:int = 1,
-                           extra_magnet = False):
+                           extra_magnet = False, 
+                           use_diluted = False):
     params = np.round(params, 2)
-    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, extra_magnet = extra_magnet)
+    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, extra_magnet = extra_magnet, use_diluted=use_diluted)
     shift = -2.345
     cavern_transition = 20.518+shift #m
     World_dZ = 200 #m
@@ -793,7 +796,8 @@ if __name__ == '__main__':
               33.00,  77.00,  85.00,  90.00,   9.00,  26.00, 1.00, 1.0, 33.00,  77.00, 0.0, 0.00, 0.]
     fSC_mag = False
     core_field = 8
-    detector = get_design_from_params(params, simulate_fields=True,field_map_file = file_map_file, add_cavern=True, cores_field=core_field, fSC_mag = fSC_mag)
+    use_diluted =  False
+    detector = get_design_from_params(params, simulate_fields=True,field_map_file = file_map_file, add_cavern=True, cores_field=core_field, fSC_mag = fSC_mag, use_diluted = use_diluted)
     t1_init = time()
     output_data = initialize_geant4(detector)
     print('Time to initialize', time()-t1_init)

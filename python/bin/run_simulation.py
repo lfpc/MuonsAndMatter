@@ -23,7 +23,9 @@ def run(muons,
         add_target:bool = True,
         keep_tracks_of_hits = False,
         extra_magnet = False,
-        kwargs_plot = {}):
+        kwargs_plot = {},
+        use_diluted = False):
+    
     """
         Simulates the passage of muons through the muon shield and collects the resulting data.
         Parameters:
@@ -57,7 +59,8 @@ def run(muons,
                                       field_map_file = field_map_file,
                                       add_cavern = add_cavern,
                                       add_target = add_target,
-                                      extra_magnet=extra_magnet)
+                                      extra_magnet=extra_magnet,
+                                      use_diluted = use_diluted)
     cost = detector['cost']
 
     detector["store_primary"] = sensitive_film_params is None or keep_tracks_of_hits
@@ -161,6 +164,7 @@ if __name__ == '__main__':
     parser.add_argument("-warm",dest="SC_mag", action = 'store_false')
     parser.add_argument("-save_data", action = 'store_true')
     parser.add_argument("-return_nan", action = 'store_true')
+    parser.add_argument("-use_diluted", action = 'store_true')
     parser.add_argument("-keep_tracks_of_hits", action = 'store_true')
     parser.add_argument("-extra_magnet", action = 'store_true')
     parser.add_argument("-angle", type=float, default=90)
@@ -172,7 +176,8 @@ if __name__ == '__main__':
     elif args.params == 'oliver': params = optimal_oliver
     elif args.params == 'oliver_scaled': params = oliver_scaled
     elif args.params == 'melvin': params = melvin
-    elif args.params == 'opt_warm': params = opt_warm
+    elif args.params == 'Piet_solution': params = Piet_solution
+    elif args.params == 'warm_opt': params = warm_opt
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
@@ -212,9 +217,10 @@ if __name__ == '__main__':
     detector = None
     if not args.real_fields:
         args.field_file = None
-    else: 
+    else:
+         
         core_fields = 8
-        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet)
+        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet, use_diluted = args.use_diluted)    
     t2_fem = time()
 
     with gzip.open(input_file, 'rb') as f:
@@ -243,7 +249,8 @@ if __name__ == '__main__':
                               SmearBeamRadius=5, 
                               add_target=True, 
                               keep_tracks_of_hits=args.keep_tracks_of_hits, 
-                              extra_magnet=args.extra_magnet)
+                              extra_magnet=args.extra_magnet,
+                              use_diluted = args.use_diluted)
 
         result = pool.map(run_partial, workloads)
         cost = 0
