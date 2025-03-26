@@ -44,7 +44,7 @@ def get_magnet_params(params,
                      materials_directory = None,
                      save_dir = None,
                      use_diluted = False):
-    # #convert to meters
+
     ratio_yoke_1 = params[7]
     ratio_yoke_2 = params[8]
     if B_goal is not None:
@@ -94,6 +94,39 @@ def get_magnet_params(params,
             w.writeheader()
             w.writerow(d)
     return d
+
+def get_melvin_params(params,
+              fSC_mag:bool = False,
+              z_gap = 0.1,
+              resol = RESOL_DEF,
+              NI_from_B_goal:bool = True):
+    all_params = pd.DataFrame()
+    Z_pos = 0.
+    for i, (mag,idx) in enumerate(new_parametrization.items()):
+        mag_params = params[idx]
+        if mag_params[0]<1: continue
+        if mag_params[1]<1: 
+            Z_pos += 2 * mag_params[0]/100 - z_gap
+            continue
+        if mag == 'HA': Ymgap=0.; yoke_type = 'Mag1'; B_goal = 1.9 if NI_from_B_goal else None
+        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag1'
+        else: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag3'
+        if fSC_mag:
+            if mag == 'M1': continue
+            elif mag == 'M3':
+                Z_pos += 2 * mag_params[0]/100 - z_gap
+                continue
+            elif mag == 'M2': 
+                Ymgap = 0.05; yoke_type = 'Mag2'; mag_params[-1] = 3.20E+06; B_goal = None
+        p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal = B_goal, yoke_type=yoke_type, resol = resol)
+        p['Z_pos(m)'] = Z_pos
+        all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
+        Z_pos += p['Z_len(m)'] + z_gap
+        if mag == 'M2': Z_pos += z_gap
+    all_params.to_csv('magnet_params.csv')
+
+
+
 
 def get_symmetry(points:np.array, B:np.array, reorder:bool = True):
    '''Applies symmetry to the computed magnetic field.'''
@@ -243,6 +276,10 @@ def simulate_field(params,
     Z_pos = 0.
     for i, (mag,idx) in enumerate(new_parametrization.items()):
         mag_params = params[idx]
+        if mag_params[0]<1: continue
+        if mag_params[1]<1: 
+            Z_pos += 2 * mag_params[0]/100 - z_gap
+            continue
         if mag == 'HA': Ymgap=0.; yoke_type = 'Mag1'; B_goal = 1.9 if NI_from_B_goal else None
         elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag1'
         else: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag3'

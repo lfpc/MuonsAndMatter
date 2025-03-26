@@ -3,6 +3,8 @@ import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from lib.ship_muon_shield_customfield import get_design_from_params
 from lib.magnet_simulations import get_symmetry
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 
 def plot_magnet(detector, 
                 output_file='plots/detector_visualization.png',
@@ -142,22 +144,45 @@ def plot_magnet(detector,
             # # Scatter plot of the corners
             # ax.scatter3D(corners[:, 0], corners[:, 1], corners[:, 2], color='b', s=0.04)
 
-    colors = plt.cm.get_cmap('tab10', 10)  # Get a colormap with 10 colors
     #total_sensitive_hits = 0
+    cmap_muon = cm.get_cmap('Blues')
+    cmap_antimuon = cm.get_cmap('Oranges')
+    norm = mcolors.Normalize(vmin=0, vmax=250)  
     for i, data in enumerate(muon_data):
         if isinstance(data,dict):
             x = data['x']
             y = data['y']
             z = data['z']
+            p = np.sqrt(data['px']**2 + data['py']**2 + data['pz']**2)[0]
             particle = data['pdg_id']  
+            alpha = 0.3
+
+            
         else:
-            _,_,_,x,y,z,particle = data[:7]
+            px,py,pz,x,y,z,particle = data[:7]
+            p = np.sqrt(px**2 + py**2 + pz**2)
             if sensitive_film_position is not None: z = sensitive_film_position*np.ones_like(z)+detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz']
+            alpha = 0.3
+        if particle>0:
+            color = cmap_muon(norm(p))
+        else:
+            color = cmap_antimuon(norm(p))
+
         
         #total_sensitive_hits += 1
-        ax.scatter(z[particle>0], x[particle>0], y[particle>0], color='blue', label=f'Muon {i + 1}', s=0.2, alpha=0.3)
-        ax.scatter(z[particle<0], x[particle<0], y[particle<0], color='orange', label=f'AntiMuon {i + 1}', s=0.2, alpha=0.3)
-    
+        ax.scatter(z[particle>0], x[particle>0], y[particle>0], color=color, label=f'Muon {i + 1}', s=0.1, alpha=alpha)
+        ax.scatter(z[particle<0], x[particle<0], y[particle<0], color=color, label=f'AntiMuon {i + 1}', s=0.1, alpha=alpha)
+    # Add colorbars
+    sm_muon = cm.ScalarMappable(cmap=cmap_muon, norm=norm)
+    sm_antimuon = cm.ScalarMappable(cmap=cmap_antimuon, norm=norm)
+    sm_muon.set_array([])
+    cbar_muon = plt.colorbar(sm_muon, ax=ax, shrink=0.5)  # Reduced shrink and pad
+    cbar_muon.set_label("Muons")
+    sm_antimuon.set_array([])
+    cbar_antimuon = plt.colorbar(sm_antimuon, ax=ax, shrink=0.5)  # Adjusted shrink and pad
+    cbar_antimuon.set_label("Anti-muons")
+    cbar_muon.ax.set_position([0.85, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
+    cbar_antimuon.ax.set_position([0.88, 0.15, 0.02, 0.7])  # Move closer
     # Plot cavern
     if "cavern" in detector:
         for cavern in detector["cavern"]:

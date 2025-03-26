@@ -7,6 +7,8 @@ PROJECTS_DIR = os.getenv('PROJECTS_DIR')
 sys.path.insert(1, os.path.join(PROJECTS_DIR,'BlackBoxOptimization/src'))
 from problems import ShipMuonShieldCluster
 from time import time
+import gzip
+import pickle
 
 def extract_number_from_string(s):
     number_str = ''
@@ -15,17 +17,23 @@ def extract_number_from_string(s):
             number_str += char
     return int(number_str)
 
-def concatenate_files(direc, file_number):
-    all_data = []
+def concatenate_files(direc, file_number, direc_output = None):
+    if direc_output is None: direc_output = direc
+    data_idx = {}
     for file in os.listdir(direc):
-        if f'_{file_number}_' not in file: continue
-        data = np.load(os.path.join(direc, file))
+        parts = file.split('_')
+        assert len(parts) == 3
+        if int(parts[1]) != file_number: continue
+        idx = int(parts[2][:-4])  # Remove '.npy'
+        data_idx[idx] = np.load(os.path.join(direc, file))
+        os.remove(os.path.join(direc,file))
+    all_data = []
+    for idx in sorted(data_idx.keys()):
+        data = data_idx[idx]
         if data.shape != (8,):
             all_data.append(data)
-        os.remove(os.path.join(direc,file))
     all_data = np.concatenate(all_data,axis=1)
-    with open(os.path.join(direc,f'muons_data_{file_number}.pkl'),'wb') as f:
-        pickle.dump(all_data,f)
+    np.save(os.path.join(direc_output, f'muonsdata_{file_number}.npy'), all_data)
 
 def get_files(phi,inputs_dir:str,
         outputs_dir:str, 
@@ -59,6 +67,7 @@ def get_files(phi,inputs_dir:str,
 def get_total_hits(phi,inputs_dir:str,
         outputs_dir:str, 
         cores:int = 512,
+        n_files = 67,
         seed = 1,
         tag = '',
         field_map = False,
@@ -79,9 +88,9 @@ def get_total_hits(phi,inputs_dir:str,
     all_results = {}
     print('LENGTH:', SHIP.get_total_length(phi))
     print('COST:', SHIP.get_total_cost(phi))
-    for name in os.listdir(inputs_dir):
+    for name in os.listdir(inputs_dir)[:n_files]:
         n_name = extract_number_from_string(name)
-        if int(n_name)==0: continue
+        if n_name == 0: continue
         print('FILE:', name)
         t1 = time()
         with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:
@@ -95,7 +104,7 @@ def get_total_hits(phi,inputs_dir:str,
         time1 = time()
         n_hits = SHIP.simulate(phi,file = n_name).item()-1
         print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
-        concatenate_files(outputs_dir, n_name)
+        concatenate_files('/home/hep/lprate/projects/MuonsAndMatter/data/outputs/results', n_name, outputs_dir)
         n_hits_total += n_hits
         n_muons_unweighted += len(factor)
         all_results[n_name] = (n_muons,n_hits)
@@ -149,11 +158,10 @@ if __name__ == '__main__':
     INPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/full_sample'
     OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs/results'
     import argparse
-    import gzip
-    import pickle
     parser = argparse.ArgumentParser()
     parser.add_argument("-tag", type=str, default='')
     parser.add_argument("-n_tasks", type=int, default=512)
+    parser.add_argument("-n_files", type=int, default=67)
     parser.add_argument("-seed", type=int, default=None)
     parser.add_argument("-inputs_dir", type=str, default=INPUTS_DIR)
     parser.add_argument("-outputs_dir", type=str, default=OUTPUTS_DIR)
@@ -169,12 +177,17 @@ if __name__ == '__main__':
     elif args.params == 'oliver': params = ShipMuonShieldCluster.old_warm_opt
     elif args.params == 'warm_opt': params = ShipMuonShieldCluster.warm_opt
     elif args.params == 'melvin': params = ShipMuonShieldCluster.warm_opt_scaled
+    elif args.params == 'melvin_2': params = ShipMuonShieldCluster.warm_opt_scaled_2
+    elif args.params == 'warm_baseline': params = ShipMuonShieldCluster.warm_scaled_baseline
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
-        params_idx = new_parametrization['M1'] + new_parametrization['M2'] + new_parametrization['M3'] + new_parametrization['M4'] + new_parametrization['M5'] + new_parametrization['M6']
 
     params = torch.as_tensor(params, dtype=torch.float32)
+
+    # Create outputs directory if it doesn't exist
+    if not os.path.exists(args.outputs_dir):
+        os.makedirs(args.outputs_dir)
 
     t1 = time()
     if args.calc_loss:
@@ -192,6 +205,7 @@ if __name__ == '__main__':
     else:
         n_muons,n_hits, n_un = get_total_hits(params,args.inputs_dir,args.outputs_dir, 
         cores = args.n_tasks,
+        n_files=args.n_files,
         seed = args.seed, 
         tag = args.tag,
         field_map = args.field_map,
