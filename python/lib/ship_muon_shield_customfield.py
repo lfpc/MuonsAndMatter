@@ -680,10 +680,10 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
             ironField_s = 5.1 * tesla
         elif nM == 0:
             Ymgap = 0
-            ironField_s = 1.6 * tesla
+            ironField_s = 1.9 * tesla
         else:
             Ymgap = 0
-            ironField_s = 1.7 * tesla
+            ironField_s = 1.9 * tesla
 
         if simulate_fields or field_map_file is not  None:
             field_profile = 'global'

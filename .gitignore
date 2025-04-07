@@ -17,6 +17,7 @@ plots/*
 data/full_sample/
 data/muons/subsample_biased_10M.pkl
 data/outputs/*
+!data/outputs/*.ipynb
 
 
 # Ignore checks directory

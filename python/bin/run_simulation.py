@@ -268,11 +268,11 @@ if __name__ == '__main__':
         print('Input Shape', len(data_n))
     print(f"Cost = {cost} CHF")
     if args.save_data:
-        with gzip.open(f'data/outputs/outputs_optimal.pkl', "wb") as f:
+        with open(f'data/outputs/output_data.pkl', "wb") as f:
             pickle.dump(all_results, f)
     if args.plot_magnet:
         all_results = all_results[:1000]
-        sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':82}
+        if sensitive_film_params is None: sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82}
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = args.angle, elev = args.elev)
         else:
