@@ -8,57 +8,72 @@ from time import time
 from lib.reference_designs.params import new_parametrization
 
 def run(muons, 
-        phi, 
-        input_dist:float = None,
-        return_cost = False,
-        fSC_mag:bool = True,
-        sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82},
-        add_cavern = True,
-        simulate_fields = False,
-        field_map_file = None,
-        return_nan:bool = False,
-        seed:int = None,
-        draw_magnet = False,
-        SmearBeamRadius:float = 5., #cm
-        add_target:bool = True,
-        keep_tracks_of_hits = False,
-        extra_magnet = False,
-        kwargs_plot = {}):
+    phi, 
+    input_dist:float = None,
+    return_cost = False,
+    fSC_mag:bool = True,
+    sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82},
+    add_cavern = True,
+    simulate_fields = False,
+    field_map_file = None,
+    return_nan:bool = False,
+    seed:int = None,
+    draw_magnet = False,
+    SmearBeamRadius:float = 5., #cm
+    add_target:bool = True,
+    keep_tracks_of_hits = False,
+    extra_magnet = False,
+    NI_from_B = True,
+    kwargs_plot = {}):
     """
-        Simulates the passage of muons through the muon shield and collects the resulting data.
-        Parameters:
-        muons (ndarray): Array of muon parameters. Each muon is represented by its momentum (px, py, pz), 
-                         position (x, y, z), charge, and optionally weight.
-        phi: List of 72 parameters for the detector design. 
-        input_dist (float, optional): If different than None, define the distance to set the initial z position of all muons. If None (default), the z position is taken from the file.
-        return_cost (bool, optional): If True, returns the total weight of the muon shield. Defaults to False.
-        fSC_mag (bool, optional): Flag to use the hybrid configuration (i.e., with the superconducting magnet) of the muon shield in the simulation. Defaults to True.
-        sensitive_film_params (dict, optional): Parameters for the sensitive film. Defaults to {'dz': 0.01, 'dx': 10, 'dy': 10, 'position': 67}. If None, the simulation collects all the data from the muons (not only hits).
-        simulate_fields (bool, optional): Flag to use simulate (FEM) and use field maps in the simulation. Defaults to False.
-        field_map_file (str, optional): Path to the field map file. Defaults to None.
-        return_nan (bool, optional): If True, returns a list of zeros as the output for muons that do not hit the sensitive film. Defaults to False.
-        seed (int, optional): Seed for random number generation. Defaults to None.
-        draw_magnet (bool, optional): If True, plot the muon shield. Defaults to False.
-        kwargs_plot (dict, optional): Additional keyword arguments for plotting.
-        Returns:
-        ndarray: Array of simulated muon data (momentum, position, particle ID and possibly weight (if presented in the input)). 
-        float (optional): Total weight of the muon shield if return_cost is True.
+    Simulates the passage of muons through the muon shield and collects the resulting data.
+    
+    Parameters:
+    muons (ndarray): Array of muon parameters. Each muon is represented by its momentum (px, py, pz), 
+             position (x, y, z), charge, and optionally weight.
+    phi (ndarray): Array of parameters for the detector design (magnet configuration).
+    input_dist (float, optional): If different than None, define the distance to set the initial z position 
+                     of all muons. If None (default), the z position is taken from the file.
+    return_cost (bool, optional): If True, returns the total weight of the muon shield. Defaults to False.
+    fSC_mag (bool, optional): Flag to use the hybrid configuration (i.e., with the superconducting magnet) 
+                 of the muon shield in the simulation. Defaults to True.
+    sensitive_film_params (dict, optional): Parameters for the sensitive film. Defaults to 
+                           {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82}. 
+                           If None, the simulation collects all the data from the muons.
+    add_cavern (bool, optional): Include cavern geometry in the simulation. Defaults to True.
+    simulate_fields (bool, optional): Flag to simulate (FEM) and use field maps in the simulation. Defaults to False.
+    field_map_file (str, optional): Path to the field map file. Defaults to None.
+    return_nan (bool, optional): If True, returns a list of zeros as the output for muons that do not hit 
+                    the sensitive film. Defaults to False.
+    seed (int, optional): Seed for random number generation. Defaults to None.
+    draw_magnet (bool, optional): If True, plot the muon shield. Defaults to False.
+    SmearBeamRadius (float, optional): Radius in cm for beam smearing. Defaults to 5cm.
+    add_target (bool, optional): Include target geometry in simulation. Defaults to True.
+    keep_tracks_of_hits (bool, optional): Store full tracks of muons that hit the sensitive film. Defaults to False.
+    extra_magnet (bool, optional): Add an additional small magnet to the configuration. Defaults to False.
+    kwargs_plot (dict, optional): Additional keyword arguments for plotting.
+    
+    Returns:
+    ndarray: Array of simulated muon data (momentum, position, particle ID and possibly weight (if presented in the input)). 
+    float (optional): Total weight of the muon shield if return_cost is True.
     """
     
 
     if type(muons) is tuple:
         muons = muons[0]
-        
+    
     detector = get_design_from_params(params = phi,
-                                      force_remove_magnetic_field= False,
-                                      fSC_mag = fSC_mag,
-                                      simulate_fields=simulate_fields,
-                                      sensitive_film_params=sensitive_film_params,
-                                      field_map_file = field_map_file,
-                                      add_cavern = add_cavern,
-                                      add_target = add_target,
-                                      extra_magnet=extra_magnet)
+                      force_remove_magnetic_field= False,
+                      fSC_mag = fSC_mag,
+                      simulate_fields=simulate_fields,
+                      sensitive_film_params=sensitive_film_params,
+                      field_map_file = field_map_file,
+                      add_cavern = add_cavern,
+                      add_target = add_target,
+                      extra_magnet=extra_magnet,
+                      NI_from_B = NI_from_B)
     cost = detector['cost']
+    length = detector['dz']
 
     detector["store_primary"] = sensitive_film_params is None or keep_tracks_of_hits
     detector["store_all"] = False
@@ -130,6 +145,7 @@ def run(muons,
                 **kwargs_plot)
     print('TOTAL COST:', cost)
     print('MASS:', output_data['weight_total'])
+    print('LENGTH:', length)
     if return_cost: return muon_data, cost
     else: return muon_data
 
@@ -146,25 +162,27 @@ if __name__ == '__main__':
     import os
     from functools import partial
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n", type=int, default=0)
-    parser.add_argument("--c", type=int, default=45)
-    parser.add_argument("-seed", type=int, default=None)
-    parser.add_argument("--f", type=str, default=DEF_INPUT_FILE)
-    parser.add_argument("-params", type=str, default='sc_v6')
-    parser.add_argument("--z", type=float, default=None)
-    parser.add_argument("-sens_plane", type=float, default=82)
-    parser.add_argument("-real_fields", action = 'store_true')
-    parser.add_argument("-field_file", type=str, default='data/outputs/fields_mm.npy') 
-    parser.add_argument("-shuffle_input", action = 'store_true')
-    parser.add_argument("-remove_cavern", dest = "add_cavern", action = 'store_false')
-    parser.add_argument("-plot_magnet", action = 'store_true')
-    parser.add_argument("-warm",dest="SC_mag", action = 'store_false')
-    parser.add_argument("-save_data", action = 'store_true')
-    parser.add_argument("-return_nan", action = 'store_true')
-    parser.add_argument("-keep_tracks_of_hits", action = 'store_true')
-    parser.add_argument("-extra_magnet", action = 'store_true')
-    parser.add_argument("-angle", type=float, default=90)
-    parser.add_argument("-elev", type=float, default=90)
+    parser.add_argument("--n", type=int, default=0, help="Number of muons to process, 0 means all")
+    parser.add_argument("--c", type=int, default=45, help="Number of CPU cores to use for parallel processing")
+    parser.add_argument("-seed", type=int, default=None, help="Random seed for reproducibility")
+    parser.add_argument("--f", type=str, default=DEF_INPUT_FILE, help="Input file (gzip .pkl) path containing muon data")
+    parser.add_argument("-params", type=str, default='sc_v6', help="Magnet parameters configuration - name or file path")
+    parser.add_argument("--z", type=float, default=None, help="Initial z-position distance for all muons if specified (default is to use from input file)")
+    parser.add_argument("-sens_plane", type=float, default=82, help="Position of the sensitive plane in z (m), 0 means no sensitive plane")
+    parser.add_argument("-real_fields", action='store_true', help="Use realistic field maps (FEM) instead of uniform fields")
+    parser.add_argument("-field_file", type=str, default='data/outputs/fields_mm.npy', help="Path to save field map file") 
+    parser.add_argument("-shuffle_input", action='store_true', help="Randomly shuffle the input data")
+    parser.add_argument("-remove_cavern", dest="add_cavern", action='store_false', help="Remove the cavern from simulation")
+    parser.add_argument("-plot_magnet", action='store_true', help="Generate visualization of the magnet and muon tracks")
+    parser.add_argument("-warm", dest="SC_mag", action='store_false', help="Use warm magnets instead of hybrid")
+    parser.add_argument("-save_data", action='store_true', help="Save simulation results to output file")
+    parser.add_argument("-return_nan", action='store_true', help="Return zeros for muons that don't hit the sensitive film")
+    parser.add_argument("-keep_tracks_of_hits", action='store_true', help="Store full tracks of muons that hit the sensitive film")
+    parser.add_argument("-use_B_goal", action='store_true', help="Use B goal for the field map")
+    parser.add_argument("-expanded_sens_plane", action='store_true', help="Use big sensitive plane")
+    parser.add_argument("-extra_magnet", action='store_true', help="Add an additional small magnet to the configuration (old designs)")
+    parser.add_argument("-angle", type=float, default=90, help="Azimuthal viewing angle for 3D plot")
+    parser.add_argument("-elev", type=float, default=90, help="Elevation viewing angle for 3D plot")
 
     args = parser.parse_args()
     cores = args.c
@@ -172,6 +190,31 @@ if __name__ == '__main__':
     elif args.params == 'oliver': params = optimal_oliver
     elif args.params == 'oliver_scaled': params = oliver_scaled
     elif args.params == 'melvin': params = melvin
+    elif args.params == 'new_melvin': params = [130.        , 231.80555555, 231.80555555, 231.80555555,
+       231.80555555, 236.3888889 , 236.3888889 ,  30.        ,
+        30.        ,  50.        ,  50.        ,  30.        ,
+        30.        ,   1.        ,   1.        ,  30.        ,
+        30.        ,   0.        ,   0.        ,   37704.,
+        30.        ,  25.529644  ,  50.        ,  50.        ,
+        30.        ,  32.4164086 ,   1.        ,   1.        ,
+        30.        ,  25.529644  ,   0.        ,   0.        ,
+         29684.        ,  25.323452  ,  20.853096  ,  50.        ,
+        50.        ,  32.5278638 ,  34.9442724 ,   1.        ,
+         1.        ,  25.323452  ,  20.853096  ,   0.        ,
+         0.        ,   28600.        ,  20.646904  ,  16.176548  ,
+        50.        ,  50.        ,  35.0557276 ,  37.4721362 ,
+         1.        ,   1.        ,  20.646904  ,  16.176548  ,
+         0.        ,   0.        ,   27516.        ,  15.970356  ,
+        11.5       ,  50.        ,  50.        ,  37.5835914 ,
+        40.        ,   1.        ,   1.        ,  15.970356  ,
+        11.5       ,   0.        ,   0.        ,   26432.        ,
+        10.        ,  19.7791411 ,  50.        ,  50.        ,
+        13.5       ,  22.5457055 ,   1.        ,   1.        ,
+        10.        ,  19.7791411 ,   0.        ,   0.        ,
+         14744.        ,  20.2208589 ,  30.        ,  50.        ,
+        50.        ,  22.9542945 ,  32.        ,   1.        ,
+         1.        ,  20.2208589 ,  30.        ,   0.        ,
+         0.        ,   18789.       ]
     elif args.params == 'new_optim': params = new_optim
     else:
         with open(args.params, "r") as txt_file:
@@ -206,6 +249,8 @@ if __name__ == '__main__':
     input_dist = args.z
     if args.sens_plane is None or args.sens_plane == 0:
         sensitive_film_params = None
+    elif args.expanded_sens_plane:
+        sensitive_film_params = {'dz': 0.01, 'dx': 8, 'dy': 8, 'position':args.sens_plane}
     else: 
         sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':args.sens_plane}
     t1_fem = time()
@@ -214,7 +259,7 @@ if __name__ == '__main__':
         args.field_file = None
     else: 
         core_fields = 8
-        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet)
+        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet, NI_from_B=args.use_B_goal)
     t2_fem = time()
 
     with gzip.open(input_file, 'rb') as f:
@@ -268,8 +313,10 @@ if __name__ == '__main__':
         print('Input Shape', len(data_n))
     print(f"Cost = {cost} CHF")
     if args.save_data:
-        with open(f'data/outputs/output_data.pkl', "wb") as f:
+        data_file = f"data/outputs/output_{args.params.split('/')[-2]}_{args.f.split('/')[-1].split('.')[0]}.pkl"
+        with open(data_file, "wb") as f:
             pickle.dump(all_results, f)
+        print("Data saved to ", data_file)
     if args.plot_magnet:
         all_results = all_results[:1000]
         if sensitive_film_params is None: sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82}

@@ -15,7 +15,7 @@ plots/*
 
 # Ignore data directory
 data/full_sample/
-data/muons/subsample_biased_10M.pkl
+data/muons/*.pkl
 data/outputs/*
 !data/outputs/*.ipynb
 
