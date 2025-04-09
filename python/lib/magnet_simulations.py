@@ -16,27 +16,29 @@ import snoopy
 import multiprocessing as mp
 from lib.reference_designs.params import new_parametrization
 
-
+SC_Ymgap = 0.15
 RESOL_DEF = (0.02,0.02,0.05)
 def get_fixed_params(yoke_type = 'Mag1'):
+    SC = (yoke_type == 'Mag2')
     return {
     'yoke_type': yoke_type,
-    'coil_material': 'hts_pencake.json' if yoke_type == 'Mag2' else 'copper_water_cooled.json',
-    'max_turns': 12 if yoke_type == 'Mag2' else 10,
-    'J_tar(A/mm2)': 583 if yoke_type == 'Mag2' else -1,
-    'coil_diam(mm)': 20 if yoke_type == 'Mag2' else 9,
-    'insulation(mm)': 8 if yoke_type == 'Mag2' else 0.5,
+    'coil_material': 'hts_pencake.json' if SC else 'copper_water_cooled.json',
+    'max_turns': 12 if SC else 10,
+    'J_tar(A/mm2)': 583 if SC else -1,
+    'coil_diam(mm)': 40 if SC else 9,
+    'insulation(mm)': 1 if SC else 0.5,
+    'winding_radius(mm)': 200 if SC else 0,
     'yoke_spacer(mm)': 5,
     'material': 'aisi1010.json',
     'field_density': 5,
-    'delta_x(m)': 1 if yoke_type == 'Mag2' else 0.5,
-    'delta_y(m)': 1 if yoke_type == 'Mag2' else 0.5,
-    'delta_z(m)': 1 if yoke_type == 'Mag2' else 0.5}
+    'delta_x(m)': 1 if SC else 0.5,
+    'delta_y(m)': 1 if SC else 0.5,
+    'delta_z(m)': 1 if SC else 0.5}
 
 
 
 def get_magnet_params(params, 
-                     Ymgap:float = 0.05,
+                     Ymgap:float = 0.15,
                      z_gap:float = 0.1,
                      yoke_type:str = 'Mag1',
                      resol = RESOL_DEF,
@@ -110,7 +112,7 @@ def get_melvin_params(params,
                 Z_pos += 2 * mag_params[0]/100 - z_gap
                 continue
             elif mag == 'M2': 
-                Ymgap = 0.05; yoke_type = 'Mag2'; mag_params[-1] = 3.20E+06; B_goal = None
+                Ymgap = SC_Ymgap; yoke_type = 'Mag2'; mag_params[-1] = 3.20E+06; B_goal = None
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal = B_goal, yoke_type=yoke_type, resol = resol)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
@@ -167,7 +169,7 @@ def get_params_from_dataframe(df,
         params[idx[3]] = row_dict['Ycore1(m)']
         params[idx[4]] = row_dict['Ycore2(m)']
 
-        Ymgap = 0.05 if row_dict.get('yoke_type') == 'Mag2' else 0.0
+        Ymgap = SC_Ymgap if row_dict.get('yoke_type') == 'Mag2' else 0.0
 
         params[idx[5]] = row_dict['Xvoid1(m)'] - params[idx[1]] - Xmgap_2
         params[idx[6]] = row_dict['Xvoid2(m)'] - params[idx[2]] - Xmgap_2
@@ -360,7 +362,7 @@ def simulate_field(params,
                 Z_pos += 2 * mag_params[0]/100 - z_gap
                 continue
             elif mag == 'M2': 
-                Ymgap = 0.05; yoke_type = 'Mag2'; mag_params[-1] = 3.36e6; B_goal = None
+                Ymgap = SC_Ymgap; yoke_type = 'Mag2'; mag_params[-1] = 3.2e6; B_goal = None
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal = B_goal, yoke_type=yoke_type, resol = resol)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)

@@ -14,6 +14,7 @@ from pandas import DataFrame
 RESOL_DEF = magnet_simulations.RESOL_DEF
 MATERIALS_DIR = join(getenv('PROJECTS_DIR'),'MuonsAndMatter/data/materials')
 Z_GAP = 10 # in cm
+SC_Ymgap = magnet_simulations.SC_Ymgap*100
 
 def estimate_electrical_cost(params,
                              yoke_type,
@@ -678,7 +679,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         if fSC_mag and (nM in [1,3]):
             continue
         if nM == 2 and fSC_mag:
-            Ymgap = 5*cm
+            Ymgap = SC_Ymgap*cm
             ironField_s = 5.1 * tesla
         elif nM == 0:
             Ymgap = 0
