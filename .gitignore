@@ -11,15 +11,11 @@ __pycache__/
 cpp/cmake-build-debug/
 cpp/build/*
 # Ignore plots directory
-plots/*
+plots/*.png
 
 # Ignore data directory
 data/full_sample/
 data/muons/*.pkl
 data/outputs/*
-!data/outputs/*.ipynb
 
 
-# Ignore checks directory
-checks/
-# build_cpp.sh

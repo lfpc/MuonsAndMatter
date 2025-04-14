@@ -6,18 +6,18 @@ Warning: The repository is still in very initial phases of development and can c
 
 
 ## Envrionment
-For non-GUI access (such as on servers), download simcontainer2.sif from the following location:
+For non-GUI access (such as on servers), download snoopy_geant_slurm.sif from the following location:
 
-[Containers](https://uzh-my.sharepoint.com/:f:/g/personal/shahrukh_qasim_physik_uzh_ch/En9EVDrRsjpIrBnXWGzLQt0BoT65wN2qzBtGbdEJfapBDA?e=b5b776)
+[Containers](https://uzh-my.sharepoint.com/:f:/g/personal/luis_felipe_cattelan_physik_uzh_ch/EjWSU34WfZRLiJQ98M3XD58B5BOe7T9fRzW2ffz93Bi9nQ?e=dfgTXF)
 
-If you are using physik cluster, run the singularity container via the following commands:
+If you are using uzh-physik cluster, shell the container by executing `set_container.sh` (be sure to have Apptainer installed). Alternatively, you can run the singularity container via the following commands:
 
 ```
-cd /disk/lhcb_data/sqasim/images
 . /disk/lhcb/scripts/lhcb_setup.sh
 export SINGULARITY_TMPDIR=/disk/users/`whoami`/temp
 export TMPDIR=/disk/users/`whoami`/tmp
-singularity shell --nv -B /cvmfs -B /disk/users/`whoami` -B /run/user/`id -u` -B /home/hep/`whoami` simcontainer2.sif
+export PROJECTS_DIR="$(dirname "$PWD")"
+singularity shell --nv -B /cvmfs -B /disk/users/`whoami` -B /home/hep/`whoami` /disk/users/lprate/containers/snoopy_geant_slurm.sif
 ```
 
 For other clusters, modify the commands accordingly. You should include every directory
@@ -27,60 +27,17 @@ Running on the MacBook is also easy, the default binary release from Geant4 work
 be installed simply via pip3.
 
 
-Then, clone the repository (SSH / HTTPS):
+Inside the container, build the C++ code by executing the script `build_cpp.sh`.
 
-```
-git clone git@github.com:shahrukhqasim/MuonsAndMatter.git
-```
-or 
-```
-git clone https://github.com/shahrukhqasim/MuonsAndMatter.git
-```
 
-```
-cd MuonsAndMatter
-git submodule update --init --remote --recursive
-source env.sh
-```
-The following python script will give you the cmake command that you can use:
-```
-python3 chore/find_cmake_command.py
-```
-If you are running on a MacBook with a custom Geant4 installation:
-```
-python3 chore/find_cmake_command.py -g /path/to/Geant4-XX.X.X
-```
-
-For me, it gave: 
-```
-Using python: /usr/bin/python3
-pybind11 found in: /home/hep/sqasim/.local/lib/python3.10/site-packages/pybind11/share/cmake/pybind11
-The following cmake command can be used:
-cmake -Dpybind11_DIR=/home/hep/sqasim/.local/lib/python3.10/site-packages/pybind11/share/cmake/pybind11 -DPython_EXECUTABLE=/usr/bin/python3 the/path
-```
-Take node of the cmake command and run the following commands as per your username:
-
-```
-cd cpp/
-mkdir build
-cd build
-cmake -Dpybind11_DIR=/home/hep/sqasim/.local/lib/python3.10/site-packages/pybind11/share/cmake/pybind11 -DPython_EXECUTABLE=/usr/bin/python3 ..
-make -j
-cd ../..
-```
 ## Data
-To start with, a collection of enriched data consisting of ~0.5M samples can be downloaded from the following location:
+To start with, a collection of muons data consisting of 4M samples can be found in `data/muons/subsample_4M.pkl`:
 
-[Data](https://uzh-my.sharepoint.com/:f:/r/personal/shahrukh_qasim_physik_uzh_ch/Documents/MuonShield?csf=1&web=1&e=Dophg7)
+### Running
+The main script to run simulation is:
 
-You should create a folder called data and put the pickle file there to be able to run the following two commands.
-
-### Running visually
 ```
-python3 python/bin/run_full_detector_visually.py
+python3 python/bin/run_simulation.py
 ```
 
-### Running multi-core
-```
-python3 python/bin/run_full_detector_multi_core_2.py --cores 45
-```
+Be aware of the possible arguments (run `python3 python/bin/run_simulation.py -h`). The default is to run in parallel with 45 CPU cores through multiprocessing library. Be sure to change accordingly with your computer limitations.
