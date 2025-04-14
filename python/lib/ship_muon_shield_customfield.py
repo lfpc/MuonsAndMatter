@@ -13,14 +13,16 @@ from pandas import DataFrame
 
 RESOL_DEF = magnet_simulations.RESOL_DEF
 MATERIALS_DIR = join(getenv('PROJECTS_DIR'),'MuonsAndMatter/data/materials')
-NI_from_B = True
+Z_GAP = 10 # in cm
+SC_Ymgap = magnet_simulations.SC_Ymgap*100
 
 def estimate_electrical_cost(params,
                              yoke_type,
                              Ymgap = 0.,
                              z_gap = 10,
                             materials_directory=MATERIALS_DIR,
-                            electricity_costs = 5.0):
+                            electricity_costs = 5.0,
+                            NI_from_B = True):
     '''Estimate material quantities for the magnet 1 template without running simulation.
     
     :params parameters:
@@ -29,7 +31,7 @@ def estimate_electrical_cost(params,
     :return:
        A tuple containing (M_coil, Q, current_density)
     '''
-    mag_params = magnet_simulations.get_magnet_params(params,Ymgap=Ymgap,yoke_type=yoke_type, B_goal = 1.9 if NI_from_B else params[13], materials_directory=materials_directory)
+    mag_params = magnet_simulations.get_magnet_params(params,Ymgap=Ymgap,yoke_type=yoke_type, B_goal = 1.9 if NI_from_B else params[13], materials_directory=materials_directory, z_gap=z_gap)
     coil_material = mag_params['coil_material']
     with open(join(materials_directory, coil_material)) as f:
         conductor_material_data = json.load(f)
@@ -560,13 +562,14 @@ def construct_block(medium, tShield,field_profile, stepGeo):
 
 
 
-def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1,extra_magnet = False, use_diluted = False ):
+def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1,extra_magnet = False, NI_from_B = True, use_diluted = False):
+
     n_magnets = 7 + int(extra_magnet)
     cm = 1
     mm = 0.1 * cm
     m = 100 * cm
     tesla = 1
-    zgap = 10 * cm
+    zgap = Z_GAP*cm
 
     magnetName = ["MagnAbsorb2", "Magn1", "Magn2", "Magn3", "Magn4", "Magn5", "Magn6", "Magn7"]
 
@@ -580,7 +583,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
     dZ5 = params[4]
     dZ6 = params[5]
     dZ7 = params[6]
-    fMuonShieldLength = 2 * (dZ1 + dZ2 + dZ3 + dZ4 + dZ5 + dZ6 + dZ7) + (7 * zgap / 2) + 0.1
+    fMuonShieldLength = 2 * (dZ1 + dZ2 + dZ3 + dZ4 + dZ5 + dZ6 + dZ7)+ zgap
 
 
     dXIn = np.zeros(n_magnets)
@@ -650,9 +653,10 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         NI[7] = NI[6]
         dZf[7] = 0.1 * m
         Z[7] = Z[6] + dZf[6] + dZf[7]
+        fMuonShieldLength += dZf[7]
 
     tShield = {
-        'dz': fMuonShieldLength / 200,
+        'dz': fMuonShieldLength/100,
         'magnets':[],
         'global_field_map': {'B': np.array([])},
     }
@@ -666,7 +670,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         resol = RESOL_DEF
         field_map = get_field(simulate_fields,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
-                              file_name=field_map_file, only_grid_params=True, NI_from_B_goal = NI_from_B,
+                              file_name=field_map_file, only_grid_params=True, NI_from_B_goal = NI_from_B, z_gap=zgap/100,
                               cores = min(cores_field,n_magnets), use_diluted = use_diluted)
         tShield['global_field_map'] = field_map
         #tShield['cost'] = cost
@@ -678,14 +682,14 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         if use_diluted and nM ==  4 :
             continue 
         if nM == 2 and fSC_mag:
-            Ymgap = 5*cm
+            Ymgap = SC_Ymgap*cm
             ironField_s = 5.1 * tesla
         elif nM == 0:
             Ymgap = 0
-            ironField_s = 1.6 * tesla
+            ironField_s = 1.9 * tesla
         else:
             Ymgap = 0
-            ironField_s = 1.7 * tesla
+            ironField_s = 1.9 * tesla
 
         if simulate_fields or field_map_file is not  None:
             field_profile = 'global'
@@ -707,7 +711,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         yoke_type = 'Mag1' if nM in [0,1,2,3] else 'Mag3'
         if fSC_mag and nM==2: yoke_type = 'Mag2'
         cost += get_iron_cost([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokesIn[nM], ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM]], Ymgap=Ymgap, zGap=zgap)        
-        cost += estimate_electrical_cost(np.array([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokesIn[nM], ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM], NI[nM]]), Ymgap=Ymgap, z_gap=zgap, yoke_type=yoke_type)
+        cost += estimate_electrical_cost(np.array([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokesIn[nM], ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM], NI[nM]]), Ymgap=Ymgap, z_gap=zgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
     tShield['cost'] = cost
     field_profile = 'global' if simulate_fields else 'uniform'
     construct_block("G4_Fe", tShield, field_profile, False)
@@ -729,7 +733,7 @@ def get_design_from_params(params,
                            extra_magnet = False, 
                            use_diluted = False):
     params = np.round(params, 2)
-    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, extra_magnet = extra_magnet, use_diluted=use_diluted)
+    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, extra_magnet = extra_magnet, NI_from_B = NI_from_B, use_diluted=use_diluted)
     shift = -2.345
     cavern_transition = 20.518+shift #m
     World_dZ = 200 #m

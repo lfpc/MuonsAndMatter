@@ -1,7 +1,7 @@
 {
     "density(g/m3)": 8.96e6,
-    "resistivity(Ohm.m)": 1.0e-12,
-    "material_cost(CHF/kg)": 20.0, 
+    "resistivity(Ohm.m)": 3.0e-13,
+    "material_cost(CHF/kg)": 140.0, 
     "manufacturing_cost(CHF/kg)": 250.0,
     "filling_factor": 1.0
 }
