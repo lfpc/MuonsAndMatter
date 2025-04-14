@@ -679,7 +679,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         if dZf[nM] < 1 or dXIn[nM] < 1: continue
         if fSC_mag and (nM in [1,3]):
             continue
-        if use_diluted and nM ==  4 :
+        if use_diluted and nM ==3:
             continue 
         if nM == 2 and fSC_mag:
             Ymgap = SC_Ymgap*cm
@@ -730,7 +730,8 @@ def get_design_from_params(params,
                            add_cavern:bool = True,
                            add_target:bool = True,
                            cores_field:int = 1,
-                           extra_magnet = False, 
+                           extra_magnet = False,
+                           NI_from_B = True, 
                            use_diluted = False):
     params = np.round(params, 2)
     shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, extra_magnet = extra_magnet, NI_from_B = NI_from_B, use_diluted=use_diluted)

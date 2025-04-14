@@ -179,7 +179,7 @@ if __name__ == '__main__':
     parser.add_argument("-warm", dest="SC_mag", action='store_false', help="Use warm magnets instead of hybrid")
     parser.add_argument("-save_data", action='store_true', help="Save simulation results to output file")
     parser.add_argument("-return_nan", action='store_true', help="Return zeros for muons that don't hit the sensitive film")
-    parser.add_argument("-use_diluted", action = 'store_true')
+    parser.add_argument("-use_diluted", action = 'store_true', help="Use diluted field map")
     parser.add_argument("-keep_tracks_of_hits", action='store_true', help="Store full tracks of muons that hit the sensitive film")
     parser.add_argument("-use_B_goal", action='store_true', help="Use B goal for the field map")
     parser.add_argument("-expanded_sens_plane", action='store_true', help="Use big sensitive plane")
