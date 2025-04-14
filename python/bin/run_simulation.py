@@ -24,6 +24,7 @@ def run(muons,
     keep_tracks_of_hits = False,
     extra_magnet = False,
     NI_from_B = True,
+    use_diluted = False,
     kwargs_plot = {}):
     """
     Simulates the passage of muons through the muon shield and collects the resulting data.
@@ -71,7 +72,8 @@ def run(muons,
                       add_cavern = add_cavern,
                       add_target = add_target,
                       extra_magnet=extra_magnet,
-                      NI_from_B = NI_from_B)
+                      NI_from_B = NI_from_B,
+                      use_diluted = use_diluted)
     cost = detector['cost']
     length = detector['dz']
 
@@ -177,6 +179,7 @@ if __name__ == '__main__':
     parser.add_argument("-warm", dest="SC_mag", action='store_false', help="Use warm magnets instead of hybrid")
     parser.add_argument("-save_data", action='store_true', help="Save simulation results to output file")
     parser.add_argument("-return_nan", action='store_true', help="Return zeros for muons that don't hit the sensitive film")
+    parser.add_argument("-use_diluted", action = 'store_true')
     parser.add_argument("-keep_tracks_of_hits", action='store_true', help="Store full tracks of muons that hit the sensitive film")
     parser.add_argument("-use_B_goal", action='store_true', help="Use B goal for the field map")
     parser.add_argument("-expanded_sens_plane", action='store_true', help="Use big sensitive plane")
@@ -184,20 +187,14 @@ if __name__ == '__main__':
     parser.add_argument("-angle", type=float, default=90, help="Azimuthal viewing angle for 3D plot")
     parser.add_argument("-elev", type=float, default=90, help="Elevation viewing angle for 3D plot")
 
+
     args = parser.parse_args()
     cores = args.c
     if args.params == 'sc_v6': params = sc_v6
     elif args.params == 'oliver': params = optimal_oliver
     elif args.params == 'oliver_scaled': params = oliver_scaled
     elif args.params == 'melvin': params = melvin
-    elif args.params == 'new_hybrid': params = [120.50, 250, 250., 250., 200., 200., 195., 
-                    50.00,  50.00, 119.00, 119.00,   2.00,   2.00, 1.00,1.0,50.00,  50.00,0.0, 0.00, 0.,
-                    0.,  0.,  0.,  0.,  0.,   0., 1.,1.0,0.,0.,0.0, 0.,0.,
-                    45.,  45.,  25.,  25.,  35.,  35., 2.67,2.67,120.15,120.15,0.0, 0.00, 3200000.0,
-                    0.,  0.,  0.,  0.,  0.,  0., 1.,1.0,0.,0.,0.0, 0., 0.,
-                    24.80,  48.76,   8.00, 104.73,  15.80,  16.78, 1.00,1.0,24.80,  48.76,0.0, 0.00, 0.0,
-                    3.00, 100.00, 192.00, 192.00,   2.00,   4.80, 1.00,1.0,3.00, 100.00,0.0, 0.00, 0.0,
-                    3.00, 100.00,   8.00, 172.73,  46.83,   2.00, 1.00,1.0,3.00, 100.00,0.0, 0.00, 0.0]
+    elif args.params == 'Piet_solution': params = Piet_solution
     elif args.params == 'new_optim': params = new_optim
     else:
         with open(args.params, "r") as txt_file:
@@ -240,9 +237,10 @@ if __name__ == '__main__':
     detector = None
     if not args.real_fields:
         args.field_file = None
-    else: 
+    else:
+         
         core_fields = 8
-        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet, NI_from_B=args.use_B_goal)
+        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet, NI_from_B=args.use_B_goal, use_diluted = args.use_diluted)
     t2_fem = time()
 
     with gzip.open(input_file, 'rb') as f:
@@ -271,7 +269,8 @@ if __name__ == '__main__':
                               SmearBeamRadius=5, 
                               add_target=True, 
                               keep_tracks_of_hits=args.keep_tracks_of_hits, 
-                              extra_magnet=args.extra_magnet)
+                              extra_magnet=args.extra_magnet,
+                              use_diluted = args.use_diluted)
 
         result = pool.map(run_partial, workloads)
         cost = 0
