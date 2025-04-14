@@ -3,8 +3,41 @@ import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from lib.ship_muon_shield_customfield import get_design_from_params
 from lib.magnet_simulations import get_symmetry
+from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
+
+
+def plot_fields(points,fields, output_file='plots/fields.png'):
+    # Filter points where y is approximately 0
+    tolerance = 1e-6
+    mask = np.abs(points[:, 1]) < tolerance
+    points = points[mask]
+    fields = fields[mask]
+
+    # Use z-component of the field instead of magnitude
+    fields = fields[:, 1]  # Using z-component which can be +/-
+
+    # Create custom colormap: green for negative, white at zero, red for positive
+    colors = [(0, 0.8, 0), (1, 1, 1), (0.8, 0, 0)]
+    custom_cmap = LinearSegmentedColormap.from_list('green_white_red', colors)
+
+    # Create a normalization that centers white color at value 0
+    norm = TwoSlopeNorm(vmin=-2, vcenter=0, vmax=6)
+
+    # Create the tricontourf plot with many more levels for a more continuous look
+    plt.figure(figsize=(10, 8))
+    # Using 100 levels instead of 20 for a more continuous appearance
+    tcf = plt.tricontourf(points[:, 0], points[:, 2], fields, cmap=custom_cmap, levels=70, norm=norm)
+    plt.colorbar(tcf, label='Field Z-Component')
+    plt.xlabel('X')
+    plt.ylabel('Z')
+    plt.title('Field Z-Component for Y=0')
+    plt.grid(True)
+    plt.savefig(output_file, dpi=600, bbox_inches='tight', pad_inches=0, transparent=False)
+    print(f'Plot saved to {output_file}')
+    plt.close()
+
 
 def plot_magnet(detector, 
                 output_file='plots/detector_visualization.png',
@@ -17,11 +50,13 @@ def plot_magnet(detector,
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     if ('B' in detector['global_field_map']) and np.size(detector['global_field_map']['B']) > 0:
+        
         points = np.meshgrid(np.arange(*detector['global_field_map']['range_x']),
                           np.arange(*detector['global_field_map']['range_y']),
                             np.arange(*detector['global_field_map']['range_z']))
         points = np.column_stack((points[0].ravel(), points[1].ravel(), points[2].ravel()))
-        detector['global_field_map'] = get_symmetry(points,np.asarray(detector['global_field_map']['B']), reorder=True)
+        #detector['global_field_map'] = get_symmetry(points,np.asarray(detector['global_field_map']['B']), reorder=True)
+
     if "sensitive_film" in detector  and sensitive_film_position is not None:
         cz, cx, cy = detector["sensitive_film"]["z_center"], 0, 0
         if sensitive_film_position is not None: 

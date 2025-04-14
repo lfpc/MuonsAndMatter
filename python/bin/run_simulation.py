@@ -3,7 +3,7 @@ import json
 import numpy as np
 from lib.ship_muon_shield_customfield import get_design_from_params, get_field, initialize_geant4
 from muon_slabs import simulate_muon, collect, kill_secondary_tracks, collect_from_sensitive
-from plot_magnet import plot_magnet, construct_and_plot
+from plot_magnet import plot_magnet, construct_and_plot, plot_fields
 from time import time
 from lib.reference_designs.params import new_parametrization
 
@@ -278,7 +278,7 @@ if __name__ == '__main__':
         t2 = time()
     print(f"Time to FEM: {t2_fem - t1_fem:.2f} seconds.")
     print(f"Workload of {np.shape(workloads[0])[0]} samples spread over {cores} cores took {t2 - t1:.2f} seconds.")
-    print(params)
+    print(params.tolist())
     all_results = []
     for rr in result:
         resulting_data,cost = rr
@@ -301,7 +301,8 @@ if __name__ == '__main__':
             pickle.dump(all_results, f)
         print("Data saved to ", data_file)
     if args.plot_magnet:
-        all_results = all_results[:1000]
+        if args.real_fields: plot_fields(np.load(args.field_file.replace('fields', 'points')), detector['global_field_map']['B'])
+        all_results = all_results[:3000]
         if sensitive_film_params is None: sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82}
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = args.angle, elev = args.elev)
