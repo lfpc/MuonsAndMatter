@@ -375,7 +375,6 @@ def simulate_field(params,
                 continue
             elif mag == 'M2': 
               Ymgap = SC_Ymgap; yoke_type = 'Mag2'; mag_params[-1] = 3.2e6; B_goal = None
-        if mag == 'M3' and use_diluted: continue
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal = B_goal, yoke_type=yoke_type, resol = resol, use_diluted = use_diluted)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)

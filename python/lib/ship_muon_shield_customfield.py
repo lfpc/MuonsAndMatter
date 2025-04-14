@@ -679,8 +679,6 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         if dZf[nM] < 1 or dXIn[nM] < 1: continue
         if fSC_mag and (nM in [1,3]):
             continue
-        if use_diluted and nM ==3:
-            continue 
         if nM == 2 and fSC_mag:
             Ymgap = SC_Ymgap*cm
             ironField_s = 5.1 * tesla
