@@ -365,7 +365,7 @@ def simulate_field(params,
         if mag_params[1]<1: 
             Z_pos += 2 * mag_params[0]/100 - z_gap
             continue
-        if mag == 'HA': Ymgap=0.; yoke_type = 'Mag1'; B_goal = 1.9 if NI_from_B_goal else None
+        if mag == 'HA': Ymgap=0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag1'
         elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag1'
         else: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag3'
         if fSC_mag:

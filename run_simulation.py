@@ -1,9 +1,10 @@
 import json
 import numpy as np
-from lib.ship_muon_shield_customfield import get_design_from_params, initialize_geant4
+from lib.ship_muon_shield_customfield import get_design_from_params, initialize_geant4, get_field
 from muon_slabs import simulate_muon, collect, kill_secondary_tracks, collect_from_sensitive
-from plot_magnet import plot_magnet
+from python.bin.plot_magnet import plot_magnet
 from time import time
+
 def run(muons, 
     phi, 
     input_dist:float = None,
@@ -157,7 +158,7 @@ if __name__ == '__main__':
     import multiprocessing as mp
     from lib.reference_designs.params import *
     from functools import partial
-    from plot_magnet import construct_and_plot, plot_fields
+    from python.bin.plot_magnet import construct_and_plot, plot_fields
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=0, help="Number of muons to process, 0 means all")
     parser.add_argument("--c", type=int, default=45, help="Number of CPU cores to use for parallel processing")
@@ -272,7 +273,9 @@ if __name__ == '__main__':
         print('Input Shape', len(data_n))
     print(f"Cost = {cost} CHF")
     if args.save_data:
-        data_file = f"data/outputs/output_{args.params.split('/')[-2]}_{args.f.split('/')[-1].split('.')[0]}.pkl"
+        try: tag = f"{args.params.split('/')[-2]}_{args.f.split('/')[-1].split('.')[0]}"
+        except: tag = f"{args.params}_{args.f.split('/')[-1].split('.')[0]}"
+        data_file = f"data/outputs/output_{tag}.pkl"
         with open(data_file, "wb") as f:
             pickle.dump(all_results, f)
         print("Data saved to ", data_file)
