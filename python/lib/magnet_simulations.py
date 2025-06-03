@@ -82,7 +82,7 @@ def get_magnet_params(params,
         if materials_directory is None:
             materials_directory = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
         temp = 0
-        if use_diluted and d['yoke_type'] == 'Mag3': 
+        if d['yoke_type'] == 'Mag3': 
             d['yoke_type'] = 'Mag1'
             temp = 1
         d['NI(A)'] = snoopy.get_NI(B_goal, pd.DataFrame([d]),0, materials_directory = materials_directory)[0]
@@ -361,13 +361,14 @@ def simulate_field(params,
     Z_pos = 0.
     for i, (mag,idx) in enumerate(new_parametrization.items()):
         mag_params = params[idx]
+        B_goal = mag_params[-1]
         if mag_params[0]<1: continue
         if mag_params[1]<1: 
             Z_pos += 2 * mag_params[0]/100 - z_gap
             continue
-        if mag == 'HA': Ymgap=0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag1'
-        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag1'
-        else: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag3'
+        if mag == 'HA': Ymgap=0.; yoke_type = 'Mag1'
+        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; yoke_type = 'Mag1'
+        else: Ymgap = 0.; yoke_type = 'Mag3'
         if fSC_mag:
             if mag == 'M1': continue
             elif mag == 'M3':
