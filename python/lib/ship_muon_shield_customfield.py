@@ -23,7 +23,8 @@ def estimate_electrical_cost(params,
                              z_gap = 10,
                             materials_directory=MATERIALS_DIR,
                             electricity_costs = 5.0,
-                            NI_from_B = True):
+                            NI_from_B = True,
+                            use_diluted = False):
     '''Estimate material quantities for the magnet 1 template without running simulation.
     
     :params parameters:
@@ -32,7 +33,10 @@ def estimate_electrical_cost(params,
     :return:
        A tuple containing (M_coil, Q, current_density)
     '''
-    mag_params = magnet_simulations.get_magnet_params(params,Ymgap=Ymgap,yoke_type=yoke_type, B_goal = 1.9 if NI_from_B else params[13], materials_directory=materials_directory, z_gap=z_gap)
+    print('The yoke type is = {}'.format(yoke_type))
+    # In case of diluted the cost are estimated considering the yoke type always as Mag1
+    mag_params = magnet_simulations.get_magnet_params(params,Ymgap=Ymgap,yoke_type=yoke_type if not use_diluted else 'Mag1', B_goal = params[13], materials_directory=materials_directory, z_gap=z_gap, use_diluted = use_diluted)
+    mag_params['yoke_type'] = yoke_type ## To reset to original yoke type in case of diluted
     coil_material = mag_params['coil_material']
     with open(join(materials_directory, coil_material)) as f:
         conductor_material_data = json.load(f)
@@ -179,6 +183,12 @@ def estimate_electrical_cost(params,
                      +  conductor_material_data["manufacturing_cost(CHF/kg)"])
     
     C_edf = Q*electricity_costs
+    
+    print('The coil mass is = {:.2f} kg'.format(M_coil))
+    print('The coil cost is = {:.2f} CHF'.format(C_coil))
+    print('The power consumption is = {:.2f} W'.format(Q))
+    print('The power cost is = {:.2f} CHF'.format(C_edf))
+    print('The total el. cost is = {:.2f} CHF'.format(C_coil + C_edf))
 
     return C_coil + C_edf
 
@@ -254,7 +264,8 @@ def get_iron_cost(phi, Ymgap = 0,zGap = 10, material = 'aisi1010.json', material
     M_iron = 4*volume*density
     C_iron = M_iron*(iron_material_data["material_cost(CHF/kg)"]
                      +  iron_material_data["manufacturing_cost(CHF/kg)"])
-    print('The iron mass is = {:.2f} kg'.format(M_iron))   
+    print('The iron mass is = {:.2f} kg'.format(M_iron))
+    print('The iron cost is = {:.2f} CHF'.format(C_iron))   
     return C_iron
 
 
@@ -709,8 +720,9 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         yoke_type = 'Mag1' if nM in [0,1,2,3] else 'Mag3'
         if fSC_mag and nM==2: yoke_type = 'Mag2'
         cost += get_iron_cost([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokesIn[nM], ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM]], Ymgap=Ymgap, zGap=zgap)        
-        cost += estimate_electrical_cost(np.array([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokesIn[nM], ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM], NI[nM]]), Ymgap=Ymgap, z_gap=zgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
+        cost += estimate_electrical_cost(np.array([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokesIn[nM], ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM], NI[nM]]), Ymgap=Ymgap, z_gap=zgap, yoke_type=yoke_type, NI_from_B=NI_from_B, use_diluted=use_diluted)
     tShield['cost'] = cost
+    print('TOTAL COST', cost)
     field_profile = 'global' if simulate_fields else 'uniform'
     construct_block("G4_Fe", tShield, field_profile, False)
     return tShield
