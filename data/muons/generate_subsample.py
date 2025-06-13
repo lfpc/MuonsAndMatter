@@ -4,11 +4,11 @@ import pickle
 from tqdm import tqdm
 import os
 
-output_file = "subsample_biased_v3_new.pkl"
-N_subsamples = 2.6E6
-N_subsamples_biased = 0.8E6
-N_total = 5E6
-ONLY_POSITIVE = True
+output_file = "subsample_40M.pkl"
+N_subsamples = 40E6#2.6E6
+N_subsamples_biased = 0#0.8E6
+N_total = 40E6#5E6
+ONLY_POSITIVE = False#True
 REMOVE_LOW_P = False
 
 
@@ -55,25 +55,27 @@ for w_val,n in zip(unique_weight,n_per_w):
     if w_val < 0.001: continue
     mask = weight == w_val
     n = int(n*N_subsamples)
+    n = min(n,np.sum(mask))
     print('n:',n)
     subsample.append(data[mask][np.random.choice(np.sum(mask), n, replace=False)])
 
-for d in divide_momentum(data):
-    weight = d[:,-1]
-    N_samples = weight.sum()
-    print('N_samples:',N_samples)
-    unique_weight,n_w = np.unique(weight,return_counts=True)
-    total_w = unique_weight*n_w
-    n_per_w = total_w/N_samples
+if N_subsamples_biased > 0:
+    for d in divide_momentum(data):
+        weight = d[:,-1]
+        N_samples = weight.sum()
+        print('N_samples:',N_samples)
+        unique_weight,n_w = np.unique(weight,return_counts=True)
+        total_w = unique_weight*n_w
+        n_per_w = total_w/N_samples
 
-    for w_val,n in zip(unique_weight,n_per_w):
-        print('w:',w_val)
-        if w_val < 0.001: continue
-        mask = weight == w_val
-        n = int(n*N_subsamples_biased)
-        n = min(n,np.sum(mask))
-        print('n:',n)
-        subsample.append(d[mask][np.random.choice(np.sum(mask), n, replace=False)])
+        for w_val,n in zip(unique_weight,n_per_w):
+            print('w:',w_val)
+            if w_val < 0.001: continue
+            mask = weight == w_val
+            n = int(n*N_subsamples_biased)
+            n = min(n,np.sum(mask))
+            print('n:',n)
+            subsample.append(d[mask][np.random.choice(np.sum(mask), n, replace=False)])
 subsample = np.concatenate(subsample)
 left = int(N_total - subsample.shape[0])
 if left>0:

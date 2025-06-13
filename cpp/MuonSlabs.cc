@@ -15,7 +15,6 @@
 #include "FTFP_BERT.hh"
 #include "CustomEventAction.hh"
 #include "BoxyDetectorConstruction.hh"
-#include "ToyDetectorConstruction.hh"
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 #include <G4UIExecutive.hh>
@@ -179,7 +178,7 @@ void set_kill_momenta(double kill_momenta) {
 }
 
 std::string initialize( int rseed_0,
-                 int rseed_1, int rseed_2, int rseed_3, std::string detector_specs, py::array_t<double> B) {
+                 int rseed_1, int rseed_2, int rseed_3, std::string detector_specs) {
     randomEngine = new CLHEP::MTwistEngine(rseed_0);
     //#include <chrono>
     //auto start = std::chrono::high_resolution_clock::now(); 
@@ -192,10 +191,6 @@ std::string initialize( int rseed_0,
     CLHEP::HepRandom::setTheSeeds(seeds);
     G4Random::setTheSeeds(seeds);
     runManager = new G4RunManager;
-
-    // Convert numpy array to std::vector
-    std::vector<double> B_map(B.size());
-    std::memcpy(B_map.data(), B.data(), B.size() * sizeof(double));
 
 
     bool applyStepLimiter = false;
@@ -229,10 +224,8 @@ std::string initialize( int rseed_0,
         }
         else if (type == 0)
             detector = new BoxyDetectorConstruction(detectorData);
-        else if (type == 4)
-            detector = new ToyDetectorConstruction(detectorData, B_map);
         else if (type == 1)
-            detector = new GDetectorConstruction(detectorData, B_map);
+            detector = new GDetectorConstruction(detectorData);
         else if (type == 2) {
             detector = new SlimFilm(detectorData);
         } else

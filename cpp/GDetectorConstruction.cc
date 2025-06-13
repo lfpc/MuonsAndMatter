@@ -44,6 +44,7 @@
 #include <iostream>
 #include <G4Trap.hh>
 #include <G4GeometryTolerance.hh>
+#include "H5Cpp.h"
 
 G4VPhysicalVolume *GDetectorConstruction::Construct() {
     //#include <chrono>
@@ -126,8 +127,20 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         }
     }
     // Process the magnets from the JSON variable
-    Json::Value field_value = detectorData["global_field_map"];
+    std::string filename = detectorData["global_field_map"]["B"].asString();
     const Json::Value magnets = detectorData["magnets"];
+
+
+    H5::H5File file(filename, H5F_ACC_RDONLY);
+    H5::DataSet dataset = file.openDataSet("B");
+    H5::DataSpace dataspace = dataset.getSpace();
+
+    hsize_t dims[2];
+    dataspace.getSimpleExtentDims(dims);
+
+    std::vector<double> B_vector(dims[0] * dims[1]);
+    dataset.read(B_vector.data(), H5::PredType::NATIVE_DOUBLE);
+
 
     G4MagneticField* GlobalmagField = nullptr;
     if (!B_vector.empty()) {
@@ -140,6 +153,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         for (size_t i = 0; i < B_vector.size(); i += 3) {
             fields.emplace_back(B_vector[i] * tesla, B_vector[i + 1] * tesla, B_vector[i + 2] * tesla);
         }
+        std::vector<double>().swap(B_vector);
         // Determine the interpolation type
         CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
         // Define the custom magnetic field
@@ -253,8 +267,8 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
 
 
-GDetectorConstruction::GDetectorConstruction(Json::Value detector_data, const std::vector<double>& B_vector)
-    : detectorData(detector_data), B_vector(B_vector) {
+GDetectorConstruction::GDetectorConstruction(Json::Value detector_data)
+    : detectorData(detector_data) {
     detectorWeightTotal = 0;
 }
 
