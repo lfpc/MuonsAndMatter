@@ -190,6 +190,8 @@ if __name__ == '__main__':
     elif args.params == 'oliver_scaled': params = oliver_scaled
     elif args.params == 'melvin': params = melvin
     elif args.params == 'Piet_solution': params = Piet_solution
+    elif args.params == 'ciao': params = ciao
+
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])

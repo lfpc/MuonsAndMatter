@@ -88,7 +88,7 @@ def get_magnet_params(params,
         d['NI(A)'] = snoopy.get_NI(B_goal, pd.DataFrame([d]),0, materials_directory = materials_directory)[0]
         if temp:
             d['yoke_type'] = 'Mag3'
-            #temp = 0
+            temp = 0
     if save_dir is not None:
         from csv import DictWriter
         with open(save_dir/"parameters.csv", "w", newline="") as f:
