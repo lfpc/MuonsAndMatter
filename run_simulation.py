@@ -2,8 +2,9 @@ import json
 import numpy as np
 from lib.ship_muon_shield_customfield import get_design_from_params, initialize_geant4, get_field
 from muon_slabs import simulate_muon, collect, kill_secondary_tracks, collect_from_sensitive
-from python.bin.plot_magnet import plot_magnet
+from python.bin.plot_magnet import construct_and_plot, plot_fields
 from time import time
+import h5py
 
 def run(muons, 
     phi, 
@@ -23,6 +24,7 @@ def run(muons,
     extra_magnet = False,
     NI_from_B = True,
     use_diluted = False,
+    SND = False,
     kwargs_plot = {}):
     """
     Simulates the passage of muons through the muon shield and collects the resulting data.
@@ -71,7 +73,8 @@ def run(muons,
                       add_target = add_target,
                       extra_magnet=extra_magnet,
                       NI_from_B = NI_from_B,
-                      use_diluted = use_diluted)
+                      use_diluted = use_diluted,
+                      SND = SND)
     cost = detector['cost']
     length = detector['dz']
 
@@ -100,7 +103,7 @@ def run(muons,
     if SmearBeamRadius > 0: #ring transformation
         gauss = np.random.normal(0, 1, size=x.shape) 
         uniform = np.random.uniform(0, 2, size=x.shape)
-        r = SmearBeamRadius + 0.8 * gauss
+        r = SmearBeamRadius + 1.6 * gauss
         _phi = uniform * np.pi
         dx = r * np.cos(_phi)
         dy = r * np.sin(_phi)
@@ -150,15 +153,17 @@ def run(muons,
     else: return muon_data
 
 
-DEF_INPUT_FILE = 'data/muons/subsample_4M.pkl'
+DEF_INPUT_FILE = 'data/muons/subsample_biased_v4.pkl'
 if __name__ == '__main__':
     import argparse
     import gzip
     import pickle
     import multiprocessing as mp
-    from lib.reference_designs.params import *
+    import lib.reference_designs.params as params_lib
+    from lib.magnet_simulations import construct_grid, RESOL_DEF
     from functools import partial
-    from python.bin.plot_magnet import construct_and_plot, plot_fields
+    import os
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=0, help="Number of muons to process, 0 means all")
     parser.add_argument("--c", type=int, default=45, help="Number of CPU cores to use for parallel processing")
@@ -168,7 +173,7 @@ if __name__ == '__main__':
     parser.add_argument("--z", type=float, default=None, help="Initial z-position distance for all muons if specified (default is to use from input file)")
     parser.add_argument("-sens_plane", type=float, default=82, help="Position of the sensitive plane in z (m), 0 means no sensitive plane")
     parser.add_argument("-real_fields", action='store_true', help="Use realistic field maps (FEM) instead of uniform fields")
-    parser.add_argument("-field_file", type=str, default='data/outputs/fields_mm.npy', help="Path to save field map file") 
+    parser.add_argument("-field_file", type=str, default='data/outputs/fields_mm.h5', help="Path to save field map file") 
     parser.add_argument("-shuffle_input", action='store_true', help="Randomly shuffle the input data")
     parser.add_argument("-remove_cavern", dest="add_cavern", action='store_false', help="Remove the cavern from simulation")
     parser.add_argument("-plot_magnet", action='store_true', help="Generate visualization of the magnet and muon tracks")
@@ -182,18 +187,18 @@ if __name__ == '__main__':
     parser.add_argument("-extra_magnet", action='store_true', help="Add an additional small magnet to the configuration (old designs)")
     parser.add_argument("-angle", type=float, default=90, help="Azimuthal viewing angle for 3D plot")
     parser.add_argument("-elev", type=float, default=90, help="Elevation viewing angle for 3D plot")
+    parser.add_argument("-SND", action='store_true', help="Use SND configuration")
 
 
     args = parser.parse_args()
     cores = args.c
-    if args.params == 'sc_v6': params = sc_v6
-    elif args.params == 'oliver': params = optimal_oliver
-    elif args.params == 'oliver_scaled': params = oliver_scaled
-    elif args.params == 'melvin': params = melvin
-    elif args.params == 'Piet_solution': params = Piet_solution
-    else:
+    if hasattr(params_lib, args.params):
+        params = getattr(params_lib, args.params)
+    elif os.path.isfile(args.params):
         with open(args.params, "r") as txt_file:
-            params = np.array([float(line.strip()) for line in txt_file])
+            params = [float(line.strip()) for line in txt_file]
+    else: 
+        raise ValueError(f"Invalid params: {args.params}. Must be a valid parameter name or a file path.")
     params = np.asarray(params)
     def split_array(arr, K):
         N = len(arr)
@@ -248,7 +253,8 @@ if __name__ == '__main__':
                               add_target=True, 
                               keep_tracks_of_hits=args.keep_tracks_of_hits, 
                               extra_magnet=args.extra_magnet,
-                              use_diluted = args.use_diluted)
+                              use_diluted = args.use_diluted,
+                              SND  = args.SND)
 
         result = pool.map(run_partial, workloads)
         cost = 0
@@ -280,7 +286,17 @@ if __name__ == '__main__':
             pickle.dump(all_results, f)
         print("Data saved to ", data_file)
     if args.plot_magnet:
-        if args.real_fields: plot_fields(np.load(args.field_file.replace('fields', 'points')), detector['global_field_map']['B'])
+        if args.real_fields: 
+            with h5py.File(detector['global_field_map']['B'], 'r') as f:
+                fields = f["B"][:]
+                d_space = f["d_space"][:].tolist()
+            d_space = [[round(val, 2) for val in axis] for axis in d_space]
+            limits = ((d_space[0][0], d_space[1][0], d_space[2][0]), (d_space[0][1], d_space[1][1], d_space[2][1]))
+            resol = (d_space[0][2], d_space[1][2], d_space[2][2])
+            assert resol == RESOL_DEF, resol
+            X, Y, Z = construct_grid(limits=limits, resol=resol)
+            points = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+            plot_fields(points,fields)
         all_results = all_results[:3000]
         if sensitive_film_params is None: sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82}
         if False:#detector is not None:

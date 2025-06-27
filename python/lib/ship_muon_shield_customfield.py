@@ -7,6 +7,7 @@ from lib import magnet_simulations
 from time import time
 from muon_slabs import initialize
 import json
+import h5py
 
 from snoopy import RacetrackCoil, compute_prices, get_NI
 from pandas import DataFrame
@@ -269,26 +270,20 @@ def get_field(resimulate_fields = False,
     if resimulate_fields:
         fields = magnet_simulations.simulate_field(params, file_name = file_name,**kwargs_field)['B']
         d_space = kwargs_field['d_space']
-        with open(file_name.replace('fields', 'd_space'), 'wb') as f:
-            pickle.dump(d_space, f)
     elif exists(file_name):
         print('Using field map from file', file_name)
-        fields = np.load(file_name).astype(np.float16)
-        with open(file_name.replace('fields', 'd_space'), 'rb') as f:
-            d_space = pickle.load(f)
-        #TODO: FIX THIS
-        #assert d_space == kwargs_field['d_space'], "{} not equal to {}".format(d_space, kwargs_field['d_space'])
-        #with open(file_name, 'rb') as f:
-        #    fields = pickle.load(f)
+        with h5py.File(file_name, 'r') as f:
+            fields = f["B"][:]
+            d_space = f["d_space"][:].tolist()
+        d_space = [[round(float(val), 2) for val in axis] for axis in d_space]
+    
     if only_grid_params: 
-        d_space = d_space#kwargs_field['d_space']
-        resol = kwargs_field['resol']
-        #cost = fields.pop('cost')
-        fields= {'B': fields,#.pop('B'),
-                'range_x': [0,d_space[0], resol[0]],
-                'range_y': [0,d_space[1], resol[1]],
-                'range_z': [d_space[2][0],d_space[2][1], resol[2]]}
+        fields = {'B': file_name,
+                'range_x': [0.,d_space[0][1], d_space[0][2]],
+                'range_y': [0.,d_space[1][1], d_space[1][2]],
+                'range_z': [d_space[2][0],d_space[2][1], d_space[2][2]]}
     return fields
+
 
 def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
                tShield, x_translation, y_translation, z_translation, stepGeo):
@@ -307,13 +302,13 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
     })
 def CreateTarget(z_start:float):
     target_components = []
-    N = 13
-    T = 5
+    N = 0#13
+    T = 18#5
     materials = N * ["G4_Mo"] + T * ["G4_W"]
     lengths = [8., 2.5, 2.5, 2.5, 2.5, 
         2.5, 2.5, 2.5, 5.0, 5.0, 
         6.5, 8., 8., 5., 8., 
-        10., 20., 35.]
+        10., 20., 50.]#35.]
     h20_l = 0.5 / 100 # H20 slit *17 times
     diameter  = 30. / 100  # full length in x and y
     z = z_start
@@ -535,13 +530,13 @@ def create_magnet(magnetName, medium, tShield,
     tShield['magnets'].append(theMagnet)
 
 
-def construct_block(medium, tShield,field_profile, stepGeo):
+def construct_block(medium, tShield,field_profile, stepGeo, length = 54):
     #iron block before the magnet
     z_gap = 1.
-    dX = 356.#395.
-    dY = 170.#340.
-    dZ = 45. - z_gap/2
-    Z = -45.
+    dX = 50.
+    dY = 50.
+    dZ = length/2 - z_gap/2
+    Z = -length/2
     cornersIronBlock = np.array([
         -dX, -dY,
         dX, -dY,
@@ -562,7 +557,7 @@ def construct_block(medium, tShield,field_profile, stepGeo):
     tShield['magnets'].append(Block)
 
 
-def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1,extra_magnet = False, NI_from_B = True, use_diluted = False):
+def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1,extra_magnet = False, NI_from_B = True, use_diluted = False, SND = False):
 
     
     n_magnets = 7 + int(extra_magnet)
@@ -666,10 +661,8 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         max_y = max(np.max(dYIn + dY_yokeIn), np.max(dYOut + dY_yokeOut))/100
         max_x = np.round(max_x,decimals=1).item()
         max_y = np.round(max_y,decimals=1).item()
-        d_space = (max_x+0.3, max_y+0.3, (-0.5, np.ceil((Z[-1]+dZf[-1]+50+10)/100).item()))
-        resol = RESOL_DEF
-        field_map = get_field(simulate_fields,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag, 
-                              resol = resol, d_space = d_space,
+        d_space = ((0,max_x+0.3, RESOL_DEF[0]), (0,max_y+0.3, RESOL_DEF[1]), (-0.5, np.ceil((Z[-1]+dZf[-1]+50+10)/100).item(), RESOL_DEF[2]))
+        field_map = get_field(simulate_fields,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag,  d_space = d_space,
                               file_name=field_map_file, only_grid_params=True, NI_from_B_goal = NI_from_B, z_gap=zgap/100,
                               cores = min(cores_field,n_magnets), use_diluted = use_diluted)
         tShield['global_field_map'] = field_map
@@ -710,9 +703,31 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         if fSC_mag and nM==2: yoke_type = 'Mag2'
         cost += get_iron_cost([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokesIn[nM], ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM]], Ymgap=Ymgap, zGap=zgap)        
         cost += estimate_electrical_cost(np.array([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokesIn[nM], ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM], NI[nM]]), Ymgap=Ymgap, z_gap=zgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
+    if SND and (midGapIn[5] > 30) and (midGapOut[5] > 30):
+        gap = 10 * cm
+        dX = 20.-gap
+        dY = 20.-gap
+        dZ = 172/2
+        Z = (Z[5]+dZf[5])-dZ
+        corners = np.array([
+            -dX, -dY,
+            dX, -dY,
+            dX, dY,
+            -dX, dY,
+            -dX, -dY,
+            dX, -dY,
+            dX, dY,
+            -dX, dY
+        ])
+        Block = {
+            'components' : [],
+            'dz' : dZ/100,
+            'z_center' : Z/100,
+        }
+        #cornersIronBlock = contraints_cavern_intersection(cornersIronBlock/100, dZ/100, Z/100, 22-2.345)
+        CreateArb8('SND_Emu_Si', 'G4_Fe', dZ, corners, [0.,0.,0.], 'uniform', Block, 0, 0, Z, False)
+        tShield['magnets'].append(Block)
     tShield['cost'] = cost
-    field_profile = 'global' if simulate_fields else 'uniform'
-    construct_block("G4_Fe", tShield, field_profile, False)
     return tShield
 
 
@@ -730,16 +745,18 @@ def get_design_from_params(params,
                            cores_field:int = 1,
                            extra_magnet = False,
                            NI_from_B = True, 
-                           use_diluted = False):
+                           use_diluted = False,
+                           SND = False):
     params = np.round(params, 2)
-    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, extra_magnet = extra_magnet, NI_from_B = NI_from_B, use_diluted=use_diluted)
-    shift = -2.345
+    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, extra_magnet = extra_magnet, NI_from_B = NI_from_B, use_diluted=use_diluted, SND=SND)
+    shift = -2.14#-2.345
     cavern_transition = 20.518+shift #m
     World_dZ = 200 #m
     World_dX = World_dY = 30 if add_cavern else 15
+    
+    construct_block("G4_Fe", shield, 'global' if simulate_fields else 'uniform', False)
     if add_cavern: shield["cavern"] = CreateCavern(cavern_transition, length = World_dZ)
     if add_target: shield['target'] = CreateTarget(z_start=shift)
-    #z_bias = sensitive_film_params['position']/2
     i=0
     max_z = 0
     for mag in shield['magnets']:
@@ -773,13 +790,13 @@ def get_design_from_params(params,
             "dy": sensitive_film_params['dy']}})
     return shield
 
+
+
 def initialize_geant4(detector, seed = None):
-    B = detector['global_field_map'].pop('B')
-    B = np.asarray(B).flatten()
     if seed is None: seeds = (np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256))
     else: seeds = (seed, seed, seed, seed)
-    # Save detector configuration to JSON file
-    output_data = initialize(*seeds,json.dumps(detector,default=lambda o: float(o) if isinstance(o, np.float32) else o), B) #
+    detector = json.dumps(detector,default=lambda o: float(o) if isinstance(o, np.float32) else o)
+    output_data = initialize(*seeds,detector) #
     return output_data
 
 if __name__ == '__main__':

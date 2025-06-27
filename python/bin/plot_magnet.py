@@ -8,32 +8,44 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 
 
-def plot_fields(points,fields, output_file='plots/fields.png'):
-    # Filter points where y is approximately 0
+def plot_fields(points, fields, output_file='plots/fields.png'):
+    # Filter points where y is approximately 0 for left plot, x is approximately 0 for right plot
     tolerance = 1e-6
-    mask = np.abs(points[:, 1]) < tolerance
-    points = points[mask]
-    fields = fields[mask]
+    mask_y0 = np.abs(points[:, 1]) < tolerance
+    mask_x0 = np.abs(points[:, 0]) < tolerance
 
-    # Use z-component of the field instead of magnitude
-    fields = fields[:, 1]  # Using z-component which can be +/-
+    points_xz = points[mask_y0]
+    fields_xz = fields[mask_y0]
+    points_yz = points[mask_x0]
+    fields_yz = fields[mask_x0]
 
-    # Create custom colormap: green for negative, white at zero, red for positive
+    # Use z-component of the field
+    fields_xz = fields_xz[:, 1]
+    fields_yz = fields_yz[:, 1]
+
+    # Custom colormap: green for negative, white at zero, red for positive
     colors = [(0, 0.8, 0), (1, 1, 1), (0.8, 0, 0)]
     custom_cmap = LinearSegmentedColormap.from_list('green_white_red', colors)
-
-    # Create a normalization that centers white color at value 0
     norm = TwoSlopeNorm(vmin=-2, vcenter=0, vmax=6)
 
-    # Create the tricontourf plot with many more levels for a more continuous look
-    plt.figure(figsize=(10, 8))
-    # Using 100 levels instead of 20 for a more continuous appearance
-    tcf = plt.tricontourf(points[:, 0], points[:, 2], fields, cmap=custom_cmap, levels=70, norm=norm)
-    plt.colorbar(tcf, label='Field Z-Component')
-    plt.xlabel('X')
-    plt.ylabel('Z')
-    plt.title('Field Z-Component for Y=0')
-    plt.grid(True)
+    fig, axes = plt.subplots(1, 2, figsize=(16, 8), sharey=True)
+    # Left: X vs Z (Y=0)
+    tcf1 = axes[0].tricontourf(points_xz[:, 0], points_xz[:, 2], fields_xz, cmap=custom_cmap, levels=70, norm=norm)
+    axes[0].set_xlabel('X')
+    axes[0].set_ylabel('Z')
+    axes[0].set_title('Field Y-Component for Y=0')
+    axes[0].grid(True)
+    # Right: Y vs Z (X=0)
+    tcf2 = axes[1].tricontourf(points_yz[:, 1], points_yz[:, 2], fields_yz, cmap=custom_cmap, levels=70, norm=norm)
+    axes[1].set_xlabel('Y')
+    axes[1].set_title('Field Y-Component for X=0')
+    axes[1].grid(True)
+
+    # Shared colorbar
+    cbar = fig.colorbar(tcf1, ax=axes, orientation='vertical', fraction=0.025, pad=0.04)
+    cbar.set_label('Field Y-Component')
+
+    #plt.tight_layout()
     plt.savefig(output_file, dpi=600, bbox_inches='tight', pad_inches=0, transparent=False)
     print(f'Plot saved to {output_file}')
     plt.close()
@@ -329,3 +341,7 @@ def construct_and_plot(muons,
                 sensitive_film_position = sensitive_film_params['position'],#sensitive_film_params['position'], 
                 **kwargs_plot)
     
+if __name__ == "__main__":
+    points = np.load('/disk/users/gfrise/FieldMap_Piet/MuonsAndMatter/data/outputs/points_mm_Piet_1.npy')
+    fields = np.load('/disk/users/gfrise/FieldMap_Piet/MuonsAndMatter/data/outputs/fields_mm_Piet_1.npy')
+    plot_fields(points,fields, output_file='plots/fields_piet.png')

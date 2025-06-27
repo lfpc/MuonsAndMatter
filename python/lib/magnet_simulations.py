@@ -3,7 +3,7 @@
 
    Compute the field map for the NC magnets.
 """
-import os
+import os, shutil
 os.environ["OMP_NUM_THREADS"] = "1"
 import numpy as np
 from time import time
@@ -15,6 +15,7 @@ import gzip, pickle
 import snoopy
 import multiprocessing as mp
 from lib.reference_designs.params import new_parametrization
+import h5py
 
 SC_Ymgap = 0.15
 RESOL_DEF = (0.02,0.02,0.05)
@@ -52,7 +53,7 @@ def get_magnet_params(params,
     if B_goal is not None:
         NI = None
     else: NI = params[13]
-    params /= 100
+    params = params / 100
     Xmgap_1 = params[11]
     Xmgap_2 = params[12]
     d = get_fixed_params(yoke_type)
@@ -85,7 +86,7 @@ def get_magnet_params(params,
         if use_diluted and d['yoke_type'] == 'Mag3': 
             d['yoke_type'] = 'Mag1'
             temp = 1
-        d['NI(A)'] = snoopy.get_NI(B_goal, pd.DataFrame([d]),0, materials_directory = materials_directory)[0]
+        d['NI(A)'] = snoopy.get_NI(B_goal, pd.DataFrame([d]),0, materials_directory = materials_directory)[0].item()
         if temp:
             d['yoke_type'] = 'Mag3'
             #temp = 0
@@ -294,9 +295,7 @@ def simulate_and_grid(params, points, use_diluted = False):
     return get_grid_data(**run_fem(params, use_diluted = use_diluted), new_points=points)[1]
 
 def run(magn_params:dict,
-        resol = RESOL_DEF,
-        d_space = ((4., 4., (-1, 30.))),
-        plot_results:bool = False,
+        d_space = (((0.,4.), (0.,4.), (-1, 30.))),
         save_results:bool = False,
         output_file:str = './outputs',
         apply_symmetry:bool = False,
@@ -311,7 +310,6 @@ def run(magn_params:dict,
     apply_symmetry (bool, optional): Whether to apply symmetry to the computed magnetic field. Defaults to False.
     plot_results (bool, optional): Whether to plot the results. Defaults to False.
     save_results (bool, optional): Whether to save the results to a file. Defaults to False.
-    resol (tuple, optional): Resolution of the grid. Defaults to (0.05, 0.05, 0.05).
     d_space (tuple, optional): Dimensions of the space returned. Since the problem is symmetric, it must be in the form (dx,dy,(-z_i,z_f)).
     Defaults to ((3.5, 4.5, (-15., 15.))).
     Returns:
@@ -320,7 +318,8 @@ def run(magn_params:dict,
     
     n_magnets = len(magn_params['yoke_type'])
     print('Starting simulation for {} magnets'.format(n_magnets))
-    limits_quadrant = ((0., 0., d_space[2][0]), (d_space[0],d_space[1], d_space[2][1]))
+    limits_quadrant = ((0., 0., d_space[2][0]), (d_space[0][1],d_space[1][1], d_space[2][1])) #limits_quadrant = ((d_space[0][0], d_space[1][1], d_space[2][0]), (d_space[0][1],d_space[1][1], d_space[2][1]))
+    resol = RESOL_DEF#(d_space[0][2], d_space[1][2], d_space[2][2])
     points = construct_grid(limits=limits_quadrant, resol=resol)
     params_split = [({k: [v[i]] for k, v in magn_params.items()}, points, use_diluted) for i in range(0, n_magnets)]
     if params_split[1][0]['yoke_type'][0] == 'Mag2':
@@ -348,12 +347,11 @@ def simulate_field(params,
               Z_init = 0,
               fSC_mag:bool = True,
               z_gap = 0.1,
-              resol = RESOL_DEF,
               d_space = ((4., 4., (-1, 30.))), 
               NI_from_B_goal:bool = True,
               file_name = 'data/outputs/fields.pkl',
               cores = 1,
-              use_diluted = False ):
+              use_diluted = False):
     
     '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
     t1 = time()
@@ -368,13 +366,9 @@ def simulate_field(params,
         if mag == 'HA': Ymgap=0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag1'
         elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag1'
         else: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag3'
-        if fSC_mag:
-            if mag == 'M1': continue
-            elif mag == 'M3':
-                Z_pos += 2 * mag_params[0]/100 - z_gap
-                continue
-            elif mag == 'M2': 
-              Ymgap = SC_Ymgap; yoke_type = 'Mag2'; mag_params[-1] = 3.2e6; B_goal = None
+        if fSC_mag and mag  == 'M2':
+            Ymgap = SC_Ymgap; yoke_type = 'Mag2'; B_goal = 5.7 if NI_from_B_goal else None
+        resol = RESOL_DEF#(d_space[0][2], d_space[1][2], d_space[2][2])
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal = B_goal, yoke_type=yoke_type, resol = resol, use_diluted = use_diluted)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
@@ -383,16 +377,17 @@ def simulate_field(params,
     try: all_params.to_csv(os.path.join(os.environ.get('PROJECTS_DIR', '../'), 'MuonsAndMatter/data/magnet_params.csv'), index=False)
     except: pass
     all_params = all_params.to_dict(orient='list')
-    fields = run(all_params, d_space=d_space, resol=resol, apply_symmetry=False, cores=cores, use_diluted = use_diluted)
+    fields = run(all_params, d_space=d_space, apply_symmetry=False, cores=cores, use_diluted = use_diluted)
     fields['points'][:,2] += Z_init/100
     print('Magnetic field simulation took', time()-t1, 'seconds')
     if file_name is not None:
-        #with open(file_name, 'wb') as f:
-        #    pickle.dump(fields, f)
-        np.save(file_name, fields['B'].astype(np.float16))
+        time_str = time()
+        with h5py.File(file_name, "w") as f:
+            #f.create_dataset("points", data=fields['points'].astype(np.float16), compression=None)
+            f.create_dataset("B", data=fields['B'].astype(np.float16), compression=None)
+            f.create_dataset("d_space", data=np.array(d_space, dtype=np.float16), compression=None)
         print('Fields saved to', file_name)
-        file_name = file_name.replace('fields', 'points')
-        np.save(file_name, fields['points'].astype(np.float16))
+        print('Saving took', time() - time_str, 'seconds')
     return fields
    
 
@@ -407,7 +402,7 @@ if __name__ == '__main__':
    magn_params = pd.read_csv(parameters_filename).to_dict(orient='list')
    print(magn_params)
    t1 = time()
-   d = run(magn_params,resol = RESOL_DEF,output_file = output_file, save_results=True, cores = 7, use_diluted = False)
+   d = run(magn_params,output_file = output_file, save_results=True, cores = 7, use_diluted = False)
    print('total_time: ', time() - t1, ' sec')
    points = d['points']
    print('limits: ', points.min(axis=0), points.max(axis=0))
