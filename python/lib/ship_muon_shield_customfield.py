@@ -4,7 +4,7 @@ environ["OMP_NUM_THREADS"] = "1"
 import numpy as np
 import pickle
 from lib import magnet_simulations
-from time import time
+from time import time, sleep
 from muon_slabs import initialize
 import json
 import h5py
@@ -33,7 +33,7 @@ def estimate_electrical_cost(params,
     :return:
        A tuple containing (M_coil, Q, current_density)
     '''
-    mag_params = magnet_simulations.get_magnet_params(params,Ymgap=Ymgap,yoke_type=yoke_type, B_goal = 1.9 if NI_from_B else params[13], materials_directory=materials_directory, z_gap=z_gap)
+    mag_params = magnet_simulations.get_magnet_params(params,Ymgap=Ymgap,yoke_type=yoke_type, use_B_goal=NI_from_B, materials_directory=materials_directory, z_gap=z_gap)
     coil_material = mag_params['coil_material']
     with open(join(materials_directory, coil_material)) as f:
         conductor_material_data = json.load(f)
@@ -52,6 +52,9 @@ def estimate_electrical_cost(params,
     yoke_spacer = mag_params['yoke_spacer(mm)']*1e-3
 
     current = mag_params['NI(A)']
+    if current < 0.1: 
+        print("Current is too low, returning null electrical cost.")
+        return 0.0
 
     # Extract parameters from mag_params instead of using raw params array
     X_mgap_1 = mag_params['Xmgap1(m)']

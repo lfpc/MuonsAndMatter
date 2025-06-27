@@ -43,22 +43,19 @@ def get_magnet_params(params,
                      z_gap:float = 0.1,
                      yoke_type:str = 'Mag1',
                      resol = RESOL_DEF,
-                     B_goal:float = None,
+                     use_B_goal:bool = False,
                      materials_directory = None,
                      save_dir = None,
                      use_diluted = False):
 
     ratio_yoke_1 = params[7]
     ratio_yoke_2 = params[8]
-    if B_goal is not None:
-        NI = None
-    else: NI = params[13]
+    B_NI = params[13]
     params = params / 100
     Xmgap_1 = params[11]
     Xmgap_2 = params[12]
     d = get_fixed_params(yoke_type)
     d.update({
-    'NI(A)': NI,
     'resol_x(m)': resol[0],
     'resol_y(m)': resol[1],
     'resol_z(m)': resol[2],
@@ -79,17 +76,15 @@ def get_magnet_params(params,
     'Yvoid2(m)': params[4] + Ymgap,
     'Yyoke2(m)': params[4] + params[10] + Ymgap
     })
-    if NI is None:
+    if use_B_goal:
         if materials_directory is None:
             materials_directory = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
-        temp = 0
-        if use_diluted and d['yoke_type'] == 'Mag3': 
-            d['yoke_type'] = 'Mag1'
-            temp = 1
-        d['NI(A)'] = snoopy.get_NI(B_goal, pd.DataFrame([d]),0, materials_directory = materials_directory)[0].item()
-        if temp:
-            d['yoke_type'] = 'Mag3'
-            #temp = 0
+        d['NI(A)'] = snoopy.get_NI(abs(B_NI), pd.DataFrame([d]),0, materials_directory = materials_directory)[0].item()
+    else: d['NI(A)'] = B_NI
+
+    if use_diluted and d['yoke_type'] == 'Mag3': 
+        d['yoke_type'] = 'Mag1'
+
     if save_dir is not None:
         from csv import DictWriter
         with open(save_dir/"parameters.csv", "w", newline="") as f:
@@ -363,13 +358,14 @@ def simulate_field(params,
         if mag_params[1]<1: 
             Z_pos += 2 * mag_params[0]/100 - z_gap
             continue
-        if mag == 'HA': Ymgap=0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag1'
-        elif mag in ['M1', 'M2', 'M3']: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag1'
-        else: Ymgap = 0.; B_goal = 1.9 if NI_from_B_goal else None; yoke_type = 'Mag3'
         if fSC_mag and mag  == 'M2':
-            Ymgap = SC_Ymgap; yoke_type = 'Mag2'; B_goal = 5.7 if NI_from_B_goal else None
+            Ymgap = SC_Ymgap; yoke_type = 'Mag2'
+        else: 
+            Ymgap = 0.; 
+            yoke_type = 'Mag3' if mag_params[13]<0 else 'Mag1'
+
         resol = RESOL_DEF#(d_space[0][2], d_space[1][2], d_space[2][2])
-        p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal = B_goal, yoke_type=yoke_type, resol = resol, use_diluted = use_diluted)
+        p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, use_B_goal=NI_from_B_goal, yoke_type=yoke_type, resol = resol, use_diluted = use_diluted)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)'] + z_gap
