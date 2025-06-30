@@ -127,37 +127,39 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         }
     }
     // Process the magnets from the JSON variable
-    std::string filename = detectorData["global_field_map"]["B"].asString();
+    G4MagneticField* GlobalmagField = nullptr;
+    const Json::Value globalFieldMap = detectorData["global_field_map"];
     const Json::Value magnets = detectorData["magnets"];
 
+    if (globalFieldMap.isMember("B")) {
+        std::string filename = globalFieldMap["B"].asString();
 
-    H5::H5File file(filename, H5F_ACC_RDONLY);
-    H5::DataSet dataset = file.openDataSet("B");
-    H5::DataSpace dataspace = dataset.getSpace();
+        H5::H5File file(filename, H5F_ACC_RDONLY);
+        H5::DataSet dataset = file.openDataSet("B");
+        H5::DataSpace dataspace = dataset.getSpace();
 
-    hsize_t dims[2];
-    dataspace.getSimpleExtentDims(dims);
+        hsize_t dims[2];
+        dataspace.getSimpleExtentDims(dims);
 
-    std::vector<double> B_vector(dims[0] * dims[1]);
-    dataset.read(B_vector.data(), H5::PredType::NATIVE_DOUBLE);
+        std::vector<double> B_vector(dims[0] * dims[1]);
+        dataset.read(B_vector.data(), H5::PredType::NATIVE_DOUBLE);
 
+        if (!B_vector.empty()) {
+            std::map<std::string, std::vector<double>> ranges;
+            std::vector<G4ThreeVector> fields;
+            ranges["range_x"] = {globalFieldMap["range_x"][0].asDouble() * m, globalFieldMap["range_x"][1].asDouble() * m, globalFieldMap["range_x"][2].asDouble() * m};
+            ranges["range_y"] = {globalFieldMap["range_y"][0].asDouble() * m, globalFieldMap["range_y"][1].asDouble() * m, globalFieldMap["range_y"][2].asDouble() * m};
+            ranges["range_z"] = {globalFieldMap["range_z"][0].asDouble() * m, globalFieldMap["range_z"][1].asDouble() * m, globalFieldMap["range_z"][2].asDouble() * m};
 
-    G4MagneticField* GlobalmagField = nullptr;
-    if (!B_vector.empty()) {
-        std::map<std::string, std::vector<double>> ranges;
-        std::vector<G4ThreeVector> fields;
-        ranges["range_x"] = {detectorData["global_field_map"]["range_x"][0].asDouble() * m, detectorData["global_field_map"]["range_x"][1].asDouble() * m, detectorData["global_field_map"]["range_x"][2].asDouble() * m};
-        ranges["range_y"] = {detectorData["global_field_map"]["range_y"][0].asDouble() * m, detectorData["global_field_map"]["range_y"][1].asDouble() * m, detectorData["global_field_map"]["range_y"][2].asDouble() * m};
-        ranges["range_z"] = {detectorData["global_field_map"]["range_z"][0].asDouble() * m, detectorData["global_field_map"]["range_z"][1].asDouble() * m, detectorData["global_field_map"]["range_z"][2].asDouble() * m};
-
-        for (size_t i = 0; i < B_vector.size(); i += 3) {
-            fields.emplace_back(B_vector[i] * tesla, B_vector[i + 1] * tesla, B_vector[i + 2] * tesla);
+            for (size_t i = 0; i < B_vector.size(); i += 3) {
+                fields.emplace_back(B_vector[i] * tesla, B_vector[i + 1] * tesla, B_vector[i + 2] * tesla);
+            }
+            std::vector<double>().swap(B_vector);
+            // Determine the interpolation type
+            CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
+            // Define the custom magnetic field
+            GlobalmagField = new CustomMagneticField(ranges, fields, interpType);
         }
-        std::vector<double>().swap(B_vector);
-        // Determine the interpolation type
-        CustomMagneticField::InterpolationType interpType = CustomMagneticField::NEAREST_NEIGHBOR;
-        // Define the custom magnetic field
-        GlobalmagField = new CustomMagneticField(ranges, fields, interpType);
     }
     //const Json::Value fields = detectorData["field_map"];
     double totalWeight = 0;

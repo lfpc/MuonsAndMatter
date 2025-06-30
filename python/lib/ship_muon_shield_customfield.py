@@ -300,8 +300,8 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
         'field_profile' : field_profile,
         'field' : magField,
         'name': arbName,
-        'dz' : dZ,
-        "z_center" : z_translation,
+        'dz' : float(dZ),
+        "z_center" : float(z_translation),
     })
 def CreateTarget(z_start:float):
     target_components = []
@@ -505,8 +505,8 @@ def create_magnet(magnetName, medium, tShield,
 
     theMagnet = {
         'components' : [],
-        'dz' : dZ/100,
-        'z_center' : Z/100,
+        'dz' : float(dZ)/100,
+        'z_center' : float(Z)/100,
     }
 
     if field_profile == 'uniform':
@@ -552,8 +552,8 @@ def construct_block(medium, tShield,field_profile, stepGeo, length = 54):
     ])
     Block = {
         'components' : [],
-        'dz' : dZ/100,
-        'z_center' : Z/100,
+        'dz' : float(dZ)/100,
+        'z_center' : float(Z)/100,
     }
     #cornersIronBlock = contraints_cavern_intersection(cornersIronBlock/100, dZ/100, Z/100, 22-2.345)
     CreateArb8('IronAfterTarget', medium, dZ, cornersIronBlock, [0.,0.,0.], field_profile, Block, 0, 0, Z, stepGeo)
@@ -570,8 +570,6 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
     zgap = Z_GAP*cm
 
     magnetName = ["MagnAbsorb2", "Magn1", "Magn2", "Magn3", "Magn4", "Magn5", "Magn6", "Magn7"]
-
-    fieldDirection = ["up", "up", "up", "up", "down", "down", "down", "down"]
 
 
     dZ1 = params[0]
@@ -654,9 +652,9 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         fMuonShieldLength += dZf[7]
 
     tShield = {
-        'dz': fMuonShieldLength/100,
+        'dz': float(fMuonShieldLength/100),
         'magnets':[],
-        'global_field_map': {'B': np.array([])},
+        'global_field_map': {},
     }
     if field_map_file is not None or simulate_fields: 
         simulate_fields = (not exists(field_map_file)) or simulate_fields
@@ -677,35 +675,31 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
             continue
         if nM == 2 and fSC_mag:
             Ymgap = SC_Ymgap*cm
-            ironField_s = 5.1 * tesla
-        elif nM == 0:
-            Ymgap = 0
-            ironField_s = 1.9 * tesla
-        else:
-            Ymgap = 0
-            ironField_s = 1.9 * tesla
+        else: Ymgap = 0.0
+
+        ironField_s = float(NI[nM]) * tesla
+
+        ratio_yoke = float(ratio_yokesIn[nM])
 
         if simulate_fields or field_map_file is not  None:
             field_profile = 'global'
             fields_s = [[],[],[]]
         else:
             field_profile = 'uniform'
-            if fieldDirection[nM] == "down":
-                ironField_s = -ironField_s
-            if nM in [4,5,6]: ironField_s *= ratio_yokesIn[nM]
+            if ironField_s<0: ironField_s *= ratio_yoke
             magFieldIron_s = [0., ironField_s, 0.]
-            RetField_s = [0., -ironField_s/ratio_yokesIn[nM], 0.]
-            ConRField_s = [-ironField_s/ratio_yokesIn[nM], 0., 0.]
-            ConLField_s = [ironField_s/ratio_yokesIn[nM], 0., 0.]
+            RetField_s = [0., -ironField_s/ratio_yoke, 0.]
+            ConRField_s = [-ironField_s/ratio_yoke, 0., 0.]
+            ConLField_s = [ironField_s/ratio_yoke, 0., 0.]
             fields_s = [magFieldIron_s, RetField_s, ConRField_s, ConLField_s]
 
         create_magnet(magnetName[nM], "G4_Fe", tShield, fields_s, field_profile, dXIn[nM], dYIn[nM], dXOut[nM],
-              dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM], ratio_yokesIn[nM], ratio_yokesOut[nM],
+              dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM], ratio_yoke, ratio_yokesOut[nM],
               dY_yokeIn[nM], dY_yokeOut[nM], gapIn[nM], gapOut[nM], Z[nM], False, Ymgap=Ymgap)
         yoke_type = 'Mag1' if nM in [0,1,2,3] else 'Mag3'
         if fSC_mag and nM==2: yoke_type = 'Mag2'
-        cost += get_iron_cost([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokesIn[nM], ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM]], Ymgap=Ymgap, zGap=zgap)        
-        cost += estimate_electrical_cost(np.array([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yokesIn[nM], ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM], NI[nM]]), Ymgap=Ymgap, z_gap=zgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
+        cost += get_iron_cost([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yoke, ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM]], Ymgap=Ymgap, zGap=zgap)        
+        cost += estimate_electrical_cost(np.array([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yoke, ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM], NI[nM]]), Ymgap=Ymgap, z_gap=zgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
     if SND and (midGapIn[5] > 30) and (midGapOut[5] > 30):
         gap = 10 * cm
         dX = 20.-gap
@@ -730,7 +724,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         #cornersIronBlock = contraints_cavern_intersection(cornersIronBlock/100, dZ/100, Z/100, 22-2.345)
         CreateArb8('SND_Emu_Si', 'G4_Fe', dZ, corners, [0.,0.,0.], 'uniform', Block, 0, 0, Z, False)
         tShield['magnets'].append(Block)
-    tShield['cost'] = cost
+    tShield['cost'] = float(cost)
     return tShield
 
 
@@ -798,8 +792,8 @@ def get_design_from_params(params,
 def initialize_geant4(detector, seed = None):
     if seed is None: seeds = (np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256))
     else: seeds = (seed, seed, seed, seed)
-    detector = json.dumps(detector,default=lambda o: float(o) if isinstance(o, np.float32) else o)
-    output_data = initialize(*seeds,detector) #
+    detector = json.dumps(detector)#,default=lambda o: float(o) if (isinstance(o, np.float32) or isinstance(o, np.float64)) else o)
+    output_data = initialize(*seeds,detector)
     return output_data
 
 if __name__ == '__main__':
