@@ -108,7 +108,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         }
     }
     if (detectorData.isMember("target")) {
-        const Json::Value targets = detectorData["target"];
+        const Json::Value targets = detectorData["target"]["components"];
         int i = 0;
         for (const auto& target : targets) {
             G4double innerRadius = 0;//target["innerRadius"].asDouble() * m;

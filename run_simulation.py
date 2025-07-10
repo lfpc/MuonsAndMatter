@@ -7,7 +7,7 @@ from time import time
 import h5py
 
 def run(muons, 
-    phi, 
+    params, 
     input_dist:float = None,
     return_cost = False,
     fSC_mag:bool = True,
@@ -58,12 +58,11 @@ def run(muons,
     ndarray: Array of simulated muon data (momentum, position, particle ID and possibly weight (if presented in the input)). 
     float (optional): Total weight of the muon shield if return_cost is True.
     """
-    
 
     if type(muons) is tuple:
         muons = muons[0]
     
-    detector = get_design_from_params(params = phi,
+    detector = get_design_from_params(params = params,
                       force_remove_magnetic_field= False,
                       fSC_mag = fSC_mag,
                       simulate_fields=simulate_fields,
@@ -101,12 +100,13 @@ def run(muons,
     z = np.minimum(z, -0.9)
 
     if SmearBeamRadius > 0: #ring transformation
-        gauss = np.random.normal(0, 1, size=x.shape) 
-        uniform = np.random.uniform(0, 2, size=x.shape)
-        r = SmearBeamRadius + 1.6 * gauss
-        _phi = uniform * np.pi
-        dx = r * np.cos(_phi)
-        dy = r * np.sin(_phi)
+        sigma = 1.6
+        gauss_x = np.random.normal(0, sigma, size=x.shape)
+        gauss_y = np.random.normal(0, sigma, size=y.shape)
+        uniform = np.random.uniform(0, 1, size=x.shape)
+        _phi = uniform * 2 * np.pi
+        dx = SmearBeamRadius * np.cos(_phi) + gauss_x
+        dy = SmearBeamRadius * np.sin(_phi) + gauss_y
         x += dx / 100
         y += dy / 100
 
@@ -141,11 +141,6 @@ def run(muons,
 
     muon_data = np.asarray(muon_data)
     
-    if draw_magnet: 
-        plot_magnet(detector,
-                muon_data = muon_data, 
-                sensitive_film_position = sensitive_film_params['position'], 
-                **kwargs_plot)
     print('TOTAL COST:', cost)
     print('MASS:', output_data['weight_total'])
     print('LENGTH:', length)
@@ -192,8 +187,11 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     cores = args.c
-    if hasattr(params_lib, args.params):
-        params = getattr(params_lib, args.params)
+    if args.params == 'test':
+        params_input = input("Enter the params as a Python list (e.g., [1.0, 2.0, 3.0]): ")
+        params = eval(params_input)
+    elif args.params in params_lib.params.keys():
+        params = params_lib.params[args.params]
     elif os.path.isfile(args.params):
         with open(args.params, "r") as txt_file:
             params = [float(line.strip()) for line in txt_file]
@@ -238,7 +236,7 @@ if __name__ == '__main__':
     t1 = time()
     with mp.Pool(cores) as pool:
         run_partial = partial(run, 
-                              phi=params, 
+                              params=params, 
                               input_dist=input_dist, 
                               return_cost=True, 
                               fSC_mag=args.SC_mag, 

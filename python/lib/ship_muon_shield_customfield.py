@@ -1,6 +1,5 @@
 from os.path import exists, join
 from os import getenv, environ
-environ["OMP_NUM_THREADS"] = "1"
 import numpy as np
 import pickle
 from lib import magnet_simulations
@@ -21,7 +20,7 @@ N_PARAMS = 14
 def estimate_electrical_cost(params,
                              yoke_type,
                              Ymgap = 0.,
-                             z_gap = 10,
+                             z_gap = Z_GAP,
                             materials_directory=MATERIALS_DIR,
                             electricity_costs = 5.0,
                             NI_from_B = True):
@@ -51,7 +50,7 @@ def estimate_electrical_cost(params,
     max_turns = int(mag_params['max_turns'])
     yoke_spacer = mag_params['yoke_spacer(mm)']*1e-3
 
-    current = mag_params['NI(A)']
+    current = abs(mag_params['NI(A)'])
     if current < 0.1: 
         print("Current is too low, returning null electrical cost.")
         return 0.0
@@ -104,8 +103,8 @@ def estimate_electrical_cost(params,
                        [ X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
                        [-X_core_1,                       Z_pos-yoke_spacer - ins - coil_radius ],
                        [-X_core_1 - yoke_spacer - ins - coil_radius,   Z_pos                   ]])
-            
             coil = RacetrackCoil(kp, y, coil_radius, current/num_cond)
+
             turn_perimeter = coil.get_length()
         else:
             # Two coils around core
@@ -304,6 +303,7 @@ def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
         "z_center" : float(z_translation),
     })
 def CreateTarget(z_start:float):
+    target = {}
     target_components = []
     N = 0#13
     T = 18#5
@@ -332,7 +332,10 @@ def CreateTarget(z_start:float):
             "material": materials[i],
         })
         z += L
-    return target_components
+    target = {'z_center' : (z_start + z)/2,
+              'length' : z - z_start,
+              'components' : target_components}
+    return target
 
 def CreateCavern(shift = 0, length:float = 90.):
     cavern = []
@@ -533,7 +536,7 @@ def create_magnet(magnetName, medium, tShield,
     tShield['magnets'].append(theMagnet)
 
 
-def construct_block(medium, tShield,field_profile, stepGeo, length = 54):
+def construct_block(medium, tShield,field_profile, stepGeo, length):
     #iron block before the magnet
     z_gap = 1.
     dX = 50.
@@ -664,7 +667,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         max_y = np.round(max_y,decimals=1).item()
         d_space = ((0,max_x+0.3, RESOL_DEF[0]), (0,max_y+0.3, RESOL_DEF[1]), (-0.5, np.ceil((Z[-1]+dZf[-1]+50+10)/100).item(), RESOL_DEF[2]))
         field_map = get_field(simulate_fields,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag,  d_space = d_space,
-                              file_name=field_map_file, only_grid_params=True, NI_from_B_goal = NI_from_B, z_gap=zgap/100,
+                              file_name=field_map_file, only_grid_params=True, NI_from_B_goal = NI_from_B, z_gap=zgap,
                               cores = min(cores_field,n_magnets), use_diluted = use_diluted)
         tShield['global_field_map'] = field_map
         #tShield['cost'] = cost
@@ -751,9 +754,11 @@ def get_design_from_params(params,
     World_dZ = 200 #m
     World_dX = World_dY = 30 if add_cavern else 15
     
-    construct_block("G4_Fe", shield, 'global' if simulate_fields else 'uniform', False)
+    
     if add_cavern: shield["cavern"] = CreateCavern(cavern_transition, length = World_dZ)
-    if add_target: shield['target'] = CreateTarget(z_start=shift)
+    if add_target: 
+        shield['target'] = CreateTarget(z_start=shift)
+        construct_block("G4_Fe", shield, 'global' if simulate_fields else 'uniform', False, -100*(shift+shield['target']['length']))
     i=0
     max_z = 0
     for mag in shield['magnets']:

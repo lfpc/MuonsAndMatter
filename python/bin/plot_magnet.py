@@ -105,7 +105,7 @@ def plot_magnet(detector,
         box = Poly3DCollection(edges, facecolors='cyan', linewidths=1, edgecolors='orange', alpha=.15)
         ax.add_collection3d(box)
     if "target" in detector:
-        for target in detector["target"]:
+        for target in detector["target"]['components']:
             z_center = target["z_center"]
             dz = target["dz"]
             radius = target["radius"]

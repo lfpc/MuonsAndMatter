@@ -40,7 +40,7 @@ def get_fixed_params(yoke_type = 'Mag1'):
 
 def get_magnet_params(params, 
                      Ymgap:float = 0.15,
-                     z_gap:float = 0.1,
+                     z_gap:float = 10,
                      yoke_type:str = 'Mag1',
                      resol = RESOL_DEF,
                      use_B_goal:bool = False,
@@ -52,6 +52,7 @@ def get_magnet_params(params,
     ratio_yoke_2 = params[8]
     B_NI = params[13]
     params = params / 100
+    z_gap = z_gap / 100
     Xmgap_1 = params[11]
     Xmgap_2 = params[12]
     d = get_fixed_params(yoke_type)
@@ -80,6 +81,8 @@ def get_magnet_params(params,
         if materials_directory is None:
             materials_directory = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
         d['NI(A)'] = snoopy.get_NI(abs(B_NI), pd.DataFrame([d]),0, materials_directory = materials_directory)[0].item()
+        if (B_NI > 0 and d['yoke_type'] == 'Mag3') or (B_NI < 0 and d['yoke_type'] == 'Mag1'):
+            d['NI(A)'] = -d['NI(A)']
     else: d['NI(A)'] = B_NI
 
     if use_diluted and d['yoke_type'] == 'Mag3': 
@@ -95,7 +98,7 @@ def get_magnet_params(params,
 
 def get_melvin_params(params,
               fSC_mag:bool = False,
-              z_gap = 0.1,
+              z_gap = 10,
               resol = RESOL_DEF,
               NI_from_B_goal:bool = True):
     all_params = pd.DataFrame()
@@ -104,7 +107,7 @@ def get_melvin_params(params,
         mag_params = params[idx]
         if mag_params[0]<1: continue
         if mag_params[1]<1: 
-            Z_pos += 2 * mag_params[0]/100 - z_gap
+            Z_pos += 2 * mag_params[0]/100 - z_gap/100
             continue
 
         if mag == 'HA': Ymgap=0.; yoke_type = 'Mag1'; B_goal = 1.9 if NI_from_B_goal else None
@@ -113,15 +116,15 @@ def get_melvin_params(params,
         if fSC_mag:
             if mag == 'M1': continue
             elif mag == 'M3':
-                Z_pos += 2 * mag_params[0]/100 - z_gap
+                Z_pos += 2 * mag_params[0]/100 - z_gap/100
                 continue
             elif mag == 'M2': 
                 Ymgap = SC_Ymgap; yoke_type = 'Mag2'; mag_params[-1] = 3.20E+06; B_goal = None
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, B_goal = B_goal, yoke_type=yoke_type, resol = resol)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
-        Z_pos += p['Z_len(m)'] + z_gap
-        if mag == 'M2': Z_pos += z_gap
+        Z_pos += p['Z_len(m)'] + z_gap/100
+        if mag == 'M2': Z_pos += z_gap/100
     all_params.to_csv('magnet_params.csv')
 
 def get_params_from_dataframe(df,
@@ -341,7 +344,7 @@ def run(magn_params:dict,
 def simulate_field(params,
               Z_init = 0,
               fSC_mag:bool = True,
-              z_gap = 0.1,
+              z_gap = 10,
               d_space = ((4., 4., (-1, 30.))), 
               NI_from_B_goal:bool = True,
               file_name = 'data/outputs/fields.pkl',
@@ -356,10 +359,11 @@ def simulate_field(params,
         mag_params = params[idx]
         if mag_params[0]<1: continue
         if mag_params[1]<1: 
-            Z_pos += 2 * mag_params[0]/100 - z_gap
+            Z_pos += 2 * mag_params[0]/100 - z_gap/100
             continue
         if fSC_mag and mag  == 'M2':
             Ymgap = SC_Ymgap; yoke_type = 'Mag2'
+        elif use_diluted: Ymgap = 0.; yoke_type = 'Mag1'
         else: 
             Ymgap = 0.; 
             yoke_type = 'Mag3' if mag_params[13]<0 else 'Mag1'
@@ -368,8 +372,8 @@ def simulate_field(params,
         p = get_magnet_params(mag_params, Ymgap=Ymgap, z_gap=z_gap, use_B_goal=NI_from_B_goal, yoke_type=yoke_type, resol = resol, use_diluted = use_diluted)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
-        Z_pos += p['Z_len(m)'] + z_gap
-        if mag == 'M2': Z_pos += z_gap
+        Z_pos += p['Z_len(m)'] + z_gap/100
+        if mag == 'M2': Z_pos += z_gap/100
     try: all_params.to_csv(os.path.join(os.environ.get('PROJECTS_DIR', '../'), 'MuonsAndMatter/data/magnet_params.csv'), index=False)
     except: pass
     all_params = all_params.to_dict(orient='list')
@@ -379,7 +383,7 @@ def simulate_field(params,
     if file_name is not None:
         time_str = time()
         with h5py.File(file_name, "w") as f:
-            #f.create_dataset("points", data=fields['points'].astype(np.float16), compression=None)
+            if '_mm' in file_name: f.create_dataset("points", data=fields['points'].astype(np.float16), compression=None)
             f.create_dataset("B", data=fields['B'].astype(np.float16), compression=None)
             f.create_dataset("d_space", data=np.array(d_space, dtype=np.float16), compression=None)
         print('Fields saved to', file_name)
