@@ -210,7 +210,7 @@ def plot_magnet(detector,
             p = np.sqrt(px**2 + py**2 + pz**2)
             if sensitive_film_position is not None: z = sensitive_film_position*np.ones_like(z)+detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz']
             alpha = 0.3
-        if particle>0:
+        if np.all(particle>0):
             color = cmap_muon(norm(p))
         else:
             color = cmap_antimuon(norm(p))

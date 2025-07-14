@@ -16,6 +16,7 @@ plots/*.png
 # Ignore data directory
 data/full_sample/
 data/muons/*.pkl
+data/muons/*.npy
 data/outputs/*
 
 

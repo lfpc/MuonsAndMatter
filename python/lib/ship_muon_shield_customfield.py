@@ -307,6 +307,7 @@ def CreateTarget(z_start:float):
     target_components = []
     N = 0#13
     T = 18#5
+    z_gap = 0.001
     materials = N * ["G4_Mo"] + T * ["G4_W"]
     lengths = [8., 2.5, 2.5, 2.5, 2.5, 
         2.5, 2.5, 2.5, 5.0, 5.0, 
@@ -320,14 +321,14 @@ def CreateTarget(z_start:float):
         if i!=0:
             target_components.append({
             "radius": diameter / 2,
-            "dz": h20_l,
+            "dz": h20_l-z_gap,
             "z_center": z + h20_l/2,
             "material": "G4_WATER",
             })
             z += h20_l
         target_components.append({
             "radius": diameter / 2,
-            "dz": L,
+            "dz": L-z_gap,
             "z_center": z + L/2,
             "material": materials[i],
         })
@@ -727,6 +728,9 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         #cornersIronBlock = contraints_cavern_intersection(cornersIronBlock/100, dZ/100, Z/100, 22-2.345)
         CreateArb8('SND_Emu_Si', 'G4_Fe', dZ, corners, [0.,0.,0.], 'uniform', Block, 0, 0, Z, False)
         tShield['magnets'].append(Block)
+    elif SND:
+        print("WARNING")
+        print("No space for the SND: midGapIn[5] <= 30 or midGapOut[5] <= 30")
     tShield['cost'] = float(cost)
     return tShield
 

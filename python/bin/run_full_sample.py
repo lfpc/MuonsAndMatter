@@ -48,7 +48,6 @@ def get_total_hits(phi,
     print('COST:', SHIP.get_total_cost(phi))
     for name in os.listdir(inputs_dir)[:n_files]:
         n_name = extract_number_from_string(name)
-        if n_name == 0: continue
         print('FILE:', name)
         t1 = time()
         with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:
@@ -62,7 +61,7 @@ def get_total_hits(phi,
         time1 = time()
         n_hits = SHIP.simulate(phi,file = n_name).item()-1
         print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
-        concatenate_files('/home/hep/lprate/projects/MuonsAndMatter/data/outputs/results', n_name, outputs_dir)
+        #concatenate_files('/home/hep/lprate/projects/MuonsAndMatter/data/outputs/results', n_name, outputs_dir)
         n_hits_total += n_hits
         n_muons_unweighted += len(factor)
         all_results[n_name] = (n_muons,n_hits)
@@ -79,13 +78,14 @@ def get_total_hits(phi,
 new_parametrization = ShipMuonShieldCluster.parametrization
 if __name__ == '__main__':
     INPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/full_sample'
-    OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs/full_sample_results/'
+    OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs/trajectories_full_sample/'
     import argparse
     import json
     # Load config file
     CONFIG_PATH = os.path.join(PROJECTS_DIR, 'cluster', 'config.json')
     with open(CONFIG_PATH, 'r') as f:
         CONFIG = json.load(f)
+    CONFIG.pop("data_treatment", None)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-n_files", type=int, default=67)
@@ -99,7 +99,8 @@ if __name__ == '__main__':
         os.makedirs(args.outputs_dir)
     
     # Remove all the per-parameter extraction, just pass CONFIG
-    if args.params == 'sc_v6': params = ShipMuonShieldCluster.sc_v6
+    if hasattr(ShipMuonShieldCluster, args.params):
+        params = getattr(ShipMuonShieldCluster, args.params)
     else:
         with open(args.params, "r") as txt_file:
             params = np.array([float(line.strip()) for line in txt_file])
