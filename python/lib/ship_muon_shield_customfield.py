@@ -16,6 +16,8 @@ MATERIALS_DIR = join(getenv('PROJECTS_DIR'),'MuonsAndMatter/data/materials')
 Z_GAP = 10 # in cm
 SC_Ymgap = magnet_simulations.SC_Ymgap*100
 N_PARAMS = 14
+SHIFT = -2.14#-2.345
+CAVERN_TRANSITION = 20.518+SHIFT #m
 
 def estimate_electrical_cost(params,
                              yoke_type,
@@ -366,7 +368,7 @@ def CreateCavern(shift = 0, length:float = 90.):
              [x2, -external_rock[1]],
              [x1, -external_rock[1]]]).flatten(), 2).tolist()
         return [corners_up,corners_right,corners_left,corners_down]
-    external_rock = (15,15) #entire space is 40x40
+    external_rock = (10,10) #entire space is 40x40
 
     TCC8_length = max(length, 170.)
     dX_TCC8 = 5
@@ -396,6 +398,31 @@ def CreateCavern(shift = 0, length:float = 90.):
     cavern.append(ECN3)
 
     return cavern
+
+def CreateDecayVessel(z_start:float = 31):
+    length = 50
+    z_center = z_start+ length/2
+    dXin = 1 / 2
+    dYin = 2.70 / 2
+    dXout = 4 / 2
+    dYout = 6 / 2
+
+
+    corners = np.array([-dXin, -dYin,
+                        dXin, -dYin,
+                        dXin, dYin,
+                        -dXin, dYin,
+                        -dXout, -dYout,
+                        dXout, -dYout,
+                        dXout, dYout,
+                        -dXout, dYout])
+
+    DecayVessel = {'name': 'DecayVessel',
+                    'corners': corners.tolist(),
+                   'material': "G4_AIR",
+                   'z_center': z_center,
+                   'dz': length / 2}
+    return DecayVessel
 
 # fields should be 4x3 np array
 def create_magnet(magnetName, medium, tShield,
@@ -746,6 +773,7 @@ def get_design_from_params(params,
                            sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':82},
                            add_cavern:bool = True,
                            add_target:bool = True,
+                           sensitive_decay_vessel:bool = False,
                            cores_field:int = 1,
                            extra_magnet = False,
                            NI_from_B = True, 
@@ -753,16 +781,16 @@ def get_design_from_params(params,
                            SND = False):
     params = np.round(params, 2)
     shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, extra_magnet = extra_magnet, NI_from_B = NI_from_B, use_diluted=use_diluted, SND=SND)
-    shift = -2.14#-2.345
-    cavern_transition = 20.518+shift #m
+    
     World_dZ = 200 #m
-    World_dX = World_dY = 30 if add_cavern else 15
+    World_dX = World_dY = 20 if add_cavern else 12
     
-    
-    if add_cavern: shield["cavern"] = CreateCavern(cavern_transition, length = World_dZ)
+    if add_cavern: shield["cavern"] = CreateCavern(CAVERN_TRANSITION, length = World_dZ)
     if add_target: 
-        shield['target'] = CreateTarget(z_start=shift)
-        construct_block("G4_Fe", shield, 'global' if simulate_fields else 'uniform', False, -100*(shift+shield['target']['length']))
+        shield['target'] = CreateTarget(z_start=SHIFT)
+        construct_block("G4_Fe", shield, 'global' if simulate_fields else 'uniform', False, -100*(SHIFT+shield['target']['length']))
+    if sensitive_decay_vessel: shield['sensitive_box'] = CreateDecayVessel(z_start=33.12+SHIFT)
+    
     i=0
     max_z = 0
     for mag in shield['magnets']:
@@ -788,12 +816,17 @@ def get_design_from_params(params,
         },
     })
     if sensitive_film_params is not None:
-        shield.update({
-            "sensitive_film": {
-            "z_center" : sensitive_film_params['position'],
+        if isinstance(sensitive_film_params['position'], (int, float)):
+            sensitive_film_params['position'] = [sensitive_film_params['position']]
+        sens_films = []
+        for pos in sensitive_film_params['position']:
+            sens_films.append({
+            "name": "SensitiveFilm_{}".format(pos),
+            "z_center" : pos,
             "dz" : sensitive_film_params['dz'],
             "dx": sensitive_film_params['dx'],
-            "dy": sensitive_film_params['dy']}})
+            "dy": sensitive_film_params['dy']})
+        shield.update({"sensitive_film": sens_films})
     return shield
 
 

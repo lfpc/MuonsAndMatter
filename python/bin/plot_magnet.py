@@ -69,41 +69,51 @@ def plot_magnet(detector,
         points = np.column_stack((points[0].ravel(), points[1].ravel(), points[2].ravel()))
         #detector['global_field_map'] = get_symmetry(points,np.asarray(detector['global_field_map']['B']), reorder=True)
 
-    if "sensitive_film" in detector  and sensitive_film_position is not None:
-        cz, cx, cy = detector["sensitive_film"]["z_center"], 0, 0
-        if sensitive_film_position is not None: 
-            if isinstance(sensitive_film_position,tuple):
-                cz = sensitive_film_position[1]+detector['magnets'][sensitive_film_position[0]]['z_center']+detector['magnets'][sensitive_film_position[0]]['dz']
-            else: cz = sensitive_film_position+detector['magnets'][-1]['z_center']+detector['magnets'][-1]['dz']
+    if "sensitive_film" in detector and isinstance(detector["sensitive_film"], list):
+        for sf_idx, sf in enumerate(detector["sensitive_film"]):
+            cz, cx, cy = sf["z_center"], 0, 0
+            if sensitive_film_position is not None:
+                if isinstance(sensitive_film_position, (list, tuple)):
+                    # If sensitive_film_position is a list/tuple, try to match index
+                    if isinstance(sensitive_film_position, list) and len(sensitive_film_position) > sf_idx:
+                        pos = sensitive_film_position[sf_idx]
+                        if isinstance(pos, tuple):
+                            cz = pos[1] + detector['magnets'][pos[0]]['z_center'] + detector['magnets'][pos[0]]['dz']
+                        else:
+                            cz = pos + detector['magnets'][-1]['z_center'] + detector['magnets'][-1]['dz']
+                    elif isinstance(sensitive_film_position, tuple):
+                        cz = sensitive_film_position[1] + detector['magnets'][sensitive_film_position[0]]['z_center'] + detector['magnets'][sensitive_film_position[0]]['dz']
+                else:
+                    cz = sensitive_film_position + detector['magnets'][-1]['z_center'] + detector['magnets'][-1]['dz']
 
-        # Calculate the half-sizes
-        hw = detector["sensitive_film"]["dx"] / 2
-        hl = detector["sensitive_film"]["dy"] / 2
-        hh = detector["sensitive_film"]["dz"] / 2
+            # Calculate the half-sizes
+            hw = sf["dx"] / 2
+            hl = sf["dy"] / 2
+            hh = sf["dz"] / 2
 
-        # Define the vertices of the box
-        vertices = np.array([
-            [cz - hh, cx - hw, cy - hl, ],
-            [cz - hh, cx + hw, cy - hl, ],
-            [cz - hh, cx + hw, cy + hl, ],
-            [cz - hh, cx - hw, cy + hl, ],
-            [cz + hh, cx - hw, cy - hl, ],
-            [cz + hh, cx + hw, cy - hl, ],
-            [cz + hh, cx + hw, cy + hl, ],
-            [cz + hh, cx - hw, cy + hl, ],
-        ])
+            # Define the vertices of the box
+            vertices = np.array([
+                [cz - hh, cx - hw, cy - hl],
+                [cz - hh, cx + hw, cy - hl],
+                [cz - hh, cx + hw, cy + hl],
+                [cz - hh, cx - hw, cy + hl],
+                [cz + hh, cx - hw, cy - hl],
+                [cz + hh, cx + hw, cy - hl],
+                [cz + hh, cx + hw, cy + hl],
+                [cz + hh, cx - hw, cy + hl],
+            ])
 
-        # Define the edges of the box
-        edges = [
-            [vertices[j] for j in [0, 1, 2, 3]],  # bottom face
-            [vertices[j] for j in [4, 5, 6, 7]],  # top face
-            [vertices[j] for j in [0, 1, 5, 4]],  # front face
-            [vertices[j] for j in [2, 3, 7, 6]],  # back face
-            [vertices[j] for j in [1, 2, 6, 5]],  # right face
-            [vertices[j] for j in [0, 3, 7, 4]],  # left face
-        ]
-        box = Poly3DCollection(edges, facecolors='cyan', linewidths=1, edgecolors='orange', alpha=.15)
-        ax.add_collection3d(box)
+            # Define the edges of the box
+            edges = [
+                [vertices[j] for j in [0, 1, 2, 3]],  # bottom face
+                [vertices[j] for j in [4, 5, 6, 7]],  # top face
+                [vertices[j] for j in [0, 1, 5, 4]],  # front face
+                [vertices[j] for j in [2, 3, 7, 6]],  # back face
+                [vertices[j] for j in [1, 2, 6, 5]],  # right face
+                [vertices[j] for j in [0, 3, 7, 4]],  # left face
+            ]
+            box = Poly3DCollection(edges, facecolors='cyan', linewidths=1, edgecolors='orange', alpha=.15)
+            ax.add_collection3d(box)
     if "target" in detector:
         for target in detector["target"]['components']:
             z_center = target["z_center"]
@@ -197,11 +207,11 @@ def plot_magnet(detector,
     norm = mcolors.Normalize(vmin=0, vmax=250)  
     for i, data in enumerate(muon_data):
         if isinstance(data,dict):
-            x = data['x']
-            y = data['y']
-            z = data['z']
-            p = np.sqrt(data['px']**2 + data['py']**2 + data['pz']**2)[0]
-            particle = data['pdg_id']  
+            x = np.array(data['x'])
+            y = np.array(data['y'])
+            z = np.array(data['z'])
+            p = np.sqrt(np.array(data['px'])**2 + np.array(data['py'])**2 + np.array(data['pz'])**2)[0]
+            particle = np.array(data['pdg_id'])
             alpha = 0.3
 
             
@@ -253,6 +263,42 @@ def plot_magnet(detector,
                             [corners[j] for j in [0, 3, 7, 4]],
                             [corners[j] for j in [1, 2, 6, 5]]]
                 ax.add_collection3d(Poly3DCollection(edges, facecolors='gray', linewidths=0.07, edgecolors='black', alpha=0.25))
+
+        # Plot sensitive_box (Decay Vessel) if present
+    if "sensitive_box" in detector:
+        box = detector["sensitive_box"]
+        # corners: flat list of 16 values (8 x/y pairs)
+        corners = np.array(box["corners"]).reshape(8, 2)
+        dz = box["dz"]
+        z_center = box["z_center"]
+        # Build 8 3D corners (first 4 at z_center-dz, next 4 at z_center+dz)
+        z1 = z_center - dz
+        z2 = z_center + dz
+        box_corners = np.array([
+            [z1, corners[0][0], corners[0][1]],
+            [z1, corners[1][0], corners[1][1]],
+            [z1, corners[2][0], corners[2][1]],
+            [z1, corners[3][0], corners[3][1]],
+            [z2, corners[4][0], corners[4][1]],
+            [z2, corners[5][0], corners[5][1]],
+            [z2, corners[6][0], corners[6][1]],
+            [z2, corners[7][0], corners[7][1]],
+        ])
+        # Reorder to (z, x, y) for plotting
+        box_corners = np.array([[c[0], c[1], c[2]] for c in box_corners])
+        # Define the 12 unique edges of the box
+        edge_indices = [
+            (0,1), (1,2), (2,3), (3,0),  # bottom
+            (4,5), (5,6), (6,7), (7,4),  # top
+            (0,4), (1,5), (2,6), (3,7)   # verticals
+        ]
+        for i1, i2 in edge_indices:
+            ax.plot(
+                [box_corners[i1][0], box_corners[i2][0]],
+                [box_corners[i1][1], box_corners[i2][1]],
+                [box_corners[i1][2], box_corners[i2][2]],
+                color='gray', linewidth=1, alpha=0.7
+            )
     # Plot horizontal plane at y = -1.7
     if 80 < azim < 100 and -10 < elev < 20:
         z_plane1 = -1.7
@@ -308,7 +354,7 @@ def plot_magnet(detector,
         Y2 = np.full_like(X2, y_plane2)
         ax.plot_surface(X2, Y2, Z2, color='black', alpha=0.3)
 
-    if sensitive_film_position is not None: ax.set_xlim(3+sensitive_film_position, -5)
+    if sensitive_film_position is not None: ax.set_xlim(3+max(sensitive_film_position), -5)
     else: ax.set_xlim(40, -5)
     ax.set_ylim(-5, 7)
     ax.set_zlim(-5, 7)
@@ -333,9 +379,10 @@ def construct_and_plot(muons,
         sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':83.2},
         simulate_fields = False,
         field_map_file = None,
+        decay_vessel:bool = False,
         cavern = True,
         **kwargs_plot):
-    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, simulate_fields=simulate_fields, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params, add_cavern=cavern)
+    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, simulate_fields=simulate_fields, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params, add_cavern=cavern, sensitive_decay_vessel=decay_vessel)
     plot_magnet(detector,
                 muon_data = muons, 
                 sensitive_film_position = sensitive_film_params['position'],#sensitive_film_params['position'], 

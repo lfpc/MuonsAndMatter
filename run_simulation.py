@@ -11,7 +11,7 @@ def run(muons,
     input_dist:float = None,
     return_cost = False,
     fSC_mag:bool = True,
-    sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82},
+    sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': [82]},
     add_cavern = True,
     simulate_fields = False,
     field_map_file = None,
@@ -20,6 +20,7 @@ def run(muons,
     draw_magnet = False,
     SmearBeamRadius:float = 5., #cm
     add_target:bool = True,
+    add_decay_vessel:bool = False,
     keep_tracks_of_hits = False,
     extra_magnet = False,
     NI_from_B = True,
@@ -52,6 +53,9 @@ def run(muons,
     add_target (bool, optional): Include target geometry in simulation. Defaults to True.
     keep_tracks_of_hits (bool, optional): Store full tracks of muons that hit the sensitive film. Defaults to False.
     extra_magnet (bool, optional): Add an additional small magnet to the configuration. Defaults to False.
+    NI_from_B (bool, optional): Calculate current from the magnetic field (B_goal). Defaults to True.
+    use_diluted (bool, optional): Use diluted iron configuration. Defaults to False.
+    SND (bool, optional): Implement SND (if there is space). Defaults to False.
     kwargs_plot (dict, optional): Additional keyword arguments for plotting.
     
     Returns:
@@ -70,6 +74,7 @@ def run(muons,
                       field_map_file = field_map_file,
                       add_cavern = add_cavern,
                       add_target = add_target,
+                      sensitive_decay_vessel = add_decay_vessel,
                       extra_magnet=extra_magnet,
                       NI_from_B = NI_from_B,
                       use_diluted = use_diluted,
@@ -81,11 +86,9 @@ def run(muons,
     detector["store_all"] = False
     t1 = time()
     output_data = initialize_geant4(detector, seed)
-    if not draw_magnet: del detector #save memory?
     print('Time to initialize', time()-t1)
     output_data = json.loads(output_data)    
 
-    # set_field_value(1,0,0)
     # set_kill_momenta(65)
     
     kill_secondary_tracks(True)
@@ -113,8 +116,8 @@ def run(muons,
     muon_data = []
     for i in range(len(px)):
         simulate_muon(px[i], py[i], pz[i], int(charge[i]), x[i],y[i], z[i])
-        if sensitive_film_params is None: 
-            #If sensitive film is not present, we collect all the track
+        if sensitive_film_params is None and (not add_decay_vessel): 
+            #If sensitive film is not present, we collect all the tracks
             data = collect()
             data['pdg_id'] = charge[i]*-13
             data['W'] = weights[i] if muons.shape[-1] == 8 else 1
@@ -126,21 +129,24 @@ def run(muons,
             data['pdg_id'] = charge[i]*-13
             data['W'] = weights[i] if muons.shape[-1] == 8 else 1
             muon_data += [data]
-        else: 
-            #If sensitive film is defined, we collect only the muons that hit the sensitive film
+        elif (len(sensitive_film_params['position']) > 1) or add_decay_vessel:
+            data_s = collect_from_sensitive()
+            if len(data_s['px'])>0:
+                muon_data += [data_s]
+        else:
             data_s = collect_from_sensitive()
             if len(data_s['px'])>0 and 13 in np.abs(data_s['pdg_id']): 
                 j = 0
                 while int(abs(data_s['pdg_id'][j])) != 13:
                     j += 1
                 output_s = [data_s['px'][j], data_s['py'][j], data_s['pz'][j],data_s['x'][j], data_s['y'][j], data_s['z'][j],data_s['pdg_id'][j]]
-                if muons.shape[-1] == 8: output_s.append(weights[i])
+                if muons.shape[-1] == 8: output_s.append(float(weights[i]))
                 muon_data += [output_s]
             elif return_nan:
                 muon_data += [[0]*muons.shape[-1]]
+            
 
     muon_data = np.asarray(muon_data)
-    
     print('TOTAL COST:', cost)
     print('MASS:', output_data['weight_total'])
     print('LENGTH:', length)
@@ -166,11 +172,12 @@ if __name__ == '__main__':
     parser.add_argument("--f", type=str, default=DEF_INPUT_FILE, help="Input file (gzip .pkl) path containing muon data")
     parser.add_argument("-params", type=str, default='sc_v6', help="Magnet parameters configuration - name or file path")
     parser.add_argument("--z", type=float, default=None, help="Initial z-position distance for all muons if specified (default is to use from input file)")
-    parser.add_argument("-sens_plane", type=float, default=82, help="Position of the sensitive plane in z (m), 0 means no sensitive plane")
+    parser.add_argument("-sens_plane", type=float, nargs='+', default=[82], help="Position(s) of the sensitive plane in z (m), 0 means no sensitive plane. Can specify multiple values separated by space.")
     parser.add_argument("-real_fields", action='store_true', help="Use realistic field maps (FEM) instead of uniform fields")
     parser.add_argument("-field_file", type=str, default='data/outputs/fields_mm.h5', help="Path to save field map file") 
     parser.add_argument("-shuffle_input", action='store_true', help="Randomly shuffle the input data")
     parser.add_argument("-remove_cavern", dest="add_cavern", action='store_false', help="Remove the cavern from simulation")
+    parser.add_argument("-decay_vessel", action='store_true', help="Add decay vessel to the simulation")
     parser.add_argument("-plot_magnet", action='store_true', help="Generate visualization of the magnet and muon tracks")
     parser.add_argument("-warm", dest="SC_mag", action='store_false', help="Use warm magnets instead of hybrid")
     parser.add_argument("-save_data", action='store_true', help="Save simulation results to output file")
@@ -249,6 +256,7 @@ if __name__ == '__main__':
                               draw_magnet=False, 
                               SmearBeamRadius=5, 
                               add_target=True, 
+                              add_decay_vessel=args.decay_vessel,
                               keep_tracks_of_hits=args.keep_tracks_of_hits, 
                               extra_magnet=args.extra_magnet,
                               use_diluted = args.use_diluted,
@@ -300,5 +308,5 @@ if __name__ == '__main__':
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = args.angle, elev = args.elev)
         else:
-            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = None, cavern = False, azim = args.angle, elev = args.elev)#args.add_cavern)
+            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = None, cavern = False, decay_vessel = args.decay_vessel, azim = args.angle, elev = args.elev)#args.add_cavern)
                                          

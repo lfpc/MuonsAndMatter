@@ -20,7 +20,7 @@
 
 class SlimFilmSensitiveDetector : public G4VSensitiveDetector {
 public:
-    SlimFilmSensitiveDetector(const G4String& name);
+    SlimFilmSensitiveDetector(const G4String& name, bool isLastPlane = false);
     virtual ~SlimFilmSensitiveDetector();
 
     virtual void Initialize(G4HCofThisEvent* hce) override;
@@ -39,6 +39,8 @@ public:
 
     std::vector<int> trackId;
     std::vector<int> pid;
+private:
+    bool isLastPlane;
 };
 
 
