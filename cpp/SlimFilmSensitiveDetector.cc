@@ -8,9 +8,8 @@
 
 
 
-SlimFilmSensitiveDetector::SlimFilmSensitiveDetector(const G4String &name, bool isLastPlane_) : G4VSensitiveDetector(name), isLastPlane(isLastPlane_) {
-
-}
+SlimFilmSensitiveDetector::SlimFilmSensitiveDetector(const G4String &name, int reference_, bool isLastPlane_)
+    : G4VSensitiveDetector(name), isLastPlane(isLastPlane_), reference(reference_) {}
 
 SlimFilmSensitiveDetector::~SlimFilmSensitiveDetector() {}
 
@@ -25,6 +24,7 @@ void SlimFilmSensitiveDetector::Initialize(G4HCofThisEvent *hce) {
 
     trackId.clear();
     pid.clear();
+    time.clear();
 
 }
 
@@ -45,6 +45,9 @@ G4bool SlimFilmSensitiveDetector::ProcessHits(G4Step *aStep, G4TouchableHistory 
     z.push_back(position2.z() / m);
 
     pid.push_back(theTrack->GetDefinition()->GetPDGEncoding());
+
+    double t_ns = aStep->GetPreStepPoint()->GetGlobalTime() / ns;
+    time.push_back(t_ns);
 
     if (isLastPlane) {
         theTrack->SetTrackStatus(fStopAndKill);

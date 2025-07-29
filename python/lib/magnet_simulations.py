@@ -205,8 +205,6 @@ def get_params_from_dataframe(df,
     return params
 
 
-
-
 def get_symmetry(points:np.array, B:np.array, reorder:bool = True):
    '''Applies symmetry to the computed magnetic field.'''
    points_1 = points

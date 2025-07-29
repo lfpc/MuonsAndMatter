@@ -130,6 +130,8 @@ py::dict collect_from_multiple_sensitive() {
     std::vector<double> all_px, all_py, all_pz;
     std::vector<double> all_x, all_y, all_z;
     std::vector<int> all_trackId, all_pdgid;
+    std::vector<double> all_time;
+    std::vector<int> all_reference;
 
     for (size_t i = 0; i < detectors.size(); ++i) {
         const auto& sd = detectors[i];
@@ -141,6 +143,8 @@ py::dict collect_from_multiple_sensitive() {
         all_z.insert(all_z.end(), sd->z.begin(), sd->z.end());
         all_trackId.insert(all_trackId.end(), sd->trackId.begin(), sd->trackId.end());
         all_pdgid.insert(all_pdgid.end(), sd->pid.begin(), sd->pid.end());
+        all_time.insert(all_time.end(), sd->time.begin(), sd->time.end());
+        all_reference.insert(all_reference.end(), sd->trackId.size(), sd->getReference());
     }
 
     py::dict d = py::dict(
@@ -151,7 +155,9 @@ py::dict collect_from_multiple_sensitive() {
         "y"_a = py::cast(all_y),
         "z"_a = py::cast(all_z),
         "track_id"_a = py::cast(all_trackId),
-        "pdg_id"_a = py::cast(all_pdgid)
+        "pdg_id"_a = py::cast(all_pdgid),
+        "time"_a = py::cast(all_time),
+        "reference"_a = py::cast(all_reference)
     );
 
     return d;

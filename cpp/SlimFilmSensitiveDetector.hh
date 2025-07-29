@@ -20,12 +20,13 @@
 
 class SlimFilmSensitiveDetector : public G4VSensitiveDetector {
 public:
-    SlimFilmSensitiveDetector(const G4String& name, bool isLastPlane = false);
+    SlimFilmSensitiveDetector(const G4String& name, int reference, bool isLastPlane = false);
     virtual ~SlimFilmSensitiveDetector();
 
     virtual void Initialize(G4HCofThisEvent* hce) override;
     virtual G4bool ProcessHits(G4Step* aStep, G4TouchableHistory* ROhist) override;
     virtual void EndOfEvent(G4HCofThisEvent* hce) override;
+    int getReference() const { return reference; }
 
 
 public:
@@ -39,8 +40,11 @@ public:
 
     std::vector<int> trackId;
     std::vector<int> pid;
+    std::vector<double> time;
 private:
     bool isLastPlane;
+    int reference; // Reference value for the sensitive film, e.g., 0 for box skin, 1 for first plane, etc.
+    
 };
 
 

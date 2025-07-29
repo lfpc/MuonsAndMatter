@@ -6,13 +6,14 @@ PROJECTS_DIR = os.getenv('PROJECTS_DIR')
 sys.path.insert(1, os.path.join(PROJECTS_DIR,'BlackBoxOptimization/src'))
 from problems import ShipMuonShieldCluster
 from time import time
-import gzip
+import h5py
 import pickle
 
 def extract_number_from_string(s):
+    s = s.split('.')[0]
     number_str = ''
     for char in s:
-        if char.isdigit(): 
+        if char.isdigit():
             number_str += char
     return int(number_str)
 
@@ -50,8 +51,8 @@ def get_total_hits(phi,
         n_name = extract_number_from_string(name)
         print('FILE:', name)
         t1 = time()
-        with gzip.open(os.path.join(inputs_dir,name), 'rb') as f:
-            factor = pickle.load(f)[:,-1]
+        with h5py.File(os.path.join(inputs_dir,name), 'r') as f:
+            factor = f['weight'][:]
         SHIP.n_samples = factor.shape[0]
         n_muons = factor.sum()
         print(f'n_events_input: {SHIP.n_samples}')
@@ -91,7 +92,7 @@ if __name__ == '__main__':
     parser.add_argument("-n_files", type=int, default=67)
     parser.add_argument("-inputs_dir", type=str, default=INPUTS_DIR)
     parser.add_argument("-outputs_dir", type=str, default=OUTPUTS_DIR)
-    parser.add_argument("-params", type=str, default='sc_v6')
+    parser.add_argument("-params", type=str, default='tokanut_v5')
     args = parser.parse_args()
 
     # Create outputs directory if it doesn't exist

@@ -816,16 +816,15 @@ def get_design_from_params(params,
         },
     })
     if sensitive_film_params is not None:
-        if isinstance(sensitive_film_params['position'], (int, float)):
-            sensitive_film_params['position'] = [sensitive_film_params['position']]
         sens_films = []
-        for pos in sensitive_film_params['position']:
+        for sens in sensitive_film_params:
+            pos = sens['position']
             sens_films.append({
             "name": "SensitiveFilm_{}".format(pos),
             "z_center" : pos,
-            "dz" : sensitive_film_params['dz'],
-            "dx": sensitive_film_params['dx'],
-            "dy": sensitive_film_params['dy']})
+            "dz" : sens['dz'],
+            "dx": sens['dx'],
+            "dy": sens['dy']})
         shield.update({"sensitive_film": sens_films})
     return shield
 

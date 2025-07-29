@@ -239,6 +239,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
     sensitiveLogical = nullptr;
    if (detectorData.isMember("sensitive_film")) {
+        int idx_plane = 0;
         const Json::Value& sensitiveFilm = detectorData["sensitive_film"];
         if (!sensitiveFilm.isArray()) {
             G4Material* air = nist->FindOrBuildMaterial("G4_AIR");
@@ -253,7 +254,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
             new G4PVPlacement(0, G4ThreeVector(0, 0, z_center), sensitiveLogical, "sensitive_plc", logicWorld, false, 0, true);
             sensitiveLogical->SetUserLimits(userLimits2);
 
-            auto filmSD = new SlimFilmSensitiveDetector("sensitive_film_SD", true); // true, since it's the only/last plane
+            auto filmSD = new SlimFilmSensitiveDetector("sensitive_film_SD", idx_plane, true); // true, since it's the only/last plane
             G4SDManager::GetSDMpointer()->AddNewDetector(filmSD);
             sensitiveLogical->SetSensitiveDetector(filmSD);
             slimFilmSensitiveDetectors.push_back(filmSD);
@@ -266,7 +267,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
             int n_planes = sensitiveFilm.size();
 
             // Loop through the array of film definitions in the JSON
-            int idx_plane = 0;
+            
             for (const auto& sensitiveFilm_i : sensitiveFilm) {
                 // --- Get parameters from JSON ---
                 G4String name = sensitiveFilm_i["name"].asString();
@@ -284,7 +285,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
                 // --- Create and register a new sensitive detector for this volume ---
                 bool last = (idx_plane == (n_planes - 1));
-                auto filmSD = new SlimFilmSensitiveDetector(name + "_SD", last);
+                auto filmSD = new SlimFilmSensitiveDetector(name + "_SD", idx_plane, last);
                 G4SDManager::GetSDMpointer()->AddNewDetector(filmSD);
                 senslog->SetSensitiveDetector(filmSD);
                 slimFilmSensitiveDetectors.push_back(filmSD);
@@ -300,6 +301,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
     // --- NEW: Logic to handle a sensitive Arb8 box ---
     if (detectorData.isMember("sensitive_box")) {
+    int idx_plane = -1;
     std::cout << "Constructing sensitive Arb8 box with parallel, face-based skins." << std::endl;
     const Json::Value& boxData = detectorData["sensitive_box"];
     const G4double skin_thickness = 1 * cm;
@@ -345,13 +347,17 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
     double dz_trap;
 
     if (i == 2) { 
+        continue; // Skip the front face, as per the original logic
+        idx_plane = -1;
         dz_trap = half_thick;
         center = G4ThreeVector(0, 0, z_center - length);
         for (auto& v : face_verts)
             trap_corners.emplace_back(v.x(), v.y());
         for (auto& v : face_verts)
             trap_corners.emplace_back(v.x(), v.y());
-    } else if (i == 3) { 
+    } else if (i == 3) {
+        continue; // Skip the back face, as per the original logic
+        idx_plane = -6;
         dz_trap = half_thick;
         center = G4ThreeVector(0, 0, z_center + length);
         for (auto& v : face_verts)
@@ -359,6 +365,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         for (auto& v : face_verts)
             trap_corners.emplace_back(v.x(), v.y());
     } else if (i == 0 || i == 1) { 
+        idx_plane = -2 - i; // 0 for bottom, 1 for top
         center = G4ThreeVector(0, 0, z_center);
         dz_trap = length;
         trap_corners.emplace_back(face_verts[0].x(), face_verts[0].y() - half_thick);
@@ -370,6 +377,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         trap_corners.emplace_back(face_verts[3].x(), face_verts[3].y() + half_thick);
         trap_corners.emplace_back(face_verts[2].x(), face_verts[2].y() + half_thick);
     } else if (i == 4 || i == 5) { 
+        idx_plane = -i; // 4 for right, 5 for left
         center = G4ThreeVector(0, 0, z_center);
         dz_trap = length;
         trap_corners.emplace_back(face_verts[0].x() - half_thick, face_verts[0].y());
@@ -391,7 +399,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
     );
 
     sensitiveLogicals.push_back(skin_logical);
-    auto filmSD = new SlimFilmSensitiveDetector(skinName + "_SD", false);
+    auto filmSD = new SlimFilmSensitiveDetector(skinName + "_SD", idx_plane, false);
     sdManager->AddNewDetector(filmSD);
     skin_logical->SetSensitiveDetector(filmSD);
     slimFilmSensitiveDetectors.push_back(filmSD);

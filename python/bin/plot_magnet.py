@@ -354,8 +354,13 @@ def plot_magnet(detector,
         Y2 = np.full_like(X2, y_plane2)
         ax.plot_surface(X2, Y2, Z2, color='black', alpha=0.3)
 
-    if sensitive_film_position is not None: ax.set_xlim(3+max(sensitive_film_position), -5)
-    else: ax.set_xlim(40, -5)
+    if sensitive_film_position[0] < 0: sensitive_film_position = None
+    if sensitive_film_position is None and not 'sensitive_box' in detector: 
+        ax.set_xlim(40, -5)
+    elif 'sensitive_box' in detector:
+        ax.set_xlim(80, -5)
+    else:
+        ax.set_xlim(3+max(sensitive_film_position), -5)
     ax.set_ylim(-5, 7)
     ax.set_zlim(-5, 7)
 
@@ -385,7 +390,7 @@ def construct_and_plot(muons,
     detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, simulate_fields=simulate_fields, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params, add_cavern=cavern, sensitive_decay_vessel=decay_vessel)
     plot_magnet(detector,
                 muon_data = muons, 
-                sensitive_film_position = sensitive_film_params['position'],#sensitive_film_params['position'], 
+                sensitive_film_position = [sens['position'] for sens in sensitive_film_params],#sensitive_film_params['position'], 
                 **kwargs_plot)
     
 if __name__ == "__main__":

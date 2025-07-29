@@ -11,7 +11,7 @@ def run(muons,
     input_dist:float = None,
     return_cost = False,
     fSC_mag:bool = True,
-    sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': [82]},
+    sensitive_film_params:dict = [{'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82}],
     add_cavern = True,
     simulate_fields = False,
     field_map_file = None,
@@ -65,7 +65,6 @@ def run(muons,
 
     if type(muons) is tuple:
         muons = muons[0]
-    
     detector = get_design_from_params(params = params,
                       force_remove_magnetic_field= False,
                       fSC_mag = fSC_mag,
@@ -129,9 +128,10 @@ def run(muons,
             data['pdg_id'] = charge[i]*-13
             data['W'] = weights[i] if muons.shape[-1] == 8 else 1
             muon_data += [data]
-        elif (len(sensitive_film_params['position']) > 1) or add_decay_vessel:
+        elif (len(sensitive_film_params) > 1) or add_decay_vessel:
             data_s = collect_from_sensitive()
             if len(data_s['px'])>0:
+                data_s['weight'] = weights[i] if muons.shape[-1] == 8 else 1
                 muon_data += [data_s]
         else:
             data_s = collect_from_sensitive()
@@ -215,23 +215,36 @@ if __name__ == '__main__':
     n_muons = args.n
     input_file = args.f
     input_dist = args.z
-    if args.sens_plane is None or args.sens_plane == 0:
+    if args.sens_plane is None or args.sens_plane == [-1]:
         sensitive_film_params = None
     elif args.expanded_sens_plane:
         sensitive_film_params = {'dz': 0.01, 'dx': 8, 'dy': 8, 'position':args.sens_plane}
     else: 
-        sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position':args.sens_plane}
+        sensitive_film_params = [{'dz': 0.01, 'dx': 4, 'dy': 6, 'position':pos} for pos in args.sens_plane]
     t1_fem = time()
     detector = None
     if not args.real_fields:
         args.field_file = None
     else:
-         
         core_fields = 8
         detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet, NI_from_B=args.use_B_goal, use_diluted = args.use_diluted)
     t2_fem = time()
 
-    data = np.load(input_file, allow_pickle=True)
+    if input_file.endswith('.npy') or input_file.endswith('.pkl'):
+        data = np.load(input_file, allow_pickle=True)
+    elif input_file.endswith('.h5'):
+        with h5py.File(input_file, 'r') as f:
+            px = f['px'][:]
+            py = f['py'][:]
+            pz = f['pz'][:]
+            x_ = f['x'][:]
+            y_ = f['y'][:]
+            z_ = f['z'][:]
+            pdg = f['pdg'][:]
+            weight = f['weight'][:]
+            data = np.stack([px, py, pz, x_, y_, z_, pdg, weight], axis=1)
+    else:
+        raise ValueError(f"Unsupported input file format: {input_file}")
 
     if args.shuffle_input: np.random.shuffle(data)
     if 0<n_muons<=data.shape[0]:
@@ -275,7 +288,7 @@ if __name__ == '__main__':
         all_results += [resulting_data]
     try: all_results = np.concatenate(all_results, axis=0)
     except: all_results = []
-    
+    print(all_results)
     try: 
         print('Data Shape', all_results.shape)
         print('n_hits', all_results[:,7].sum())
