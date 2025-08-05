@@ -17,6 +17,7 @@ plots/*.png
 data/full_sample/
 data/muons/*.pkl
 data/muons/*.npy
+data/muons/*.h5
 data/outputs/*
 
 

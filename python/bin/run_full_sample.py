@@ -36,11 +36,12 @@ def concatenate_files(direc, file_number, direc_output = None):
     np.save(os.path.join(direc_output, f'muonsdata_{file_number}.npy'), all_data)
 
 def get_total_hits(phi,
-                   inputs_dir:str,
-                    outputs_dir:str, 
-                    n_files:int,
-                    config:dict):
+                   inputs_dir:str = 'data/full_sample',
+                    outputs_dir:str = '', 
+                    n_files:int = 67,
+                    config:dict = {}):
     SHIP = ShipMuonShieldCluster(dimensions_phi=phi.size(-1), **config)
+    assert not SHIP.use_B_goal 
     n_muons_total = 0
     n_muons_unweighted = 0
     n_hits_total = 0
@@ -60,7 +61,7 @@ def get_total_hits(phi,
 
         n_muons_total += n_muons
         time1 = time()
-        n_hits = SHIP.simulate(phi,file = n_name).item()-1
+        n_hits = SHIP.simulate(phi,file = n_name).item()
         print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
         #concatenate_files('/home/hep/lprate/projects/MuonsAndMatter/data/outputs/results', n_name, outputs_dir)
         n_hits_total += n_hits
@@ -107,6 +108,7 @@ if __name__ == '__main__':
             params = np.array([float(line.strip()) for line in txt_file])
 
     params = torch.as_tensor(params, dtype=torch.float32)
+
 
 
     t1 = time()

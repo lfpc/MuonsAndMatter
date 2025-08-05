@@ -83,7 +83,7 @@ def get_magnet_params(params,
         d['NI(A)'] = snoopy.get_NI(abs(B_NI), pd.DataFrame([d]),0, materials_directory = materials_directory)[0].item()
         if (B_NI > 0 and d['yoke_type'] == 'Mag3') or (B_NI < 0 and d['yoke_type'] == 'Mag1'):
             d['NI(A)'] = -d['NI(A)']
-    else: d['NI(A)'] = B_NI
+    else: d['NI(A)'] = abs(B_NI)
 
     if use_diluted and d['yoke_type'] == 'Mag3': 
         d['yoke_type'] = 'Mag1'

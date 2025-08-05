@@ -411,6 +411,14 @@ void kill_secondary_tracks(bool do_kill) {
     steppingAction->setKillSecondary(do_kill);
 }
 
+void is_single_step(bool is_single_step) {
+    steppingAction->setIsSingleStep(is_single_step);
+}
+
+void set_max_steps(int max_steps) {
+    steppingAction->setMaxSteps(max_steps);
+}
+
 void visualize() {
     // Interactive mode
     ui_manager->ApplyCommand("/vis/open OGLIX 600x600-0+0");
@@ -441,6 +449,8 @@ PYBIND11_MODULE(muon_slabs, m) {
     m.def("collect_from_sensitive", &collect_from_multiple_sensitive, "Collect back the data from the sensitive film placed");
     m.def("set_field_value", &set_field_value, "Set the magnetic field value");
     m.def("set_kill_momenta", &set_kill_momenta, "Set the kill momenta");
+    m.def("set_max_steps", &set_max_steps, "Set max number of steps");
+    m.def("is_single_step", &is_single_step, "Single step simulations for collecting data");
     m.def("kill_secondary_tracks", &kill_secondary_tracks, "Kill all tracks from resulting cascade");
     m.def("visualize", &visualize, "Visualize");
 }

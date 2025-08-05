@@ -45,7 +45,7 @@ class Tagger:
         self.dy_UBT = (self.y1_ubt - self.y0_ubt) / grid_ubt[1]
 
 
-    def digitize_UBT(self, position: torch.tensor):
+    def digitize_UBT(self, position: torch.tensor, momentum: torch.tensor):
         """
         Digitizes the position for the UBT detector.
         :param position: Tensor of shape (N, 2) with x and y coordinates.
@@ -58,8 +58,8 @@ class Tagger:
         z_cell = self.z0 * torch.ones_like(x_index, dtype=torch.float32)  # z is constant for UBT
         y_cell = self.y0_ubt + y_index * self.dy_UBT
         x_cell = self.x0_ubt + x_index * self.dx_UBT
-        return x_cell, y_cell, z_cell
-    def digitize(self, position: torch.tensor, detector: int):
+        return x_cell, y_cell, z_cell, momentum[:, 0], momentum[:, 1], momentum[:, 2]
+    def digitize(self, position: torch.tensor, momentum: torch.tensor, detector: int):
         """Digitizes the position for the SBT detector and times the operation.
         :param position: Tensor of shape (N, 3) with x, y, and z coordinates.
         :param detector: The detector ID (e.g., -2, -3 for horizontal, -4, -5 for vertical).
@@ -68,18 +68,18 @@ class Tagger:
         assert detector in [-1, -2, -3, -4, -5]
         start_time = time.time()
         if detector == -1:  # UBT
-            result = self.digitize_UBT(position)
+            result = self.digitize_UBT(position, momentum)
         elif detector in [-2, -3]:  # Horizontal SBT
-            result = self.digitize_SBT_horizontal(position)
+            result = self.digitize_SBT_horizontal(position, momentum)
         elif detector in [-4, -5]:  # Vertical SBT
-            result = self.digitize_SBT_vertical(position)
+            result = self.digitize_SBT_vertical(position, momentum)
         else:
             raise ValueError("Invalid detector ID. Use -1 for UBT, -2 or -3 for horizontal SBT, -4 or -5 for vertical SBT.")
         elapsed = time.time() - start_time
         print(f"Digitization for detector {detector} took {elapsed:.6f} seconds.")
         return result
-        
-    def digitize_SBT_vertical(self, position: torch.tensor):
+
+    def digitize_SBT_vertical(self, position: torch.tensor, momentum: torch.tensor):
         """Digitizes the position for the vertical SBT detector.
         :param position: Tensor of shape (N, 3) with x, y, and z coordinates.
         :param detector: The detector ID (e.g., -4, -5).
@@ -91,8 +91,6 @@ class Tagger:
         ny = self.grid_sbt[1]
         dy = (2*self.dY2) / ny
         dz = length_hat / nz
-        print("dy:", dy)
-        print("dz:", dz)
 
         z = position[:, 2]
         y = position[:, 1]
@@ -104,8 +102,9 @@ class Tagger:
         y_cell = y0 + y_index * dy
         x_cell = z_cell * (self.dX2 - self.dX1) / self.length
         x_cell *= x.sign()  # Adjust x_cell sign based on x position
-        return x_cell, y_cell, z_cell
-    def digitize_SBT_horizontal(self, position: torch.tensor):
+        return x_cell, y_cell, z_cell, momentum[:, 0], momentum[:, 1], momentum[:, 2]
+
+    def digitize_SBT_horizontal(self, position: torch.tensor, momentum: torch.tensor):
         """Digitizes the position for the horizontal SBT detector.
         :param position: Tensor of shape (N, 3) with x, y, and z coordinates.
         :return: Tensor of digitized indices.
@@ -116,8 +115,6 @@ class Tagger:
         nx = self.grid_sbt[0]
         dx = (2*self.dX2) / nx
         dz = length_hat / nz
-        print("dx:", dx)
-        print("dz:", dz)
 
         z = position[:, 2]
         x = position[:, 0]
@@ -129,7 +126,7 @@ class Tagger:
         x_cell = x0 + x_index * dx
         y_cell = z_cell * (self.dY2 - self.dY1) / self.length
         y_cell *= y.sign()  # Adjust y_cell sign based on y position
-        return x_cell, y_cell, z_cell
+        return x_cell, y_cell, z_cell, momentum[:, 0], momentum[:, 1], momentum[:, 2]
 
 
 
@@ -140,7 +137,7 @@ class Tagger:
 
 
 if __name__ == "__main__":
-    with h5py.File("/disk/users/lprate/share_data/full_sample_decay_vessel.h5", "r") as f:
+    with h5py.File("data/outputs/sbt_results_tokanut_v5.h5", "r") as f:
         px = np.concatenate(f["px"][:])
         py = np.concatenate(f["py"][:])
         pz = np.concatenate(f["pz"][:])
@@ -148,8 +145,8 @@ if __name__ == "__main__":
         y = np.concatenate(f["y"][:])
         z = np.concatenate(f["z"][:])
         pdg_id = np.concatenate(f["pdg_id"][:])
-        #detector = np.concatenate(f["detector"][:])
-        #time = np.concatenate(f["time"][:])
+        detector = np.concatenate(f["reference"][:])
+        time = np.concatenate(f["time"][:])
     px = torch.tensor(px, dtype=torch.float32)
     py = torch.tensor(py, dtype=torch.float32)
     pz = torch.tensor(pz, dtype=torch.float32)
@@ -157,26 +154,27 @@ if __name__ == "__main__":
     y = torch.tensor(y, dtype=torch.float32)
     z = torch.tensor(z, dtype=torch.float32)
     pdg_id = torch.tensor(pdg_id, dtype=torch.int64)
-    #detector = torch.tensor(detector, dtype=torch.int64)
-    #time = torch.tensor(time, dtype=torch.float32)
+    detector = torch.tensor(detector, dtype=torch.int64)
+    time = torch.tensor(time, dtype=torch.float32)
 
     tagger = Tagger(grid_ubt=(50, 1), grid_sbt=(5, 8, 62))
     position = torch.stack((x, y, z), dim=1)
-    x_cell, y_cell, z_cell = tagger.digitize(position, -1)  # UBT digitization
+    momentum = torch.stack((px, py, pz), dim=1)
+    x_cell, y_cell, z_cell,  = tagger.digitize(position, momentum, -1)  # UBT digitization
     print("UBT Digitized Cells:")
     print("x:", x_cell)
     print("y:", y_cell)
     print("z:", z_cell)
     
     # Example for horizontal SBT digitization
-    x_cell_h, y_cell_h, z_cell_h = tagger.digitize(position, -2)
+    x_cell_h, y_cell_h, z_cell_h = tagger.digitize(position, momentum, -2)
     print("\nHorizontal SBT Digitized Cells:")
     print("x:", x_cell_h)
     print("y:", y_cell_h)
     print("z:", z_cell_h)
 
     # Example for vertical SBT digitization
-    x_cell_v, y_cell_v, z_cell_v = tagger.digitize(position, -4)
+    x_cell_v, y_cell_v, z_cell_v = tagger.digitize(position, momentum, -4)
     print("\nVertical SBT Digitized Cells:")
     print("x:", x_cell_v)
     print("y:", y_cell_v)

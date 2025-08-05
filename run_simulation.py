@@ -170,16 +170,16 @@ if __name__ == '__main__':
     parser.add_argument("--c", type=int, default=45, help="Number of CPU cores to use for parallel processing")
     parser.add_argument("-seed", type=int, default=None, help="Random seed for reproducibility")
     parser.add_argument("--f", type=str, default=DEF_INPUT_FILE, help="Input file (gzip .pkl) path containing muon data")
-    parser.add_argument("-params", type=str, default='sc_v6', help="Magnet parameters configuration - name or file path")
+    parser.add_argument("-params", type=str, default='sc_v6', help="Magnet parameters configuration - name or file path. Available names: " + ', '.join(params_lib.params.keys()) + ". If 'test', will prompt for input.")
     parser.add_argument("--z", type=float, default=None, help="Initial z-position distance for all muons if specified (default is to use from input file)")
     parser.add_argument("-sens_plane", type=float, nargs='+', default=[82], help="Position(s) of the sensitive plane in z (m), 0 means no sensitive plane. Can specify multiple values separated by space.")
-    parser.add_argument("-real_fields", action='store_true', help="Use realistic field maps (FEM) instead of uniform fields")
+    parser.add_argument("-uniform_fields", dest="real_fields", action='store_false', help="Use uniform fields instead of realistic field maps (FEM)")
     parser.add_argument("-field_file", type=str, default='data/outputs/fields_mm.h5', help="Path to save field map file") 
     parser.add_argument("-shuffle_input", action='store_true', help="Randomly shuffle the input data")
     parser.add_argument("-remove_cavern", dest="add_cavern", action='store_false', help="Remove the cavern from simulation")
     parser.add_argument("-decay_vessel", action='store_true', help="Add decay vessel to the simulation")
     parser.add_argument("-plot_magnet", action='store_true', help="Generate visualization of the magnet and muon tracks")
-    parser.add_argument("-warm", dest="SC_mag", action='store_false', help="Use warm magnets instead of hybrid")
+    parser.add_argument("-SC_mag", action='store_true', help="Use hybrid magnets instead of warm")
     parser.add_argument("-save_data", action='store_true', help="Save simulation results to output file")
     parser.add_argument("-return_nan", action='store_true', help="Return zeros for muons that don't hit the sensitive film")
     parser.add_argument("-use_diluted", action = 'store_true', help="Use diluted field map")
@@ -232,27 +232,24 @@ if __name__ == '__main__':
 
     if input_file.endswith('.npy') or input_file.endswith('.pkl'):
         data = np.load(input_file, allow_pickle=True)
+        if n_muons > 0: data = data[:n_muons]
     elif input_file.endswith('.h5'):
         with h5py.File(input_file, 'r') as f:
-            px = f['px'][:]
-            py = f['py'][:]
-            pz = f['pz'][:]
-            x_ = f['x'][:]
-            y_ = f['y'][:]
-            z_ = f['z'][:]
-            pdg = f['pdg'][:]
-            weight = f['weight'][:]
+            px = f['px'][:n_muons] if n_muons > 0 else f['px'][:]
+            py = f['py'][:n_muons] if n_muons > 0 else f['py'][:]
+            pz = f['pz'][:n_muons] if n_muons > 0 else f['pz'][:]
+            x_ = f['x'][:n_muons] if n_muons > 0 else f['x'][:]
+            y_ = f['y'][:n_muons] if n_muons > 0 else f['y'][:]
+            z_ = f['z'][:n_muons] if n_muons > 0 else f['z'][:]
+            pdg = f['pdg'][:n_muons] if n_muons > 0 else f['pdg'][:]
+            weight = f['weight'][:n_muons] if n_muons > 0 else f['weight'][:]
             data = np.stack([px, py, pz, x_, y_, z_, pdg, weight], axis=1)
     else:
         raise ValueError(f"Unsupported input file format: {input_file}")
 
-    if args.shuffle_input: np.random.shuffle(data)
-    if 0<n_muons<=data.shape[0]:
-        data_n = data[:n_muons]
-        cores = min(cores,n_muons)
-    else: data_n = data
+    if 0<n_muons: cores = min(cores,n_muons)
 
-    workloads = split_array(data_n,cores)
+    workloads = split_array(data,cores)
     t1 = time()
     with mp.Pool(cores) as pool:
         run_partial = partial(run, 
@@ -288,14 +285,13 @@ if __name__ == '__main__':
         all_results += [resulting_data]
     try: all_results = np.concatenate(all_results, axis=0)
     except: all_results = []
-    print(all_results)
     try: 
         print('Data Shape', all_results.shape)
         print('n_hits', all_results[:,7].sum())
-        print('n_input', data_n[:,7].sum())
+        print('n_input', data[:,7].sum())
     except: 
         print('Data Shape', len(all_results))
-        print('Input Shape', len(data_n))
+        print('Input Shape', len(data))
     print(f"Cost = {cost} CHF")
     if args.save_data:
         try: tag = f"{args.params.split('/')[-2]}_{args.f.split('/')[-1].split('.')[0]}"

@@ -27,6 +27,7 @@ private:
 
     bool store_all;
     bool store_primary;
+    bool is_single_step;
 
 public:
     // Add any necessary members here
@@ -54,7 +55,12 @@ public:
 
     void setKillSecondary(bool killSecondary);
 
+    void setIsSingleStep(bool isSingleStep);
+
+    void setMaxSteps(int maxSteps);
+
     double max_momenta_diff; // Only for debugging...
+    int max_steps;
 
 public:
     int num_steps;
