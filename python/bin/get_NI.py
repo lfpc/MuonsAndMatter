@@ -10,7 +10,6 @@ def get_NI(params, fSC_mag = False, use_diluted = False):
         mag_params = params[idx]
         if mag_params[0]<1: continue
         if mag_params[1]<1: 
-            Z_pos += 2 * mag_params[0]/100 - z_gap/100
             continue
         if fSC_mag and mag  == 'M2':
             Ymgap = magnet_simulations.SC_Ymgap; yoke_type = 'Mag2'
@@ -21,7 +20,7 @@ def get_NI(params, fSC_mag = False, use_diluted = False):
 
         d = magnet_simulations.get_magnet_params(mag_params, Ymgap=Ymgap, use_B_goal=True, yoke_type=yoke_type, use_diluted = use_diluted)
         print(f"Magnet: {mag}, NI: {d['NI(A)']:.2f} A")
-        new_params[idx[-1]] = d['NI(A)']
+        new_params[idx[-1]] = -d['NI(A)'] if yoke_type == 'Mag3' else d['NI(A)']
     return new_params
 
 if __name__ == "__main__":
