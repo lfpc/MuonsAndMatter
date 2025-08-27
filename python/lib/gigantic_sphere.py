@@ -1,12 +1,10 @@
 
-
-
-def get_design():
+def get_design(mag_field, sens_film = None):
     detector = {
         # "worldPositionX": 0, "worldPositionY": 0, "worldPositionZ": 0, "worldSizeX": 11, "worldSizeY": 11,
         # "worldSizeZ": 100,
         # "magnets": magnets,
-        "magnetic_field": [0.0,1.0,0.0],
+        "magnetic_field": mag_field,
         "type": 3,
         "store_all": True,
         "limits": {
@@ -14,4 +12,6 @@ def get_design():
             "minimum_kinetic_energy": -1
         }
     }
+    if sens_film is not None:
+        detector["sensitive_film"] = sens_film
     return detector

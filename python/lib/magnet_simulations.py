@@ -83,6 +83,7 @@ def get_magnet_params(params,
         d['NI(A)'] = snoopy.get_NI(abs(B_NI), pd.DataFrame([d]),0, materials_directory = materials_directory)[0].item()
         if (B_NI > 0 and d['yoke_type'] == 'Mag3') or (B_NI < 0 and d['yoke_type'] == 'Mag1'):
             d['NI(A)'] = -d['NI(A)']
+    elif use_diluted: d['NI(A)'] = B_NI
     else: d['NI(A)'] = abs(B_NI)
 
     if use_diluted and d['yoke_type'] == 'Mag3': 
@@ -232,11 +233,6 @@ def construct_grid(limits = ((0., 0., -5.),(2.5, 3.5, 5.)),
     X, Y, Z = np.meshgrid(np.arange(min_x, max_x + r_x/2, r_x),
                             np.arange(min_y, max_y + r_y/2, r_y),
                             np.arange(min_z, max_z + r_z/2, r_z))
-    # to avoid evaluating at 0
-    #X[X == 0.0] = eps
-    #Y[Y == 0.0] = eps
-    #Z[Z == min_z] = min_z #+ eps
-    #Z[Z == max_z] = max_z #- eps
     return X, Y, Z
 
 def get_grid_data(points: np.array, B: np.array, new_points: tuple):

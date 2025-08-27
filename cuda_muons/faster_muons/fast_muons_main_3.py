@@ -71,8 +71,8 @@ def propagate_muons_with_cuda(
     num_steps=100,
     step_length_fixed=0.02,
     seed=1234,
+    magnetic_field=[0.,0.,0.],
 ):
-
     # Ensure inputs are float tensors on CUDA
     muons_positions_cuda = muons_positions.float().cuda()
     muons_momenta_cuda = muons_momenta.float().cuda()
@@ -83,12 +83,13 @@ def propagate_muons_with_cuda(
     hist_2d_bin_widths_first_dim_cuda = hist_2d_bin_widths_first_dim.float().cuda()
     hist_2d_bin_widths_second_dim_cuda = hist_2d_bin_widths_second_dim.float().cuda()
 
-    magnetic_field = torch.zeros((100,100,1000, 3), dtype=torch.float32).cuda()
-    magnetic_field[:,:,:,1] = 1.0
-    magnetic_field_ranges = torch.from_numpy(np.zeros((1, 6))).float().cpu()
+    magnetic_field = torch.tensor(magnetic_field, dtype=torch.float32, device='cuda').repeat(100, 100, 1000, 1)
+    magnetic_field_ranges = torch.from_numpy(np.zeros((1, 6))).float().cpu().contiguous()
+
+
 
     #arb8s = get_sample_arb8s()
-    arb8s = torch.ones((8,5)).cuda()
+    arb8s = torch.ones((100*100*1000,5)).cuda()
 
     t1 = time.time()
     # Call the function
@@ -132,44 +133,26 @@ def propagate_muons_with_cuda(
     return muons_positions_cuda.cpu().numpy(), muons_momenta_cuda.cpu().numpy()
 
 def run(muons:np.array, 
-        histogram_file='data/combined_histograms.pkl',
+        mag_field,
+        histogram_file='data/alias_histograms.pkl',
         save_dir = 'data/cuda_muons_data.pkl',
         n_steps=500):
     muons = torch.from_numpy(muons).float()
     muons_momenta = muons[:,:3]
     muons_positions = muons[:,3:6]
 
-    with open(histogram_file, 'rb') as f:
-        stored_hist_data_all = pickle.load(f)
-
-    energy_bins = list(stored_hist_data_all.keys())
-    keys = stored_hist_data_all[energy_bins[0]].keys()
-    n_energy_bins = len(energy_bins)
-
-    print(f"Processing {n_energy_bins} energy bins vectorized")
     
-
-    stored_hist_data = {key:torch.tensor([stored_hist_data_all[energy_bin][key].tolist() for energy_bin in energy_bins]) for key in keys}
-    step_length_fixed = float(stored_hist_data['step_length'][0])
-    edges_dpz = stored_hist_data['edges_dpz'][0]  # Assuming all energy bins have the same edges
-    centers_full = (edges_dpz[:-1] + edges_dpz[1:]) / 2
-    widths_full = edges_dpz[1:] - edges_dpz[:-1]
-    hist_2d_all = stored_hist_data['hist_2d']
-
-    n_bins = len(centers_full)
-    hist_2d_bin_centers_first_dim = centers_full.repeat_interleave(n_bins)
-    hist_2d_bin_centers_second_dim = centers_full.repeat(n_bins)
-    hist_2d_bin_widths_first_dim = widths_full.repeat_interleave(n_bins)
-    hist_2d_bin_widths_second_dim = widths_full.repeat(n_bins)
-
-    hist_2d_all = hist_2d_all.reshape((-1,100*100))
-    hist_2d_all = torch.nn.functional.normalize(hist_2d_all, p=1, dim=1)
-    t0 = time.time()
-    hist_2d_probability_table, hist_2d_alias_table = alias_setup(hist_2d_all)
-    print(f"Alias setup took {time.time() - t0:.4f} seconds")
+    with open(histogram_file, 'rb') as f:
+        hist_data = pickle.load(f)
+    hist_2d_probability_table = hist_data['hist_2d_probability_table']
+    hist_2d_alias_table = hist_data['hist_2d_alias_table']
+    hist_2d_bin_centers_first_dim = hist_data['centers_first_dim']
+    hist_2d_bin_centers_second_dim = hist_data['centers_second_dim']
+    hist_2d_bin_widths_first_dim = hist_data['width_first_dim']
+    hist_2d_bin_widths_second_dim = hist_data['width_second_dim']
+    step_length = hist_data['step_length']
 
     print("Using CUDA for propagation... (server)")
-
     out_position, out_momenta = propagate_muons_with_cuda (
             muons_positions,
             muons_momenta,
@@ -181,8 +164,9 @@ def run(muons:np.array,
             hist_2d_bin_widths_second_dim,
             -1.0,
             n_steps,
-            step_length_fixed,
-            200
+            step_length,
+            200,
+            magnetic_field = mag_field
         )
     
     output = {
@@ -206,7 +190,7 @@ def run(muons:np.array,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--f',dest = 'histogram_file', type=str, default='data/histograms.pkl',
+    parser.add_argument('--f',dest = 'histogram_file', type=str, default='data/alias_histograms.pkl',
                         help='Path to the histogram file')
     parser.add_argument('--n', type=int, default=500000,
                         help='Number of muons to simulate')

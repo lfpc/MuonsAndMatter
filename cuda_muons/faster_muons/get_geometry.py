@@ -1,5 +1,5 @@
 import numpy as np
-
+import torch
 
 def get_sample_arb8s():
     arb8s = []
@@ -512,62 +512,52 @@ def get_sample_arb8s():
 
     return x
 
+def get_blocks_hash(geo:torch.tensor,grid_dims = (100, 100, 1000),grid_lims = ((-5, 5), (-5, 5), (0, 40))):
+    x_lim, y_lim, z_lim = grid_lims
+    numel_grid = grid_dims[0] * grid_dims[1] * grid_dims[2]
+    grid_size_x = (x_lim[1] - x_lim[0]) / grid_dims[0]
+    grid_size_y = (y_lim[1] - y_lim[0]) / grid_dims[1]
+    grid_size_z = (z_lim[1] - z_lim[0]) / grid_dims[2]
 
-def build_hash_grid_from_ranges(arb8_ranges: np.ndarray,
-                                cells_per_dim: tuple[int,int,int]):
-    """
-    arb8_ranges: (N,6) array with columns [minX, maxX, minY, maxY, minZ, maxZ]
-    cells_per_dim: (nx,ny,nz) number of cells along x,y,z
-    Returns:
-      cell_offsets:   (nx*ny*nz+1,) int32
-      cell_arb_idxs:  (total_overlaps,) int32
-      grid_params:    (9,) float32 = [org_x,org_y,org_z, inv_cx,inv_cy,inv_cz, nx,ny,nz]
-    """
-    nx, ny, nz = cells_per_dim
-    n_cells = nx*ny*nz
-    mins = arb8_ranges[:, [0,2,4]]   # [N,3] (minX, minY, minZ)
-    maxs = arb8_ranges[:, [1,3,5]]   # [N,3] (maxX, maxY, maxZ)
+    min_x = geo[:,:,0].min(-1).values - grid_size_x
+    max_x = geo[:,:,0].max(-1).values + grid_size_x
+    min_y = geo[:,:,1].min(-1).values - grid_size_y
+    max_y = geo[:,:,1].max(-1).values + grid_size_y
+    min_z = geo[:,:,2].min(-1).values - grid_size_z
+    max_z = geo[:,:,2].max(-1).values + grid_size_z
 
-    # world‐bounds
-    org = mins.min(axis=0)
-    end = maxs.max(axis=0)
-    # cell sizes
-    cx = (end[0]-org[0]) / nx
-    cy = (end[1]-org[1]) / ny
-    cz = (end[2]-org[2]) / nz
-    inv = np.array([1/cx, 1/cy, 1/cz], dtype=np.float32)
+    a_positions = torch.meshgrid(
+    torch.linspace(x_lim[0], x_lim[1], grid_dims[0]),
+    torch.linspace(y_lim[0], y_lim[1], grid_dims[1]),
+    torch.linspace(z_lim[0], z_lim[1], grid_dims[2]),
+    indexing='ij'
+    )
 
-    # helper to map coord -> [0..n-1]
-    def idx_range(minv, maxv, o, invs, n):
-        i0 = int(np.floor((minv - o)*invs))
-        i1 = int(np.floor((maxv - o)*invs))
-        return np.clip(i0, 0, n-1), np.clip(i1, 0, n-1)
+    voxel_indices = []
+    block_ids = []
 
-    # build per‐cell lists
-    lists = [[] for _ in range(n_cells)]
-    for a in range(len(arb8_ranges)):
-        ix0, ix1 = idx_range(mins[a,0], maxs[a,0], org[0], inv[0], nx)
-        iy0, iy1 = idx_range(mins[a,1], maxs[a,1], org[1], inv[1], ny)
-        iz0, iz1 = idx_range(mins[a,2], maxs[a,2], org[2], inv[2], nz)
-        for iz in range(iz0, iz1+1):
-            for iy in range(iy0, iy1+1):
-                for ix in range(ix0, ix1+1):
-                    cell_id = (iz*ny + iy)*nx + ix
-                    lists[cell_id].append(a)
+    for i in range(len(geo)):
+        candidate_mask = ((a_positions[0] >= min_x[i]) & (a_positions[0] <= max_x[i]) &
+                        (a_positions[1] >= min_y[i]) & (a_positions[1] <= max_y[i]) &
+                        (a_positions[2] >= min_z[i]) & (a_positions[2] <= max_z[i]))
+        voxel_indices_for_block = torch.nonzero(candidate_mask.flatten(), as_tuple=True)[0]
+        
+        if len(voxel_indices_for_block) > 0:
+            voxel_indices.append(voxel_indices_for_block)
+            block_ids.append(torch.full_like(voxel_indices_for_block, fill_value=i))
 
-    # flatten into CSR‐style
-    cell_offsets = np.zeros(n_cells+1, dtype=np.int32)
-    flat_idxs = []
-    for i, L in enumerate(lists):
-        cell_offsets[i+1] = cell_offsets[i] + len(L)
-        flat_idxs.extend(L)
-    cell_arb_indices = np.array(flat_idxs, dtype=np.int32)
+    if len(voxel_indices) > 0:
+        voxel_indices = torch.cat(voxel_indices)
+        block_ids = torch.cat(block_ids)
+    else:
+        voxel_indices = torch.tensor([], dtype=torch.long)
+        block_ids = torch.tensor([], dtype=torch.long)
 
-    # pack grid params
-    grid_params = np.array([
-        org[0], org[1], org[2],
-        inv[0], inv[1], inv[2],
-        nx, ny, nz
-    ], dtype=np.float32)
+    voxel_indices, sorted_indices = torch.sort(voxel_indices)
+    block_ids = block_ids[sorted_indices]
+    voxel_offsets = torch.zeros(numel_grid + 1, dtype=torch.int32)
 
-    return cell_offsets, cell_arb_indices, grid_params
+    voxel_indices, counts = torch.unique_consecutive(voxel_indices, return_counts=True)
+    voxel_offsets.scatter_add_(0, voxel_indices + 1, counts.to(torch.int32))
+    voxel_offsets = torch.cumsum(voxel_offsets, dim=0)
+    return voxel_offsets, block_ids

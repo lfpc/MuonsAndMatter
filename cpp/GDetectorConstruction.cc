@@ -147,9 +147,9 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         if (!B_vector.empty()) {
             std::map<std::string, std::vector<double>> ranges;
             std::vector<G4ThreeVector> fields;
-            ranges["range_x"] = {globalFieldMap["range_x"][0].asDouble() * m, globalFieldMap["range_x"][1].asDouble() * m, globalFieldMap["range_x"][2].asDouble() * m};
-            ranges["range_y"] = {globalFieldMap["range_y"][0].asDouble() * m, globalFieldMap["range_y"][1].asDouble() * m, globalFieldMap["range_y"][2].asDouble() * m};
-            ranges["range_z"] = {globalFieldMap["range_z"][0].asDouble() * m, globalFieldMap["range_z"][1].asDouble() * m, globalFieldMap["range_z"][2].asDouble() * m};
+            ranges["range_x"] = {globalFieldMap["range_x"][0].asDouble() * mm, globalFieldMap["range_x"][1].asDouble() * mm, globalFieldMap["range_x"][2].asDouble() * mm};
+            ranges["range_y"] = {globalFieldMap["range_y"][0].asDouble() * mm, globalFieldMap["range_y"][1].asDouble() * mm, globalFieldMap["range_y"][2].asDouble() * mm};
+            ranges["range_z"] = {globalFieldMap["range_z"][0].asDouble() * mm, globalFieldMap["range_z"][1].asDouble() * mm, globalFieldMap["range_z"][2].asDouble() * mm};
 
             for (size_t i = 0; i < B_vector.size(); i += 3) {
                 fields.emplace_back(B_vector[i] * tesla, B_vector[i + 1] * tesla, B_vector[i + 2] * tesla);
@@ -201,9 +201,9 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
                 std::vector<G4ThreeVector> fields;
                 //const Json::Value& pointsData = field_value[0];
                 //const Json::Value& fieldsData = field_value[1];
-                ranges["range_x"] = {field_value["range_x"][0].asDouble() * m, field_value["range_x"][1].asDouble() * m, field_value["range_x"][2].asDouble() * m};
-                ranges["range_y"] = {field_value["range_y"][0].asDouble() * m, field_value["range_y"][1].asDouble() * m, field_value["range_y"][2].asDouble() * m};
-                ranges["range_z"] = {field_value["range_z"][0].asDouble() * m, field_value["range_z"][1].asDouble() * m, field_value["range_z"][2].asDouble() * m};
+                ranges["range_x"] = {field_value["range_x"][0].asDouble() * mm, field_value["range_x"][1].asDouble() * mm, field_value["range_x"][2].asDouble() * mm};
+                ranges["range_y"] = {field_value["range_y"][0].asDouble() * mm, field_value["range_y"][1].asDouble() * mm, field_value["range_y"][2].asDouble() * mm};
+                ranges["range_z"] = {field_value["range_z"][0].asDouble() * mm, field_value["range_z"][1].asDouble() * mm, field_value["range_z"][2].asDouble() * mm};
 
                 const Json::Value& fieldsData = field_value["B"];
                 for (Json::ArrayIndex i = 0; i < fieldsData.size(); ++i) {

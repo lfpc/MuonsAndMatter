@@ -181,6 +181,7 @@ def plot_histograms(data_geant4, data_cuda, geant4_filter, cuda_filter, output_f
     plt.savefig(output_filename)
     plt.close()
 
+    
 
 
 # Generate plots
@@ -188,8 +189,10 @@ def plot_histograms(data_geant4, data_cuda, geant4_filter, cuda_filter, output_f
 #plot_histograms(data_geant4, data_cuda, geant4_filter, cuda_filter, 'plots/hists_a/g4vscuda_filt_dist.pdf')
 
 if __name__ == "__main__":
-    print("Loading data...")
-    # Load data
+
+    #with open("data/histograms.pkl", "rb") as file:
+    #    hists_dict = pickle.load(file)[(190,200)]
+    
 
     # the_gfile = 'data/data_batch_1/joined.pklj'
     the_gfile = 'data/outputs_geant4.pkl'
@@ -208,7 +211,7 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     for key in data_cuda:
-        print(key)
+        print("=" * 30, key, "=" * 30)
         cuda_vals = np.array(data_cuda[key])
         geant4_vals = np.array(data_geant4[key])
         print(f"CUDA {key} values: {cuda_vals}, Geant4 {key} values: {geant4_vals}")
@@ -217,19 +220,43 @@ if __name__ == "__main__":
 
 
         plt.figure(figsize=(8, 5))
-        plt.hist(geant4_vals, bins='auto', density=True, histtype='step', color='firebrick', label='Geant4 (last step)')
-        plt.hist(cuda_vals, bins='auto', density=True, histtype='step', color='steelblue', label='CUDA')
+        if key == 'pz': bins = np.linspace(100, 195, 100)
+        else: bins = 100
+        plt.hist(geant4_vals, bins=bins, density=True, histtype='step', color='firebrick', label='Geant4 (last step)')
+        plt.hist(cuda_vals, bins=bins, density=True, histtype='step', color='steelblue', label='CUDA')
         plt.xlabel(key)
         plt.ylabel("Density")
+        if key == 'pz': plt.xlim(bins[0], bins[-1])
         plt.title(f"Histogram of {key}")
         plt.legend()
         plt.grid(True)
-        plt.tight_layout()
         plt.savefig(f"{output_dir}/{key}_hist.png")
         plt.close()
+        print("Saved histogram for", key)
 
-        plt.figure(figsize=(8, 5))
+    bins = np.linspace(-10, 0, 100)
+    if False:
+        import h5py
+        with h5py.File("/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/data/muon_data_energy_loss_sens_step_2.h5", "r") as f:
+            energy_seg = '(195, 200)'
+            pz = f[energy_seg]['pz'][:]
+            p0 = f[energy_seg]['initial_momenta'][:]
+        delta_hist = (pz - p0) / p0
+        plt.hist(np.log(-delta_hist), bins=bins, density=False, histtype='step', color='green', label='Sampling Geant4', log=True, linewidth=2)
 
+    delta = (data_geant4['pz'] - 195) / 195
+    delta_cuda = (data_cuda['pz'] - 195) / 195
+
+    plt.hist(np.log(-delta + 1e-10), bins=bins, density=False, histtype='step', color='firebrick', label='Geant4', log=True)
+    plt.hist(np.log(-delta_cuda + 1e-10), bins=bins, density=False, histtype='step', color='steelblue', label='CUDA', log=True)
+    plt.xlabel(r'$\Delta p_z / p_z$')
+    plt.ylabel('Density')
+    plt.title(r'$\Delta p_z / p_z$ Distribution')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"{output_dir}/delta_pz_hist.png")
+    plt.close()
+    print("Saved histogram for delta pz")
 
 
 

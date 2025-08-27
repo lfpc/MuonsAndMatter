@@ -148,88 +148,37 @@ torch::Tensor propagate_muons_cuda(
     return muon_data_output;
 }
 
-
-// __global__ void propagate_muons_alias_kernel(
-//     float* muon_data,        // Input tensor
-//     float* muon_data_output, // Output tensor
-//     float* loss_hists,       // Probability table
-//     int* alias,              // Alias table for alias sampling
-//     float* bin_widths,       // Width of bins in histograms
-//     float* bin_centers,      // Center of bins in histograms
-//     int N,                   // Number of muons
-//     int M,                   // Number of histograms
-//     int H,                   // Number of bins in each histogram
-//     int num_steps            // Number of propagation steps
-// ) {
-//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-//
-//     if (idx >= N) return;
-//
-//     // Initialize random number generator for each thread
-//     curandState state;
-//     curand_init(1234, idx, 0, &state);  // Use idx as seed for unique randomness
-//
-//     // Initialize output value for this muon
-//     float muon_value = muon_data[idx];
-//
-//     // Loop over propagation steps
-//     for (int step = 0; step < num_steps; ++step) {
-//         // 1. Select a random histogram
-//         int hist_idx = curand(&state) % M;
-//
-//
-//         // 2. Generate a uniform random number in [0, 1] for sampling from CDF
-//         float rand_value = curand_uniform(&state);
-//         int bin_idx;
-//         int tbin = curand(&state) % H;
-//         if (rand_value < loss_hists[tbin+hist_idx*H])
-//             bin_idx = tbin+hist_idx*H;
-//          else
-//             bin_idx = hist_idx*H + alias[tbin+hist_idx*H];
-//
-//         float bin_value = bin_centers[bin_idx]; // Initialize bin_value at the bin center
-//         float bin_jitter = (curand_uniform(&state) - 0.5f) * bin_widths[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
-//
-//         // Actually nothing is happning here, this was just to benchmark if the performance drops because of some maths here; probably no?
-//         // bin_jitter += 0.0000000001 * sqrt(bin_jitter) * bin_jitter*bin_jitter + log(bin_jitter) * 100*bin_jitter;
-//
-//         bin_value += bin_jitter; // Apply jitter to the bin value
-//
-//         muon_value += bin_value;
-//     }
-//
-//     // Store the final result after all steps
-//     muon_data_output[idx] = muon_value;
-// }
+void load_arb8s_from_tensor(const at::Tensor& arb8s_tensor, const at::Tensor& z_centers, const at::Tensor& dzs, std::vector<ARB8_Data>& out) {
+    int N = arb8s_tensor.size(0);
+    auto arb8s_acc = arb8s_tensor.accessor<float, 3>();
+    auto z_centers_acc = z_centers.accessor<float, 1>();
+    auto dzs_acc = dzs.accessor<float, 1>();
+    out.resize(N);
+    for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            out[i].vertices_neg_z[j].x = arb8s_acc[i][j][0];
+            out[i].vertices_neg_z[j].y = arb8s_acc[i][j][1];
+            out[i].vertices_pos_z[j].x = arb8s_acc[i][j+4][0];
+            out[i].vertices_pos_z[j].y = arb8s_acc[i][j+4][1];
+        }
+        out[i].z_center = z_centers_acc[i];
+        out[i].dz = dzs_acc[i];
+    }
+}
 
 __device__ int get_first_bin(int num) {
-    if (num < 10 || num >= 200) {
-        // If the number is out of the range 10-200, return -1 as an indicator
-        return -1;
+    // Clip num to be within [10, 300]
+    if (num < 10) {
+        num = 10;
+    } else if (num > 300) {
+        num = 300;
     }
 
     // Calculate the range index
-    int index = (num - 10) / 10;
-
+    int index = (num - 10) / 5;
     return index;
 }
 
-__device__ int get_fancy_log_bin(float num) {
-    // Check if the number is within the expected range
-    if (num < -22.0f || num > 0.0f) {
-        // If the number is out of range, return -1 as an indicator
-        return -1;
-    }
-
-    // Calculate the bin index for a uniform distribution from -22 to 0 in 100 bins
-    int index = static_cast<int>((num + 22.0f) / 0.22f);
-
-    // Ensure the index is within the range [0, 99]
-    if (index < 0) index = 0;
-    else if (index > 99) index = 99;
-
-    return index;
-}
 
 // Helper function to compute the dot product of two vectors
 __device__ float dotProduct(const float a[3], const float b[3]) {
@@ -328,16 +277,14 @@ __host__ __device__ inline float3 getFieldAt(const float *field,
                                               const float startY, const float endY,
                                               const float startZ, const float endZ)
 {
+    if (x < startX || x > endX || y < startY || y > endY || z < startZ || z > endZ) {
+        float3 nullField = {0.0f, 0.0f, 0.0f};
+        return nullField;
+    }
     // Normalize the physical coordinate into [0, 1].
     float normX = (x - startX) / (endX - startX);
     float normY = (y - startY) / (endY - startY);
     float normZ = (z - startZ) / (endZ - startZ);
-
-    // Clamp the normalized coordinates so that they are in [0,1].
-    // On the device, you might want to use fminf/fmaxf.
-    normX = (normX < 0.f) ? 0.f : (normX > 1.f ? 1.f : normX);
-    normY = (normY < 0.f) ? 0.f : (normY > 1.f ? 1.f : normY);
-    normZ = (normZ < 0.f) ? 0.f : (normZ > 1.f ? 1.f : normZ);
 
     // Map the normalized coordinate to a bin index.
     // Multiplying by binsX (or binsY, binsZ) maps [0,1] to [0, binsX].
@@ -517,7 +464,63 @@ __device__ void rk4_step(float pos[3], float mom[3],
 }
 
 
+enum MaterialType { MATERIAL_IRON, MATERIAL_CONCRETE, MATERIAL_AIR };
+struct float2 {
+    float x, y;
+};
+struct ARB8_Data {
+    float2 vertices_neg_z[4];
+    float2 vertices_pos_z[4];
+    float z_center;
+    float dz;
+};
 
+__device__ bool is_inside_arb8(const float3& particle_pos, const ARB8_Data& block) {
+    if (fabsf(particle_pos.z - block.z_center) > block.dz) {
+        return false;
+    }
+    float f = (particle_pos.z - (block.z_center - block.dz)) / (2.0f * block.dz);
+    float2 interpolated_verts[4];
+    for (int i = 0; i < 4; ++i) {
+        interpolated_verts[i].x = (1.0f - f) * block.vertices_neg_z[i].x + f * block.vertices_pos_z[i].x;
+        interpolated_verts[i].y = (1.0f - f) * block.vertices_neg_z[i].y + f * block.vertices_pos_z[i].y;
+    }
+    float signs[4];
+    float2 edge, p_vec;
+    for (int i = 0; i < 4; ++i) {
+        int j = (i + 1) % 4;
+        edge.x = interpolated_verts[j].x - interpolated_verts[i].x;
+        edge.y = interpolated_verts[j].y - interpolated_verts[i].y;
+        p_vec.x = particle_pos.x - interpolated_verts[i].x;
+        p_vec.y = particle_pos.y - interpolated_verts[i].y;
+        signs[i] = edge.x * p_vec.y - edge.y * p_vec.x;
+    }
+    if ((signs[0] >= 0 && signs[1] >= 0 && signs[2] >= 0 && signs[3] >= 0) ||
+        (signs[0] <= 0 && signs[1] <= 0 && signs[2] <= 0 && signs[3] <= 0)) {
+        return true;
+    }
+    return false;
+}
+__device__ MaterialType get_material(float x, float y, float z) {
+    // Example: hardcoded ARB8 block (replace with your actual block data or pass as argument)
+    ARB8_Data block;
+    block.z_center = 5.0f;
+    block.dz = 5.0f;
+    block.vertices_neg_z[0] = {-1.0f, -1.0f};
+    block.vertices_neg_z[1] = { 1.0f, -1.0f};
+    block.vertices_neg_z[2] = { 1.0f,  1.0f};
+    block.vertices_neg_z[3] = {-1.0f,  1.0f};
+    block.vertices_pos_z[0] = {-2.0f, -2.0f};
+    block.vertices_pos_z[1] = { 2.0f, -2.0f};
+    block.vertices_pos_z[2] = { 2.0f,  2.0f};
+    block.vertices_pos_z[3] = {-2.0f,  2.0f};
+
+    float3 pos = {x, y, z};
+    if (is_inside_arb8(pos, block)) {
+        return MATERIAL_IRON;
+    }
+    return MATERIAL_AIR;
+}
 
 __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
                                float* muon_data_momenta,
@@ -574,25 +577,35 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
 
         // 2. Generate a uniform random number in [0, 1] for sampling from CDF
         float rand_value = curand_uniform(&state);
-        int bin_idx;
-        int tbin = curand(&state) % H_2d;
-        
-        if (rand_value < hist_2d_probability_table[tbin+hist_idx*H_2d])
-            bin_idx = tbin;
-        else
-            bin_idx =  hist_2d_alias_table[tbin+hist_idx*H_2d];
-        // 3. Retrieve the bin value and add it to muon_valu
-        float bin_value_first_dim = hist_2d_bin_centers_first_dim[bin_idx]; // Initialize bin_value at the bin center
-        float bin_jitter_first_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_first_dim[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
-        bin_value_first_dim += bin_jitter_first_dim; // Apply jitter to the bin value
+        // Get material at current position (dummy for now)
+        MaterialType material = get_material(
+            muon_data_positions_this_cached[0],
+            muon_data_positions_this_cached[1],
+            muon_data_positions_this_cached[2]
+        );
 
-        float bin_value_second_dim = hist_2d_bin_centers_second_dim[bin_idx]; // Initialize bin_value at the bin center
-        float bin_jitter_second_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_second_dim[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
-        bin_value_second_dim += bin_jitter_second_dim; // Apply jitter to the bin value
+        float delta = 0.0f;
+        float delta_second_dim = 0.0f;
+        if (material == MATERIAL_IRON) {
+            int bin_idx;
+            int tbin = curand(&state) % H_2d;
+            
+            if (rand_value < hist_2d_probability_table[tbin+hist_idx*H_2d])
+                bin_idx = tbin;
+            else
+                bin_idx =  hist_2d_alias_table[tbin+hist_idx*H_2d];
+            // 3. Retrieve the bin value and add it to muon_valu
+            float bin_value_first_dim = hist_2d_bin_centers_first_dim[bin_idx]; // Initialize bin_value at the bin center
+            float bin_jitter_first_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_first_dim[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
+            bin_value_first_dim += bin_jitter_first_dim; // Apply jitter to the bin value
 
-        float delta = mag_P * exp(bin_value_first_dim);
+            float bin_value_second_dim = hist_2d_bin_centers_second_dim[bin_idx]; // Initialize bin_value at the bin center
+            float bin_jitter_second_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_second_dim[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
+            bin_value_second_dim += bin_jitter_second_dim; // Apply jitter to the bin value
 
-        float delta_second_dim = mag_P * exp(bin_value_second_dim);
+            delta = mag_P * exp(bin_value_first_dim);
+            delta_second_dim = mag_P * exp(bin_value_second_dim);
+        }
 
         float phi = curand_uniform(&state) * 2 * M_PI;
 
@@ -610,34 +623,6 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
         muon_data_momenta_this_cached[0] = output[0];
         muon_data_momenta_this_cached[1] = output[1];
         muon_data_momenta_this_cached[2] = output[2];
-
-        /* Now the position propagation 
-        rand_value = curand_uniform(&state);
-        tbin = curand(&state) % H_step_length;
-
-        bin_idx = 0;
-
-        // This should be uncommented.
-        if (rand_value < hist_step_length_probability_table[tbin+hist_idx*H_step_length]) {
-            bin_idx = tbin;
-        }
-        else {
-            bin_idx =  hist_step_length_alias_table[tbin+hist_idx*H_step_length];
-        }
-
-        int log_bin = get_fancy_log_bin(log(sqrt(x*x + y*y + delta*delta) / mag_P));
-        if (rand_value < hist_2d_step_length_vs_mag_all_probability_table[tbin + log_bin*H_step_length+hist_idx*H_2d])
-            bin_idx = tbin;
-        else
-            bin_idx =  hist_2d_step_length_vs_mag_all_alias_table[tbin + log_bin*H_step_length+hist_idx*H_2d];
-
-        // TODO: This should be separately passed but the binning is the same so we use the second dimension of the 2D hist
-        float bin_value_step_length = hist_2d_bin_centers_second_dim[bin_idx]; // Initialize bin_value at the bin center
-        float bin_jitter_step_length = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_second_dim[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
-        bin_value_step_length += bin_jitter_step_length; // Apply jitter to the bin value
-
-        float step_length_sampled = exp(bin_value_step_length);
-        */
 
         rk4_step(muon_data_positions_this_cached, muon_data_momenta_this_cached,
                       +1, step_length_fixed,
@@ -710,6 +695,14 @@ void propagate_muons_with_alias_sampling_cuda(
     float rangeStartZArbs = data_ptr_arbs[4];
     float rangeEndZArbs = data_ptr_arbs[5];
 
+    // Prepare ARB8s
+    std::vector<ARB8_Data> arb8s_host;
+    load_arb8s_from_tensor(arb8s, arb8s.select(2,2), arb8s.select(2,3), arb8s_host); // Adjust if z_center/dz are in separate tensors
+
+    ARB8_Data* arb8s_device;
+    cudaMalloc(&arb8s_device, arb8s_host.size() * sizeof(ARB8_Data));
+    cudaMemcpy(arb8s_device, arb8s_host.data(), arb8s_host.size() * sizeof(ARB8_Data), cudaMemcpyHostToDevice);
+
 
     #define CUDA_CHECK(call)                                          \
     do {                                                          \
@@ -748,6 +741,7 @@ void propagate_muons_with_alias_sampling_cuda(
     );
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
+    cudaFree(arb8s_device);
 
 //     // Synchronize to ensure kernel completion
 //     cudaDeviceSynchronize();

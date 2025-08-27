@@ -203,7 +203,8 @@ if __name__ == '__main__':
         with open(args.params, "r") as txt_file:
             params = [float(line.strip()) for line in txt_file]
     else: 
-        raise ValueError(f"Invalid params: {args.params}. Must be a valid parameter name or a file path.")
+        raise ValueError(f"Invalid params: {args.params}. Must be a valid parameter name or a file path. \
+                         Avaliable names: {', '.join(params_lib.params.keys())}.")
     params = np.asarray(params)
     def split_array(arr, K):
         N = len(arr)

@@ -42,6 +42,7 @@ if __name__ == "__main__":
     else: 
         raise ValueError(f"Invalid params: {args.params}. Must be a valid parameter name or a file path.")
     params = np.array(params, dtype=np.float32)
-    ni_values = get_NI(params, fSC_mag=args.fSC_mag, use_diluted=args.use_diluted)
+    ni_values = get_NI(params, fSC_mag=args.fSC_mag, use_diluted=args.use_diluted).tolist()
+    ni_values = [round(val, 2) for val in ni_values]
     print("NI values:", ni_values)
 

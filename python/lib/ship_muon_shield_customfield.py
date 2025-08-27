@@ -16,7 +16,7 @@ MATERIALS_DIR = join(getenv('PROJECTS_DIR'),'MuonsAndMatter/data/materials')
 Z_GAP = 10 # in cm
 SC_Ymgap = magnet_simulations.SC_Ymgap*100
 N_PARAMS = 14
-SHIFT = -2.14#-2.345
+SHIFT = -2.14
 CAVERN_TRANSITION = 20.518+SHIFT #m
 
 def estimate_electrical_cost(params,
@@ -279,9 +279,11 @@ def get_field(resimulate_fields = False,
         with h5py.File(file_name, 'r') as f:
             fields = f["B"][:]
             d_space = f["d_space"][:].tolist()
-        d_space = [[round(float(val), 2) for val in axis] for axis in d_space]
+        #d_space = [[round(float(val), 2) for val in axis] for axis in d_space]
     
     if only_grid_params: 
+        d_space_mm = [[int(round(val * 1000)) for val in axis] for axis in d_space]
+        d_space = d_space_mm
         fields = {'B': file_name,
                 'range_x': [0.,d_space[0][1], d_space[0][2]],
                 'range_y': [0.,d_space[1][1], d_space[1][2]],
