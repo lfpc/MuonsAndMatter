@@ -1,6 +1,5 @@
 bindings.cpp
 my_extension.cu
-rotation_test.cu
 setup.py
 fastermuons.egg-info/PKG-INFO
 fastermuons.egg-info/SOURCES.txt

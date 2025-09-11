@@ -29,6 +29,7 @@
 #include "G4Mag_UsualEqRhs.hh"
 #include "G4PropagatorInField.hh"
 #include "G4ClassicalRK4.hh"
+#include "SlimFilmSensitiveDetector.hh"
 
 
 #include <iostream>
@@ -55,6 +56,9 @@ G4UserLimits * DetectorConstruction::getLimitsFromDetectorConfig(const Json::Val
         G4double temp = detectorData["limits"]["max_step_length"].asDouble() * m;
         if (temp > 0)
             maxStepLength = temp;
+
+        std::cout<<"Applied the limit "<<temp<<std::endl<<std::endl;
+
     }
     maxTrackLength = DBL_MAX;
     G4double maxTime = DBL_MAX;        // No limit on time
@@ -62,6 +66,8 @@ G4UserLimits * DetectorConstruction::getLimitsFromDetectorConfig(const Json::Val
     G4double minKineticEnergy = 100 * MeV; // Minimum kinetic energy
     if (not detectorData.empty()) {
         G4double temp = detectorData["limits"]["minimum_kinetic_energy"].asDouble() * GeV;
+        std::cout<<"Applied the limit on energy "<<temp<<std::endl<<std::endl;
+
         if (temp > 0)
             minKineticEnergy = temp;
     }
@@ -76,12 +82,21 @@ G4UserLimits * DetectorConstruction::getLimitsFromDetectorConfig(const Json::Val
 
 G4VPhysicalVolume* DetectorConstruction::Construct() {
     G4UserLimits* userLimits2 = getLimitsFromDetectorConfig(detectorData);
+    // Extract magnetic field value from detectorData["magnetic_field"]
+    G4ThreeVector magnetic_field_value(0, 0, 0);
+    if (!detectorData["magnetic_field"].empty() && detectorData["magnetic_field"].size() == 3) {
+        magnetic_field_value = G4ThreeVector(
+            detectorData["magnetic_field"][0].asDouble() * tesla,
+            detectorData["magnetic_field"][1].asDouble() * tesla,
+            detectorData["magnetic_field"][2].asDouble() * tesla
+        );
+    }
 
     // Get NIST material manager
     G4NistManager* nist = G4NistManager::Instance();
-
+    std::string material_name = detectorData.get("material", "G4_Fe").asString();
     // Define the material
-    G4Material* sphereMaterial = nist->FindOrBuildMaterial("G4_Fe");
+    G4Material* sphereMaterial = nist->FindOrBuildMaterial(material_name);
     std::cout << "Placing gigantic sphere: " << *sphereMaterial << std::endl;
 
 
@@ -114,8 +129,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct() {
     new G4PVPlacement(0, G4ThreeVector(), logicSphere, "SphereZ", logicWorld, false, 0, true);
 
     // Define the uniform magnetic field
-    G4ThreeVector fieldValue = G4ThreeVector(1*tesla, 0., 0.);
-    magField = new G4UniformMagField(fieldValue);
+    magField = new G4UniformMagField(magnetic_field_value);
 
     // Get the global field manager
     G4FieldManager* fieldManager = G4TransportationManager::GetTransportationManager()->GetFieldManager();
@@ -123,30 +137,84 @@ G4VPhysicalVolume* DetectorConstruction::Construct() {
     // Set the magnetic field to the field manager
     fieldManager->SetDetectorField(magField);
 
-
-    // Create the equation of motion and the stepper
     G4Mag_UsualEqRhs* equationOfMotion = new G4Mag_UsualEqRhs(magField);
     G4MagIntegratorStepper* stepper = new G4ClassicalRK4(equationOfMotion);
 
-    // Create the chord finder
-//    G4ChordFinder* chordFinder = new G4ChordFinder(magField);
-//    fieldManager->SetChordFinder(chordFinder);
     fieldManager->CreateChordFinder(magField);
 
     logicWorld->SetFieldManager(fieldManager, true);
 
+    sensitiveLogical = nullptr;
+    if (detectorData.isMember("sensitive_film")) {
+        const Json::Value sensitiveFilm = detectorData["sensitive_film"];
+        std::string shape = sensitiveFilm["shape"].asString();
+        if (shape == "sphere") {
+            G4double radius = sensitiveFilm["radius"].asDouble() * m;
+            G4double dr = sensitiveFilm["dr"].asDouble() * m;
+            G4double z_center = sensitiveFilm["z_center"].asDouble() * m;
 
+        G4double innerRadius = radius - dr;
+        if (innerRadius < 0) {
+            innerRadius = 0;
+        }
 
-    // Return the physical world
+        auto sensitiveSphere = new G4Sphere("sensitive_sphere_solid",
+                                            innerRadius,    // Inner radius (pRmin)
+                                            radius,         // Outer radius (pRmax)
+                                            0.,             // Starting Phi angle
+                                            2. * M_PI,      // Segment angle in Phi
+                                            0.,             // Starting Theta angle
+                                            M_PI);          // Segment angle in Theta
+        sensitiveLogical = new G4LogicalVolume(sensitiveSphere, sphereMaterial, "sensitive_sphere_logic");
+        new G4PVPlacement(0, G4ThreeVector(0, 0, z_center), sensitiveLogical, "sensitive_sphere_plc", logicSphere, false, 0, true);
+        std::cout << "Sensitive sphere placed successfully.\n";
+
+    } else if (shape == "plane") {
+        double dz = sensitiveFilm["dz"].asDouble() * m;
+        double dx = sensitiveFilm["dx"].asDouble() * m;
+        double dy = sensitiveFilm["dy"].asDouble() * m;
+        double z_center = sensitiveFilm["z_center"].asDouble() * m;
+
+        auto sensitiveBox = new G4Box("sensitive_film", dx/2, dy/2, dz/2);
+        sensitiveLogical = new G4LogicalVolume(sensitiveBox, sphereMaterial, "sensitive_film_logic");
+        new G4PVPlacement(0, G4ThreeVector(0, 0, z_center), sensitiveLogical, "sensitive_plc", logicSphere, false, 0, true);
+        std::cout << "Sensitive plane placed successfully.\n";
+
+    } else {
+        G4Exception("DetectorConstruction::Construct", "InvalidFormat", FatalException,
+                    "Sensitive film 'format' must be 'sphere' or 'plane'.");
+    }
+    }
+    else {
+        std::cout << "Sensitive films section not found in JSON, skipped.\n";
+    }
     return physWorld;
 }
 
-void DetectorConstruction::setMagneticFieldValue(double strength, double theta, double phi) {
-    G4ThreeVector fieldValue = G4ThreeVector(strength*tesla, theta, phi);
+void DetectorConstruction::setMagneticFieldValue(double x, double y, double z) {
+    G4ThreeVector fieldValue = G4ThreeVector(x*tesla, y*tesla, z*tesla);
 
     magField->SetFieldValue(fieldValue);
 }
 
 double DetectorConstruction::getDetectorWeight() {
     return -1;
+}
+
+void DetectorConstruction::ConstructSDandField() {
+    G4VUserDetectorConstruction::ConstructSDandField();
+
+
+    // Attach the sensitive detector to the logical volume
+    if (sensitiveLogical) {
+        auto* sdManager = G4SDManager::GetSDMpointer();
+
+        G4String sdName = "MySensitiveDetector";
+        auto slimFilmSensitiveDetector = new SlimFilmSensitiveDetector(sdName, 1, true);
+        sdManager->AddNewDetector(slimFilmSensitiveDetector);
+        sensitiveLogical->SetSensitiveDetector(slimFilmSensitiveDetector);
+        slimFilmSensitiveDetectors.push_back(slimFilmSensitiveDetector);
+        std::cout<<"Sensitive set...\n";
+    }
+
 }

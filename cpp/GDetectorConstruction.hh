@@ -12,8 +12,6 @@
 class GDetectorConstruction : public DetectorConstruction {
 public:
     virtual G4VPhysicalVolume *Construct();
-    SlimFilmSensitiveDetector* slimFilmSensitiveDetector;
-    std::vector<SlimFilmSensitiveDetector*> slimFilmSensitiveDetectors;
 public:
     GDetectorConstruction(Json::Value detector_data);
 protected:

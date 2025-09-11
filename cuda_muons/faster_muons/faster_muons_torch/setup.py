@@ -1,3 +1,4 @@
+# ...existing code...
 import os
 import os.path as osp
 from setuptools import setup, find_packages
@@ -33,7 +34,8 @@ extensions_dir = osp.join(osp.dirname(osp.abspath(__file__)), 'extensions')
 cpu_kwargs = dict(
     include_dirs=[extensions_dir],
     extra_compile_args={'cxx': ['-O2']},
-    extra_link_args=['-s']
+    # remove aggressive '-s' strip to avoid linker/toolchain issues during build
+    extra_link_args=[]
     )
 extensions_cpu = [
 ]
@@ -41,12 +43,13 @@ extensions_cpu = [
 cuda_kwargs = dict(
     include_dirs=[extensions_dir],
     extra_compile_args={'cxx': ['-O2'], 'nvcc': ['--expt-relaxed-constexpr', '-O2']},
-    extra_link_args=['-s']
+    # remove aggressive '-s' strip to avoid linker/toolchain issues during build
+    extra_link_args=[]
     )
 extensions_cuda = [
     CUDAExtension(
         'faster_muons_torch',
-        ['bindings.cpp', 'my_extension.cu', 'rotation_test.cu'],
+        ['bindings.cpp', 'my_extension.cu'],
         **cuda_kwargs
         ),
     ]
@@ -77,12 +80,14 @@ make_args = []
 if num_jobs != '0':
     make_args = [f'-j{num_jobs}']
 
+# choose parallel option for BuildExtension: int(num_jobs) when set, else True (use default)
+parallel_opt = int(num_jobs) if num_jobs != '0' else True
+
 setup(
     name='fastermuons',
     ext_modules=extensions if not BUILD_DOCS else [],
     packages=find_packages(),  # Automatically find packages
     cmdclass={
-        'build_ext': BuildExtension.with_options(no_python_abi_suffix=True, use_ninja=False, parallel=True, make_args=make_args)
+        'build_ext': BuildExtension.with_options(no_python_abi_suffix=True, use_ninja=False, parallel=parallel_opt, make_args=make_args)
     },
 )
-

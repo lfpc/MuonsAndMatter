@@ -147,9 +147,9 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
         if (!B_vector.empty()) {
             std::map<std::string, std::vector<double>> ranges;
             std::vector<G4ThreeVector> fields;
-            ranges["range_x"] = {globalFieldMap["range_x"][0].asDouble() * mm, globalFieldMap["range_x"][1].asDouble() * mm, globalFieldMap["range_x"][2].asDouble() * mm};
-            ranges["range_y"] = {globalFieldMap["range_y"][0].asDouble() * mm, globalFieldMap["range_y"][1].asDouble() * mm, globalFieldMap["range_y"][2].asDouble() * mm};
-            ranges["range_z"] = {globalFieldMap["range_z"][0].asDouble() * mm, globalFieldMap["range_z"][1].asDouble() * mm, globalFieldMap["range_z"][2].asDouble() * mm};
+            ranges["range_x"] = {globalFieldMap["range_x"][0].asDouble() * cm, globalFieldMap["range_x"][1].asDouble() * cm, globalFieldMap["range_x"][2].asDouble() * cm};
+            ranges["range_y"] = {globalFieldMap["range_y"][0].asDouble() * cm, globalFieldMap["range_y"][1].asDouble() * cm, globalFieldMap["range_y"][2].asDouble() * cm};
+            ranges["range_z"] = {globalFieldMap["range_z"][0].asDouble() * cm, globalFieldMap["range_z"][1].asDouble() * cm, globalFieldMap["range_z"][2].asDouble() * cm};
 
             for (size_t i = 0; i < B_vector.size(); i += 3) {
                 fields.emplace_back(B_vector[i] * tesla, B_vector[i + 1] * tesla, B_vector[i + 2] * tesla);
@@ -167,14 +167,14 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
 
         std::cout<<"Adding box"<<std::endl;
         // Get the material for the magnet
-        std::string materialName = magnet["material"].asString();
-        G4Material* boxMaterial = nist->FindOrBuildMaterial(materialName);
 
         G4double z_center = magnet["z_center"].asDouble() * m;
         G4double dz = magnet["dz"].asDouble() * m;
 
         Json::Value arb8s = magnet["components"];
         for (auto arb8: arb8s) {
+            std::string materialName = arb8["material"].asString();
+            G4Material* boxMaterial = nist->FindOrBuildMaterial(materialName);
             std::vector<G4TwoVector> corners_two;
             Json::Value corners = arb8["corners"];
             
@@ -194,6 +194,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
                 fieldY = field_value[1].asDouble();
                 fieldZ = field_value[2].asDouble();
                 fieldValue = G4ThreeVector(fieldX * tesla, fieldY * tesla, fieldZ * tesla);
+                
                 // Create and set the uniform magnetic field for the box
                 magField = new G4UniformMagField(fieldValue);
             } else {
@@ -201,13 +202,12 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
                 std::vector<G4ThreeVector> fields;
                 //const Json::Value& pointsData = field_value[0];
                 //const Json::Value& fieldsData = field_value[1];
-                ranges["range_x"] = {field_value["range_x"][0].asDouble() * mm, field_value["range_x"][1].asDouble() * mm, field_value["range_x"][2].asDouble() * mm};
-                ranges["range_y"] = {field_value["range_y"][0].asDouble() * mm, field_value["range_y"][1].asDouble() * mm, field_value["range_y"][2].asDouble() * mm};
-                ranges["range_z"] = {field_value["range_z"][0].asDouble() * mm, field_value["range_z"][1].asDouble() * mm, field_value["range_z"][2].asDouble() * mm};
+                ranges["range_x"] = {field_value["range_x"][0].asDouble() * cm, field_value["range_x"][1].asDouble() * cm, field_value["range_x"][2].asDouble() * cm};
+                ranges["range_y"] = {field_value["range_y"][0].asDouble() * cm, field_value["range_y"][1].asDouble() * cm, field_value["range_y"][2].asDouble() * cm};
+                ranges["range_z"] = {field_value["range_z"][0].asDouble() * cm, field_value["range_z"][1].asDouble() * cm, field_value["range_z"][2].asDouble() * cm};
 
                 const Json::Value& fieldsData = field_value["B"];
                 for (Json::ArrayIndex i = 0; i < fieldsData.size(); ++i) {
-                    //points.emplace_back(pointsData[i][0].asDouble() * m, pointsData[i][1].asDouble() * m, pointsData[i][2].asDouble() * m);
                     fields.emplace_back(fieldsData[i][0].asDouble() * tesla, fieldsData[i][1].asDouble() * tesla, fieldsData[i][2].asDouble() * tesla);
                 }
                 // Determine the interpolation type
@@ -215,7 +215,6 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
                 // Define the custom magnetic field
                 magField = new CustomMagneticField(ranges, fields, interpType);
             }
-            
             auto FieldManager = new G4FieldManager();
             FieldManager->SetDetectorField(magField);
             FieldManager->CreateChordFinder(magField);
@@ -259,7 +258,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
             sensitiveLogical->SetSensitiveDetector(filmSD);
             slimFilmSensitiveDetectors.push_back(filmSD);
 
-            std::cout<<"Sensitive film placed at "<< z_center / m << ".\n";
+            std::cout<<"Sensitive film placed at "<< z_center / cm << ".\n";
         }
         else{
             G4Material* air = nist->FindOrBuildMaterial("G4_AIR");
@@ -290,7 +289,7 @@ G4VPhysicalVolume *GDetectorConstruction::Construct() {
                 senslog->SetSensitiveDetector(filmSD);
                 slimFilmSensitiveDetectors.push_back(filmSD);
 
-                std::cout << "Sensitive film '" << name << "' placed at z = " << z_center / m << " m.\n";
+                std::cout << "Sensitive film '" << name << "' placed at z = " << z_center / cm << " cm.\n";
                 ++idx_plane;}
         }
     }
@@ -427,22 +426,6 @@ std::cout<<"cannot set magnetic field value for boxy detector.\n"<<std::endl;
 double GDetectorConstruction::getDetectorWeight() {
     return detectorWeightTotal;
 }
-
-/*void GDetectorConstruction::ConstructSDandField() {
-    G4VUserDetectorConstruction::ConstructSDandField();
-
-    // Attach the sensitive detector to the logical volume
-    if (sensitiveLogical) {
-        auto* sdManager = G4SDManager::GetSDMpointer();
-
-        G4String sdName = "MySensitiveDetector";
-        slimFilmSensitiveDetector = new SlimFilmSensitiveDetector(sdName);
-        sdManager->AddNewDetector(slimFilmSensitiveDetector);
-        sensitiveLogical->SetSensitiveDetector(slimFilmSensitiveDetector);
-        std::cout<<"Sensitive set...\n";
-    }
-
-}*/
 
 
 void GDetectorConstruction::ConstructSDandField()

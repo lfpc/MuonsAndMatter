@@ -23,17 +23,26 @@ torch::Tensor propagate_muons(torch::Tensor muon_data, torch::Tensor loss_hists,
 void propagate_muons_with_alias_sampling_cuda(
     torch::Tensor muon_data_positions,
     torch::Tensor muon_data_momenta,
-    torch::Tensor hist_2d_probability_table,
-    torch::Tensor hist_2d_alias_table,
-    torch::Tensor hist_2d_bin_centers_first_dim,
-    torch::Tensor hist_2d_bin_centers_second_dim,
-    torch::Tensor hist_2d_bin_widths_first_dim,
-    torch::Tensor hist_2d_bin_widths_second_dim,
+    torch::Tensor charges,
+    torch::Tensor hist_2d_probability_table_iron,
+    torch::Tensor hist_2d_alias_table_iron,
+    torch::Tensor hist_2d_bin_centers_first_dim_iron,
+    torch::Tensor hist_2d_bin_centers_second_dim_iron,
+    torch::Tensor hist_2d_bin_widths_first_dim_iron,
+    torch::Tensor hist_2d_bin_widths_second_dim_iron,
+    torch::Tensor hist_2d_probability_table_concrete,
+    torch::Tensor hist_2d_alias_table_concrete,
+    torch::Tensor hist_2d_bin_centers_first_dim_concrete,
+    torch::Tensor hist_2d_bin_centers_second_dim_concrete,
+    torch::Tensor hist_2d_bin_widths_first_dim_concrete,
+    torch::Tensor hist_2d_bin_widths_second_dim_concrete,
     torch::Tensor magnetic_field,
     torch::Tensor magnetic_field_range,
     torch::Tensor arb8s,
     torch::Tensor hashed3d_arb8s,
     torch::Tensor hashed3d_arb8s_range,
+    torch::Tensor cavern_params,
+    float sensitive_plane_z,
     float kill_at,
     int num_steps,
     float step_length_fixed,
@@ -45,17 +54,26 @@ void propagate_muons_with_alias_sampling_cuda(
 void propagate_muons_with_alias_sampling(
     torch::Tensor muon_data_positions,
     torch::Tensor muon_data_momenta,
-    torch::Tensor hist_2d_probability_table,
-    torch::Tensor hist_2d_alias_table,
-    torch::Tensor hist_2d_bin_centers_first_dim,
-    torch::Tensor hist_2d_bin_centers_second_dim,
-    torch::Tensor hist_2d_bin_widths_first_dim,
-    torch::Tensor hist_2d_bin_widths_second_dim,
+    torch::Tensor charges,
+    torch::Tensor hist_2d_probability_table_iron,
+    torch::Tensor hist_2d_alias_table_iron,
+    torch::Tensor hist_2d_bin_centers_first_dim_iron,
+    torch::Tensor hist_2d_bin_centers_second_dim_iron,
+    torch::Tensor hist_2d_bin_widths_first_dim_iron,
+    torch::Tensor hist_2d_bin_widths_second_dim_iron,
+    torch::Tensor hist_2d_probability_table_concrete,
+    torch::Tensor hist_2d_alias_table_concrete,
+    torch::Tensor hist_2d_bin_centers_first_dim_concrete,
+    torch::Tensor hist_2d_bin_centers_second_dim_concrete,
+    torch::Tensor hist_2d_bin_widths_first_dim_concrete,
+    torch::Tensor hist_2d_bin_widths_second_dim_concrete,
     torch::Tensor magnetic_field,
     torch::Tensor magnetic_field_range,
     torch::Tensor arb8s,
     torch::Tensor hashed3d_arb8s,
     torch::Tensor hashed3d_arb8s_range,
+    torch::Tensor cavern_params,
+    float sensitive_plane_z,
     float kill_at,
     int num_steps,
     float step_length_fixed,
@@ -64,54 +82,58 @@ void propagate_muons_with_alias_sampling(
     // Check that inputs are CUDA tensors
     if (!muon_data_positions.is_cuda() ||
         !muon_data_momenta.is_cuda() ||
-        !hist_2d_probability_table.is_cuda() ||
-        !hist_2d_alias_table.is_cuda() ||
-        !hist_2d_bin_centers_first_dim.is_cuda() ||
-        !hist_2d_bin_centers_second_dim.is_cuda() ||
-        !hist_2d_bin_widths_first_dim.is_cuda() ||
-        !hist_2d_bin_widths_second_dim.is_cuda() ||
+        !hist_2d_probability_table_iron.is_cuda() ||
+        !hist_2d_alias_table_iron.is_cuda() ||
+        !hist_2d_bin_centers_first_dim_iron.is_cuda() ||
+        !hist_2d_bin_centers_second_dim_iron.is_cuda() ||
+        !hist_2d_bin_widths_first_dim_iron.is_cuda() ||
+        !hist_2d_bin_widths_second_dim_iron.is_cuda() ||
+        !hist_2d_probability_table_concrete.is_cuda() ||
+        !hist_2d_alias_table_concrete.is_cuda() ||
+        !hist_2d_bin_centers_first_dim_concrete.is_cuda() ||
+        !hist_2d_bin_centers_second_dim_concrete.is_cuda() ||
+        !hist_2d_bin_widths_first_dim_concrete.is_cuda() ||
+        !hist_2d_bin_widths_second_dim_concrete.is_cuda() ||
         !magnetic_field.is_cuda() ||
         magnetic_field_range.is_cuda() ||
         !arb8s.is_cuda() ||
+        !cavern_params.is_cuda() ||
         !hashed3d_arb8s.is_cuda() ||
         hashed3d_arb8s_range.is_cuda()
         )
     {
-        throw std::runtime_error("All tensors except magnetic_field_range and hashed3d_arb8s_range must be CUDA tensors. magnetic_field_range and hashed3d_arb8s_range should be on the CPU.");
+        throw std::runtime_error("All tensors except magnetic_field_range and arb8s must be CUDA tensors. magnetic_field_range and hashed3d_arb8s_range should be on the CPU.");
     }
 
     // Call the CUDA implementation
     propagate_muons_with_alias_sampling_cuda(
         muon_data_positions,
         muon_data_momenta,
-        hist_2d_probability_table,
-        hist_2d_alias_table,
-        hist_2d_bin_centers_first_dim,
-        hist_2d_bin_centers_second_dim,
-        hist_2d_bin_widths_first_dim,
-        hist_2d_bin_widths_second_dim,
+        charges,
+        hist_2d_probability_table_iron,
+        hist_2d_alias_table_iron,
+        hist_2d_bin_centers_first_dim_iron,
+        hist_2d_bin_centers_second_dim_iron,
+        hist_2d_bin_widths_first_dim_iron,
+        hist_2d_bin_widths_second_dim_iron,
+        hist_2d_probability_table_concrete,
+        hist_2d_alias_table_concrete,
+        hist_2d_bin_centers_first_dim_concrete,
+        hist_2d_bin_centers_second_dim_concrete,
+        hist_2d_bin_widths_first_dim_concrete,
+        hist_2d_bin_widths_second_dim_concrete,
         magnetic_field,
         magnetic_field_range,
         arb8s,
         hashed3d_arb8s,
         hashed3d_arb8s_range,
+        cavern_params,
+        sensitive_plane_z,
         kill_at,
         num_steps,
         step_length_fixed,
         seed
     );
-}
-
-
-torch::Tensor propagate_muons_rot_test_cuda( torch::Tensor muon_data,int num_steps );
-torch::Tensor propagate_muons_rot_test(torch::Tensor muon_data, int num_steps) {
-    // Check that inputs are CUDA tensors
-    if (!muon_data.is_cuda()) {
-        throw std::runtime_error("All tensors must be CUDA tensors.");
-    }
-
-    // Call the CUDA implementation
-    return propagate_muons_rot_test_cuda(muon_data, num_steps);
 }
 
 
@@ -130,5 +152,4 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("add", &add, "Add two tensors (CUDA)");
     m.def("propagate_muons", &propagate_muons, "Propagate muons with two input tensors (CUDA)");
     m.def("propagate_muons_with_alias_sampling", &propagate_muons_with_alias_sampling, "Propagate muons with two input tensors (CUDA)");
-    m.def("propagate_muons_rot_test", &propagate_muons_rot_test, "Propagate muons rot test");
 }

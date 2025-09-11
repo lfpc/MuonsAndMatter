@@ -19,7 +19,7 @@ def plot_fields(points, fields, output_file='plots/fields.png'):
     points_yz = points[mask_x0]
     fields_yz = fields[mask_x0]
 
-    # Use z-component of the field
+    # Use y-component of the field
     fields_xz = fields_xz[:, 1]
     fields_yz = fields_yz[:, 1]
 
@@ -132,8 +132,8 @@ def plot_magnet(detector,
                 color = 'gray'  # Default color
 
             # Define the vertices of the cylinder
-            z1 = z_center - dz
-            z2 = z_center + dz
+            z1 = z_center - dz/2
+            z2 = z_center + dz/2
             theta = np.linspace(0, 2 * np.pi, 100)
             x = radius * np.cos(theta)
             y = radius * np.sin(theta)
@@ -159,10 +159,11 @@ def plot_magnet(detector,
 
         for i, component in enumerate(mag['components']):
             the_dat = component['corners']
-            if component['field_profile'] == 'uniform':field = component['field']
+            if component['field_profile'] == 'uniform': field = component['field']
             elif component['field_profile'] == 'global':
-                field = filter_fields(*detector['global_field_map'],component['corners'],component['z_center'],component['dz'])
-                field = np.mean(field[1],axis=0)
+                #field = filter_fields(*detector['global_field_map'],component['corners'],component['z_center'],component['dz'])
+                #field = np.mean(field[1],axis=0)
+                field = [0.,0.,0.]
             else: field = np.mean(component['field'][1],axis=0)
             B_th = 0.7
             if field[1] < -B_th:
@@ -354,9 +355,9 @@ def plot_magnet(detector,
         Y2 = np.full_like(X2, y_plane2)
         ax.plot_surface(X2, Y2, Z2, color='black', alpha=0.3)
 
-    if sensitive_film_position[0] < 0: sensitive_film_position = None
     if sensitive_film_position is None and not 'sensitive_box' in detector: 
         ax.set_xlim(40, -5)
+    elif sensitive_film_position[0] < 0: sensitive_film_position = None
     elif 'sensitive_box' in detector:
         ax.set_xlim(80, -5)
     else:
@@ -394,6 +395,11 @@ def construct_and_plot(muons,
                 **kwargs_plot)
     
 if __name__ == "__main__":
-    points = np.load('/disk/users/gfrise/FieldMap_Piet/MuonsAndMatter/data/outputs/points_mm_Piet_1.npy')
-    fields = np.load('/disk/users/gfrise/FieldMap_Piet/MuonsAndMatter/data/outputs/fields_mm_Piet_1.npy')
-    plot_fields(points,fields, output_file='plots/fields_piet.png')
+    import pickle
+    import gzip
+    with open("/home/hep/lprate/projects/MuonsAndMatter/detector.pkl", 'rb') as f:
+        detector = pickle.load(f)
+    detector.pop("cavern")
+    with gzip.open("/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/data/outputs_cuda.pkl", 'rb') as f:
+        muons = pickle.load(f)
+    plot_magnet(detector, muon_data=[muons], azim = 90, elev = 90, sensitive_film_position= [82])

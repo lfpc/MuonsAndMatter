@@ -12,7 +12,7 @@ import functools
 
 
 # Function to simulate a batch of muons in a single
-def simulate_muon_batch(num_simulations, detector, step_goal=0.02, single_step=False, initial_momenta_bounds=(10, 400)):
+def simulate_muon_batch(num_simulations, detector, step_size=0.02, single_step=False, initial_momenta_bounds=(10, 400)):
     np.random.seed((os.getpid() * int(time.time())) % 2**32)
     batch_data = {
         'initial_momenta': [],
@@ -25,7 +25,7 @@ def simulate_muon_batch(num_simulations, detector, step_goal=0.02, single_step=F
     kill_secondary_tracks(True)
     i = 0
     while i < num_simulations:
-        initial_momenta = np.random.uniform(*initial_momenta_bounds)
+        initial_momenta = np.random.uniform(max(initial_momenta_bounds[0],1.0), initial_momenta_bounds[1])
         simulate_muon(0, 0, initial_momenta, 1, 0, 0, 0)
         data = collect_from_sensitive()
         index = 0
@@ -41,15 +41,15 @@ def simulate_muon_batch(num_simulations, detector, step_goal=0.02, single_step=F
     assert len(batch_data['px']) == num_simulations, f"Expected {num_simulations} simulations, got {len(batch_data['px'])}"
     return batch_data
 
-def parallel_simulations(num_sims, detector, num_processes=4, step_goal=0.02, output_file='muons_data.h5', single_step=False, initial_momenta_bounds=(10, 400)):
+def parallel_simulations(num_sims, detector, num_processes=4, step_size=0.02, output_file='muons_data.h5', single_step=False, initial_momenta_bounds=(10, 400)):
     with h5py.File(output_file, 'a') as f:
-        f.attrs['step_length'] = int(step_goal * 100)
+        f.attrs['step_length'] = int(step_size * 100)
         grp = f.create_group(str(initial_momenta_bounds))
         grp.create_dataset('initial_momenta', (num_sims,), dtype='f8')
         grp.create_dataset('px', (num_sims,), dtype='f8')
         grp.create_dataset('py', (num_sims,), dtype='f8')
         grp.create_dataset('pz', (num_sims,), dtype='f8')
-        simulate_fn = functools.partial(simulate_muon_batch, detector=detector, step_goal=step_goal, single_step=single_step, initial_momenta_bounds=initial_momenta_bounds)
+        simulate_fn = functools.partial(simulate_muon_batch, detector=detector, step_size=step_size, single_step=single_step, initial_momenta_bounds=initial_momenta_bounds)
         chunk_size = num_sims // num_processes
         remainder = num_sims % num_processes
         chunks = [chunk_size + (1 if i < remainder else 0) for i in range(num_processes)]
@@ -69,43 +69,32 @@ def parallel_simulations(num_sims, detector, num_processes=4, step_goal=0.02, ou
     print(f"Completed writing {total_written} simulations to {output_file}")
     return output_file
 
-def main(cores=16, num_sims=1_000_000, step_goal=0.02, single_step = False, initial_momenta=(10, 400), tag:str = '5'):
+def main(cores=16, num_sims=1_000_000, step_size=0.02, single_step = False, initial_momenta=(10, 400), tag:str = '5', material='G4_Fe'):
     folder = f"data/"
     if not os.path.exists(folder):
         os.makedirs(folder)
-    sensitive_film = {"name": "SensitiveFilm", "z_center": step_goal, "dz": 0.001, "dx": 20, "dy": 20}
-    detector = sphere_design.get_design(mag_field = [0.,0.,0.], sens_film=sensitive_film)
+    sensitive_film = {"name": "SensitiveFilm", "radius": step_size, "dr": 0.001, "shape": "sphere"}
+    detector = sphere_design.get_design(mag_field = [0.,0.,0.], sens_film=sensitive_film, material=material)
     detector["store_primary"] = False
     detector["store_all"] = False
-    detector["limits"]["max_step_length"] = step_goal
-    output_file = os.path.join(folder, f"muon_data_energy_loss_sens_step_{tag}.h5")
+    detector["limits"]["max_step_length"] = step_size
+    output_file = os.path.join(folder, f"muon_data_energy_loss_sens_{tag}.h5")
     with h5py.File(output_file, 'w') as f:
         pass
     init_momenta_sub = np.arange(initial_momenta[0], initial_momenta[1], initial_momenta[2])
     for m0 in init_momenta_sub:
-        parallel_simulations(num_sims, detector, num_processes=cores, step_goal=step_goal, output_file=output_file, single_step=single_step, initial_momenta_bounds=(m0, m0+initial_momenta[2]))
+        m0 = int(m0)
+        parallel_simulations(num_sims, detector, num_processes=cores, step_size=step_size, output_file=output_file, single_step=single_step, initial_momenta_bounds=(m0, m0+initial_momenta[2]))
     print(f"Data saved to {output_file}")
 
-def main_split(cores:int=16,num_sims:int = 10_000_000, step_goal:float = 0.02, initial_momenta=(10, 400), single_step:bool = False):
-    n_sim_split = min(1_000_000, num_sims)
-    n = 0
-    i = 0
-    while n<num_sims:
-        main(cores, n_sim_split, step_goal, single_step=single_step, initial_momenta=initial_momenta, tag=str(int(step_goal*100)) + str(i))
-        n += n_sim_split
-        print(f"Finished {n} simulations")
-        i += 1
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run muon simulations.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--cores', type=int, default=16, help='Number of CPU cores to use')
-    parser.add_argument('--num_sims', type=int, default=1_000_000, help='Number of simulations to run')
-    parser.add_argument('--step_goal', type=float, default=0.02, help='Step goal for simulation')
-    parser.add_argument('--split', action='store_true', help='Use main_split instead of main')
+    parser.add_argument('--cores', type=int, default=64, help='Number of CPU cores to use')
+    parser.add_argument('--material', type=str, default='G4_Fe', help='Material to use for simulations (G4_Fe, G4_CONCRETE)')
+    parser.add_argument('--num_sims', type=int, default=5_000_000, help='Number of simulations to run')
+    parser.add_argument('--step_size', type=float, default=0.02, help='Step goal for simulation')
     parser.add_argument('--multi_step', dest='single_step', action='store_false', help='Return full data, without transformation to single step')
-    parser.add_argument('--initial_momenta', type=float, nargs=3, default=(10, 300 , 5), help='Range of initial momenta for muons (min, max)')
+    parser.add_argument('--initial_momenta', type=float, nargs=3, default=(0, 400 , 5), help='Range of initial momenta for muons (min, max)')
     args = parser.parse_args()
-    if args.split:
-        main_split(cores=args.cores, num_sims=args.num_sims, step_goal=args.step_goal, single_step=args.single_step, initial_momenta=args.initial_momenta)
-    else:
-        main(cores=args.cores, num_sims=args.num_sims, step_goal=args.step_goal, tag=int(args.step_goal*100), single_step=args.single_step, initial_momenta=args.initial_momenta)
+    main(cores=args.cores, num_sims=args.num_sims, step_size=args.step_size, tag=str(args.material), single_step=args.single_step, initial_momenta=args.initial_momenta, material=args.material)

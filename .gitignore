@@ -20,5 +20,7 @@ data/muons/*.npy
 data/muons/*.h5
 data/outputs/*
 cuda_muons/data/*.pkl
+!cuda_muons/data/alias_histograms.pkl
 cuda_muons/data/*.npy
 cuda_muons/data/*.h5
+cuda_muons/plots/*

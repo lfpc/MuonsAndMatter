@@ -3,14 +3,8 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include <math.h>
+#include <vector_types.h>
 
-
-// #define MUON_MASS 0.1056583755f  // GeV/c²
-// #define c_speed_of_light 299792458.0f  // Speed of light in m/s
-// #define e_charge 1.602176634e-19f  // Elementary charge in Coulombs
-// // Conversion factor: 1 GeV/c in SI momentum units (kg·m/s)
-// // #define GeV_over_c_to_SI  1.602176634e-10 / c_speed_of_light  // ≈ 5.3443e-19 kg·m/s
-// #define GeV_over_c_to_SI  5.3443e-19f  // ≈ 5.3443e-19 kg·m/s
 
 __global__ void add_kernel(float *x, float *y, float *out, int size) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -148,34 +142,61 @@ torch::Tensor propagate_muons_cuda(
     return muon_data_output;
 }
 
-void load_arb8s_from_tensor(const at::Tensor& arb8s_tensor, const at::Tensor& z_centers, const at::Tensor& dzs, std::vector<ARB8_Data>& out) {
+struct ARB8_Data {
+    float2 vertices_neg_z[4];
+    float2 vertices_pos_z[4];
+    float z_center;
+    float dz;
+};
+
+void load_arb8s_from_tensor(const at::Tensor& arb8s_tensor, std::vector<ARB8_Data>& out) {
     int N = arb8s_tensor.size(0);
     auto arb8s_acc = arb8s_tensor.accessor<float, 3>();
-    auto z_centers_acc = z_centers.accessor<float, 1>();
-    auto dzs_acc = dzs.accessor<float, 1>();
     out.resize(N);
     for (int i = 0; i < N; ++i) {
         for (int j = 0; j < 4; ++j) {
-            out[i].vertices_neg_z[j].x = arb8s_acc[i][j][0];
-            out[i].vertices_neg_z[j].y = arb8s_acc[i][j][1];
-            out[i].vertices_pos_z[j].x = arb8s_acc[i][j+4][0];
-            out[i].vertices_pos_z[j].y = arb8s_acc[i][j+4][1];
+            out[i].vertices_neg_z[j] = make_float2(arb8s_acc[i][j][0], arb8s_acc[i][j][1]);
+            out[i].vertices_pos_z[j] = make_float2(arb8s_acc[i][j+4][0], arb8s_acc[i][j+4][1]);
         }
-        out[i].z_center = z_centers_acc[i];
-        out[i].dz = dzs_acc[i];
+        // Compute z_center and dz from z values
+        float z_neg = arb8s_acc[i][0][2];
+        float z_pos = arb8s_acc[i][4][2];
+        out[i].z_center = 0.5f * (z_neg + z_pos);
+        out[i].dz = 0.5f * fabs(z_pos - z_neg);
     }
+}
+
+__global__ void fill_arb8s_kernel(
+    const float* arb8s_tensor, // shape (N,8,3), row-major, contiguous
+    ARB8_Data* arb8s_out,
+    int N
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= N) return;
+
+    // Each ARB8 has 8 vertices, each with 3 floats (x, y, z)
+    const float* verts = arb8s_tensor + i * 8 * 3;
+
+    // Fill vertices
+    for (int j = 0; j < 4; ++j) {
+        arb8s_out[i].vertices_neg_z[j] = make_float2(verts[j*3 + 0], verts[j*3 + 1]);
+        arb8s_out[i].vertices_pos_z[j] = make_float2(verts[(j+4)*3 + 0], verts[(j+4)*3 + 1]);
+    }
+    // Compute z_center and dz from z values
+    float z_neg = verts[0*3 + 2];
+    float z_pos = verts[4*3 + 2];
+    arb8s_out[i].z_center = 0.5f * (z_neg + z_pos);
+    arb8s_out[i].dz = 0.5f * fabsf(z_pos - z_neg);
 }
 
 __device__ int get_first_bin(int num) {
     // Clip num to be within [10, 300]
-    if (num < 10) {
-        num = 10;
-    } else if (num > 300) {
-        num = 300;
-    }
 
+    if (num > 400) {
+        num = 400;
+    }
     // Calculate the range index
-    int index = (num - 10) / 5;
+    int index = num / 5;
     return index;
 }
 
@@ -208,9 +229,6 @@ __device__ void normalize(const float v[3], float result[3]) {
     result[1] = v[1] / v_norm;
     result[2] = v[2] / v_norm;
 }
-
-// Constants
-const float charge = 1.0f;         // Adjust based on the particle's charge
 
 
 // Function to rotate a vector delta_P to align with the direction of P
@@ -277,35 +295,56 @@ __host__ __device__ inline float3 getFieldAt(const float *field,
                                               const float startY, const float endY,
                                               const float startZ, const float endZ)
 {
-    if (x < startX || x > endX || y < startY || y > endY || z < startZ || z > endZ) {
+
+    // Apply quadrant symmetry: map (x,y) into the first quadrant grid and then apply the
+    // same sign flips to the returned field components as done in CustomMagneticField.
+    int quadrant = 0;
+    if (x >= 0.0f && y >= 0.0f) {
+        quadrant = 1;
+    } else if (x < 0.0f && y >= 0.0f) {
+        quadrant = 2;
+    } else if (x < 0.0f && y < 0.0f) {
+        quadrant = 3;
+    } else {
+        quadrant = 4;
+    }
+
+    // Mirror coordinates into the first quadrant
+    float sx = (quadrant == 2 || quadrant == 3) ? -x : x;
+    float sy = (quadrant == 3 || quadrant == 4) ? -y : y;
+    float sz = z;
+    if (sx < startX || sx > endX || sy < startY || sy > endY || sz < startZ || sz > endZ) {
         float3 nullField = {0.0f, 0.0f, 0.0f};
         return nullField;
     }
     // Normalize the physical coordinate into [0, 1].
-    float normX = (x - startX) / (endX - startX);
-    float normY = (y - startY) / (endY - startY);
-    float normZ = (z - startZ) / (endZ - startZ);
+    float normX = (sx - startX) / (endX - startX);
+    float normY = (sy - startY) / (endY - startY);
+    float normZ = (sz - startZ) / (endZ - startZ);
 
     // Map the normalized coordinate to a bin index.
     // Multiplying by binsX (or binsY, binsZ) maps [0,1] to [0, binsX].
     // We then clamp the index to the valid range.
-    int i = normX * binsX;
-    int j = normY * binsY;
-    int k = normZ * binsZ;
-
-    if(i >= binsX) i = binsX - 1;
-    if(j >= binsY) j = binsY - 1;
-    if(k >= binsZ) k = binsZ - 1;
+    int i = (int)roundf(normX * (binsX - 1));
+    int j = (int)roundf(normY * (binsY - 1));
+    int k = (int)roundf(normZ * (binsZ - 1));
 
     // Compute the flat array index.
     // Each field point consists of 3 floats.
-    int index = ((k * binsY * binsX) + (j * binsX) + i) * 3;
+    int index = (j * (binsX * binsZ) + i * binsZ + k) * 3;
 
     // Create a float3 with the field values.
     float3 fieldVal;
     fieldVal.x = field[index];
     fieldVal.y = field[index + 1];
     fieldVal.z = field[index + 2];
+
+    if (quadrant == 2 || quadrant == 4) {
+        fieldVal.x = -fieldVal.x;
+    }
+    if (quadrant == 3 || quadrant == 4) {
+        fieldVal.z = -fieldVal.z;
+    }
 
     return fieldVal;
 }
@@ -465,15 +504,6 @@ __device__ void rk4_step(float pos[3], float mom[3],
 
 
 enum MaterialType { MATERIAL_IRON, MATERIAL_CONCRETE, MATERIAL_AIR };
-struct float2 {
-    float x, y;
-};
-struct ARB8_Data {
-    float2 vertices_neg_z[4];
-    float2 vertices_pos_z[4];
-    float z_center;
-    float dz;
-};
 
 __device__ bool is_inside_arb8(const float3& particle_pos, const ARB8_Data& block) {
     if (fabsf(particle_pos.z - block.z_center) > block.dz) {
@@ -501,39 +531,46 @@ __device__ bool is_inside_arb8(const float3& particle_pos, const ARB8_Data& bloc
     }
     return false;
 }
-__device__ MaterialType get_material(float x, float y, float z) {
-    // Example: hardcoded ARB8 block (replace with your actual block data or pass as argument)
-    ARB8_Data block;
-    block.z_center = 5.0f;
-    block.dz = 5.0f;
-    block.vertices_neg_z[0] = {-1.0f, -1.0f};
-    block.vertices_neg_z[1] = { 1.0f, -1.0f};
-    block.vertices_neg_z[2] = { 1.0f,  1.0f};
-    block.vertices_neg_z[3] = {-1.0f,  1.0f};
-    block.vertices_pos_z[0] = {-2.0f, -2.0f};
-    block.vertices_pos_z[1] = { 2.0f, -2.0f};
-    block.vertices_pos_z[2] = { 2.0f,  2.0f};
-    block.vertices_pos_z[3] = {-2.0f,  2.0f};
-
+__device__ MaterialType get_material(float x, float y, float z, const ARB8_Data* arb8s, int num_arb8s, const float* cavern_params) {
+    
+    if (
+        (z <= cavern_params[4] && (x <= cavern_params[0] || x >= cavern_params[1] || y <= cavern_params[2] || y >= cavern_params[3])) ||
+        (z > cavern_params[4] && (x <= cavern_params[5] || x >= cavern_params[6] || y <= cavern_params[7] || y >= cavern_params[8]))
+    ) {
+        return MATERIAL_CONCRETE;
+    }
     float3 pos = {x, y, z};
-    if (is_inside_arb8(pos, block)) {
-        return MATERIAL_IRON;
+    for (int i = 0; i < num_arb8s; ++i) {
+        if (is_inside_arb8(pos, arb8s[i])) {
+            return MATERIAL_IRON;
+        }
     }
     return MATERIAL_AIR;
 }
 
 __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
                                float* muon_data_momenta,
-                               const float* hist_2d_probability_table,
-                               const int* hist_2d_alias_table,
-                               const float* hist_2d_bin_centers_first_dim,
-                               const float* hist_2d_bin_centers_second_dim,
-                               const float* hist_2d_bin_widths_first_dim,
-                               const float* hist_2d_bin_widths_second_dim,
+                               const float* charges,
+                               const float* hist_2d_probability_table_iron,
+                               const int* hist_2d_alias_table_iron,
+                               const float* hist_2d_bin_centers_first_dim_iron,
+                               const float* hist_2d_bin_centers_second_dim_iron,
+                               const float* hist_2d_bin_widths_first_dim_iron,
+                               const float* hist_2d_bin_widths_second_dim_iron,
+                               const float* hist_2d_probability_table_concrete,
+                               const int* hist_2d_alias_table_concrete,
+                               const float* hist_2d_bin_centers_first_dim_concrete,
+                               const float* hist_2d_bin_centers_second_dim_concrete,
+                               const float* hist_2d_bin_widths_first_dim_concrete,
+                               const float* hist_2d_bin_widths_second_dim_concrete,
                                const float* magnetic_field,
+                               const float sensitive_plane_z,
                                const float kill_at,
                                const int N,
                                const int H_2d,
+                               const ARB8_Data* arb8s,
+                               const int num_arb8s,
+                               const float* cavern_params,
                                const int fieldBinsX, const int fieldBinsY, const int fieldBinsZ,
                                const float fieldStartX, const float fieldEndX,
                                const float fieldStartY, const float fieldEndY,
@@ -543,7 +580,6 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
                                int seed)
                                {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
     if (idx >= N) return;
 
 
@@ -552,7 +588,7 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
     curand_init(seed, idx, 0, &state);  // Use idx as seed for unique randomness
 
     int offset = idx * 3;
-    float delta_P[3] = {0,0,-1};
+    float delta_P[3] = {0,0,0};
     float output[3] = {0, 0, 0};
 
 //     float *muon_data_momenta_this = muon_data_momenta + offset;
@@ -560,6 +596,7 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
 
     float muon_data_momenta_this_cached[3] = {muon_data_momenta[offset+0], muon_data_momenta[offset+1], muon_data_momenta[offset+2]};
     float muon_data_positions_this_cached[3] = {muon_data_positions[offset+0], muon_data_positions[offset+1], muon_data_positions[offset+2]};
+    float charge_this_cached = charges[idx];
 
     for (int step = 0; step < num_steps; step++) {
         float mag_P = norm(muon_data_momenta_this_cached);
@@ -572,16 +609,19 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
         if (hist_idx==-1)
             break;
 
-        if (kill_at != -1 and mag_P < kill_at)
+        if (mag_P < kill_at)
             break;
 
         // 2. Generate a uniform random number in [0, 1] for sampling from CDF
         float rand_value = curand_uniform(&state);
-        // Get material at current position (dummy for now)
+
         MaterialType material = get_material(
             muon_data_positions_this_cached[0],
-            muon_data_positions_this_cached[1],
-            muon_data_positions_this_cached[2]
+           muon_data_positions_this_cached[1],
+            muon_data_positions_this_cached[2],
+            arb8s,
+            num_arb8s,
+            cavern_params
         );
 
         float delta = 0.0f;
@@ -589,18 +629,38 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
         if (material == MATERIAL_IRON) {
             int bin_idx;
             int tbin = curand(&state) % H_2d;
-            
-            if (rand_value < hist_2d_probability_table[tbin+hist_idx*H_2d])
+
+            if (rand_value < hist_2d_probability_table_iron[tbin+hist_idx*H_2d])
                 bin_idx = tbin;
             else
-                bin_idx =  hist_2d_alias_table[tbin+hist_idx*H_2d];
+                bin_idx =  hist_2d_alias_table_iron[tbin+hist_idx*H_2d];
             // 3. Retrieve the bin value and add it to muon_valu
-            float bin_value_first_dim = hist_2d_bin_centers_first_dim[bin_idx]; // Initialize bin_value at the bin center
-            float bin_jitter_first_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_first_dim[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
+            float bin_value_first_dim = hist_2d_bin_centers_first_dim_iron[bin_idx]; // Initialize bin_value at the bin center
+            float bin_jitter_first_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_first_dim_iron[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
             bin_value_first_dim += bin_jitter_first_dim; // Apply jitter to the bin value
 
-            float bin_value_second_dim = hist_2d_bin_centers_second_dim[bin_idx]; // Initialize bin_value at the bin center
-            float bin_jitter_second_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_second_dim[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
+            float bin_value_second_dim = hist_2d_bin_centers_second_dim_iron[bin_idx]; // Initialize bin_value at the bin center
+            float bin_jitter_second_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_second_dim_iron[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
+            bin_value_second_dim += bin_jitter_second_dim; // Apply jitter to the bin value
+
+            delta = mag_P * exp(bin_value_first_dim);
+            delta_second_dim = mag_P * exp(bin_value_second_dim);
+        }
+        else if (material == MATERIAL_CONCRETE) {
+            int bin_idx;
+            int tbin = curand(&state) % H_2d;
+
+            if (rand_value < hist_2d_probability_table_concrete[tbin+hist_idx*H_2d])
+                bin_idx = tbin;
+            else
+                bin_idx =  hist_2d_alias_table_concrete[tbin+hist_idx*H_2d];
+            // 3. Retrieve the bin value and add it to muon_valu
+            float bin_value_first_dim = hist_2d_bin_centers_first_dim_concrete[bin_idx]; // Initialize bin_value at the bin center
+            float bin_jitter_first_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_first_dim_concrete[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
+            bin_value_first_dim += bin_jitter_first_dim; // Apply jitter to the bin value
+
+            float bin_value_second_dim = hist_2d_bin_centers_second_dim_concrete[bin_idx]; // Initialize bin_value at the bin center
+            float bin_jitter_second_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_second_dim_concrete[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
             bin_value_second_dim += bin_jitter_second_dim; // Apply jitter to the bin value
 
             delta = mag_P * exp(bin_value_first_dim);
@@ -623,17 +683,29 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
         muon_data_momenta_this_cached[0] = output[0];
         muon_data_momenta_this_cached[1] = output[1];
         muon_data_momenta_this_cached[2] = output[2];
+        if (muon_data_momenta_this_cached[2] < 0.0f) {
+            break;
+        }
 
         rk4_step(muon_data_positions_this_cached, muon_data_momenta_this_cached,
-                      +1, step_length_fixed,
-                      magnetic_field,
-                      muon_data_positions_this_cached, muon_data_momenta_this_cached,
-                      fieldBinsX, fieldBinsY, fieldBinsZ,
-                      fieldStartX, fieldEndX,
-                      fieldStartY, fieldEndY,
-                      fieldStartZ, fieldEndZ);
+              charge_this_cached, step_length_fixed,
+              magnetic_field,
+              muon_data_positions_this_cached, muon_data_momenta_this_cached,
+              fieldBinsX, fieldBinsY, fieldBinsZ,
+              fieldStartX, fieldEndX,
+              fieldStartY, fieldEndY,
+              fieldStartZ, fieldEndZ);
+        if (sensitive_plane_z >= 0) {
+            float z_after = muon_data_positions_this_cached[2];
+            //float half_thick = 0.011f;
+            //float z_min = sensitive_plane_z - half_thick;
+            //float z_max = sensitive_plane_z + half_thick;
+            bool crossed = z_after >= sensitive_plane_z;
+            if (crossed) {
+                break;
+            }
+        }
     }
-
     muon_data_momenta[offset+0] = muon_data_momenta_this_cached[0];
     muon_data_momenta[offset+1] = muon_data_momenta_this_cached[1];
     muon_data_momenta[offset+2] = muon_data_momenta_this_cached[2];
@@ -647,28 +719,35 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
 void propagate_muons_with_alias_sampling_cuda(
     torch::Tensor muon_data_positions,
     torch::Tensor muon_data_momenta,
-    torch::Tensor hist_2d_probability_table,
-    torch::Tensor hist_2d_alias_table,
-    torch::Tensor hist_2d_bin_centers_first_dim,
-    torch::Tensor hist_2d_bin_centers_second_dim,
-    torch::Tensor hist_2d_bin_widths_first_dim,
-    torch::Tensor hist_2d_bin_widths_second_dim,
+    torch::Tensor charges,
+    torch::Tensor hist_2d_probability_table_iron,
+    torch::Tensor hist_2d_alias_table_iron,
+    torch::Tensor hist_2d_bin_centers_first_dim_iron,
+    torch::Tensor hist_2d_bin_centers_second_dim_iron,
+    torch::Tensor hist_2d_bin_widths_first_dim_iron,
+    torch::Tensor hist_2d_bin_widths_second_dim_iron,
+    torch::Tensor hist_2d_probability_table_concrete,
+    torch::Tensor hist_2d_alias_table_concrete,
+    torch::Tensor hist_2d_bin_centers_first_dim_concrete,
+    torch::Tensor hist_2d_bin_centers_second_dim_concrete,
+    torch::Tensor hist_2d_bin_widths_first_dim_concrete,
+    torch::Tensor hist_2d_bin_widths_second_dim_concrete,
     torch::Tensor magnetic_field,
     torch::Tensor magnetic_field_range,
     torch::Tensor arb8s,
     torch::Tensor hashed3d_arb8s,
     torch::Tensor hashed3d_arb8s_range,
+    torch::Tensor cavern_params,
+    float sensitive_plane_z,
     float kill_at,
     int num_steps,
     float step_length_fixed,
     int seed
 ) {
-    TORCH_CHECK(arb8s.size(1) == 5, "Expected the second dimension of arb8s to be 5, but got ", arb8s.size(1));
     TORCH_CHECK(magnetic_field_range.size(1) == 6, "Expected the second dimension of magnetic_field_range to be 6, but got ", magnetic_field_range.size(1));
     TORCH_CHECK(hashed3d_arb8s_range.size(1) == 6, "Expected the second dimension of hashed3d_arb8s_range to be 6, but got ", hashed3d_arb8s_range.size(1));
-
     const auto N = muon_data_positions.size(0);
-    const auto H_2D = hist_2d_probability_table.size(1);
+    const auto H_2D = hist_2d_probability_table_iron.size(1);
 
     const auto nx_mag_field = magnetic_field.size(0);
     const auto ny_mag_field = magnetic_field.size(1);
@@ -688,21 +767,26 @@ void propagate_muons_with_alias_sampling_cuda(
     float rangeStartZ = data_ptr[4];
     float rangeEndZ = data_ptr[5];
 
-    float rangeStartXArbs = data_ptr_arbs[0];
+    /*float rangeStartXArbs = data_ptr_arbs[0];
     float rangeEndXArbs = data_ptr_arbs[1];
     float rangeStartYArbs = data_ptr_arbs[2];
     float rangeEndYArbs = data_ptr_arbs[3];
     float rangeStartZArbs = data_ptr_arbs[4];
-    float rangeEndZArbs = data_ptr_arbs[5];
+    float rangeEndZArbs = data_ptr_arbs[5];*/
 
-    // Prepare ARB8s
-    std::vector<ARB8_Data> arb8s_host;
-    load_arb8s_from_tensor(arb8s, arb8s.select(2,2), arb8s.select(2,3), arb8s_host); // Adjust if z_center/dz are in separate tensors
-
+    int N_arbs = arb8s.size(0);
     ARB8_Data* arb8s_device;
-    cudaMalloc(&arb8s_device, arb8s_host.size() * sizeof(ARB8_Data));
-    cudaMemcpy(arb8s_device, arb8s_host.data(), arb8s_host.size() * sizeof(ARB8_Data), cudaMemcpyHostToDevice);
+    cudaMalloc(&arb8s_device, N_arbs * sizeof(ARB8_Data));
 
+    const int threads = 256;
+    const int blocks = (N_arbs + threads - 1) / threads;
+    fill_arb8s_kernel<<<blocks, threads>>>(
+        arb8s.data_ptr<float>(),
+        arb8s_device,
+        N_arbs
+    );
+    cudaDeviceSynchronize(); // or CUDA_CHECK(cudaDeviceSynchronize());
+    
 
     #define CUDA_CHECK(call)                                          \
     do {                                                          \
@@ -713,22 +797,30 @@ void propagate_muons_with_alias_sampling_cuda(
             exit(EXIT_FAILURE);                                   \
         }                                                         \
     } while (0)
-
-
-    // Launch the kernel with raw pointers
     cuda_test_propagate_muons_k<<<num_blocks, threads_per_block>>>(
         muon_data_positions.data_ptr<float>(),
         muon_data_momenta.data_ptr<float>(),
-        hist_2d_probability_table.data_ptr<float>(),
-        hist_2d_alias_table.data_ptr<int>(),
-        hist_2d_bin_centers_first_dim.data_ptr<float>(),
-        hist_2d_bin_centers_second_dim.data_ptr<float>(),
-        hist_2d_bin_widths_first_dim.data_ptr<float>(),
-        hist_2d_bin_widths_second_dim.data_ptr<float>(),
+        charges.data_ptr<float>(),
+        hist_2d_probability_table_iron.data_ptr<float>(),
+        hist_2d_alias_table_iron.data_ptr<int>(),
+        hist_2d_bin_centers_first_dim_iron.data_ptr<float>(),
+        hist_2d_bin_centers_second_dim_iron.data_ptr<float>(),
+        hist_2d_bin_widths_first_dim_iron.data_ptr<float>(),
+        hist_2d_bin_widths_second_dim_iron.data_ptr<float>(),
+        hist_2d_probability_table_concrete.data_ptr<float>(),
+        hist_2d_alias_table_concrete.data_ptr<int>(),
+        hist_2d_bin_centers_first_dim_concrete.data_ptr<float>(),
+        hist_2d_bin_centers_second_dim_concrete.data_ptr<float>(),
+        hist_2d_bin_widths_first_dim_concrete.data_ptr<float>(),
+        hist_2d_bin_widths_second_dim_concrete.data_ptr<float>(),
         magnetic_field.data_ptr<float>(),
+        sensitive_plane_z,
         kill_at,
         N,
         H_2D,
+        arb8s_device,
+        N_arbs,
+        cavern_params.data_ptr<float>(),
         nx_mag_field,
         ny_mag_field,
         nz_mag_field,
@@ -739,9 +831,11 @@ void propagate_muons_with_alias_sampling_cuda(
         step_length_fixed,
         seed
     );
+
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
     cudaFree(arb8s_device);
+
 
 //     // Synchronize to ensure kernel completion
 //     cudaDeviceSynchronize();

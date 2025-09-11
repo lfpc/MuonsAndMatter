@@ -6,21 +6,20 @@ import numpy as np
 def get_NI(params, fSC_mag = False, use_diluted = False):
     params = np.asarray(params, dtype=np.float32)
     new_params = params.copy()
-    for i, (mag,idx) in enumerate(params_lib.new_parametrization.items()):
-        mag_params = params[idx]
-        if mag_params[0]<1: continue
-        if mag_params[1]<1: 
+    for i, mag_params in enumerate(params):
+        if mag_params[1]<1: continue
+        if mag_params[2]<1: 
             continue
-        if fSC_mag and mag  == 'M2':
+        if fSC_mag and mag_params[14] > 2.5:
             Ymgap = magnet_simulations.SC_Ymgap; yoke_type = 'Mag2'
         elif use_diluted: Ymgap = 0.; yoke_type = 'Mag1'
         else: 
             Ymgap = 0.; 
-            yoke_type = 'Mag3' if mag_params[13]<0 else 'Mag1'
+            yoke_type = 'Mag3' if mag_params[14]<0 else 'Mag1'
 
         d = magnet_simulations.get_magnet_params(mag_params, Ymgap=Ymgap, use_B_goal=True, yoke_type=yoke_type, use_diluted = use_diluted)
-        print(f"Magnet: {mag}, NI: {d['NI(A)']:.2f} A")
-        new_params[idx[-1]] = -d['NI(A)'] if yoke_type == 'Mag3' else d['NI(A)']
+        print(f"Magnet: {i}, NI: {d['NI(A)']:.2f} A")
+        new_params[i] = -d['NI(A)'] if yoke_type == 'Mag3' else d['NI(A)']
     return new_params
 
 if __name__ == "__main__":

@@ -1,28 +1,24 @@
 from os.path import exists, join
-from os import getenv, environ
+from os import getenv
 import numpy as np
-import pickle
 from lib import magnet_simulations
 from time import time, sleep
 from muon_slabs import initialize
 import json
 import h5py
-
-from snoopy import RacetrackCoil, compute_prices, get_NI
-from pandas import DataFrame
+from snoopy import RacetrackCoil
 
 RESOL_DEF = magnet_simulations.RESOL_DEF
 MATERIALS_DIR = join(getenv('PROJECTS_DIR'),'MuonsAndMatter/data/materials')
 Z_GAP = 10 # in cm
-SC_Ymgap = magnet_simulations.SC_Ymgap*100
-N_PARAMS = 14
-SHIFT = -2.14
-CAVERN_TRANSITION = 20.518+SHIFT #m
+SC_Ymgap = magnet_simulations.SC_Ymgap
+N_PARAMS = 15
+SHIFT = -214
+CAVERN_TRANSITION = 2051.8+SHIFT
 
 def estimate_electrical_cost(params,
                              yoke_type,
                              Ymgap = 0.,
-                             z_gap = Z_GAP,
                             materials_directory=MATERIALS_DIR,
                             electricity_costs = 5.0,
                             NI_from_B = True):
@@ -34,7 +30,7 @@ def estimate_electrical_cost(params,
     :return:
        A tuple containing (M_coil, Q, current_density)
     '''
-    mag_params = magnet_simulations.get_magnet_params(params,Ymgap=Ymgap,yoke_type=yoke_type, use_B_goal=NI_from_B, materials_directory=materials_directory, z_gap=z_gap)
+    mag_params = magnet_simulations.get_magnet_params(params,Ymgap=Ymgap,yoke_type=yoke_type, use_B_goal=NI_from_B, materials_directory=materials_directory)
     coil_material = mag_params['coil_material']
     with open(join(materials_directory, coil_material)) as f:
         conductor_material_data = json.load(f)
@@ -187,25 +183,22 @@ def estimate_electrical_cost(params,
 
     return C_coil + C_edf
 
-
-
-
-def get_iron_cost(phi, Ymgap = 0,zGap = 10, material = 'aisi1010.json', materials_directory=MATERIALS_DIR):
+def get_iron_cost(params, Ymgap = 0, material = 'aisi1010.json', materials_directory=MATERIALS_DIR):
     '''Get the weight of the muon shield.'''
 
-    dZ = phi[0] - zGap/2
-    dX = phi[1]
-    dX2 = phi[2]
-    dY = phi[3]
-    dY2 = phi[4]
-    gap = phi[5]
-    gap2 = phi[6]
-    ratio_yoke_1 = phi[7]
-    ratio_yoke_2 = phi[8]
-    dY_yoke_1 = phi[9]
-    dY_yoke_2 = phi[10]
-    X_mgap_1 = phi[11]
-    X_mgap_2 = phi[12]
+    dZ = params[1]
+    dX = params[2]
+    dX2 = params[3]
+    dY = params[4]
+    dY2 = params[5]
+    gap = params[6]
+    gap2 = params[7]
+    ratio_yoke_1 = params[8]
+    ratio_yoke_2 = params[9]
+    dY_yoke_1 = params[10]
+    dY_yoke_2 = params[11]
+    X_mgap_1 = params[12]
+    X_mgap_2 = params[13]
 
 
     with open(join(materials_directory,material)) as f:
@@ -217,8 +210,6 @@ def get_iron_cost(phi, Ymgap = 0,zGap = 10, material = 'aisi1010.json', material
         """Compute the volume of the convex solid formed by two non-aligned rectangles using ConvexHull."""
         hull = ConvexHull(vertices)
         return hull.volume
-
-
     
     volume = 0
     corners = np.array([
@@ -263,8 +254,6 @@ def get_iron_cost(phi, Ymgap = 0,zGap = 10, material = 'aisi1010.json', material
     return C_iron
 
 
-
-
 def get_field(resimulate_fields = False,
             params = None,
             file_name = 'data/outputs/fields.pkl',
@@ -272,77 +261,69 @@ def get_field(resimulate_fields = False,
             **kwargs_field):
     '''Returns the field map for the given parameters. If from_file is True, the field map is loaded from the file_name.'''
     if resimulate_fields:
-        fields = magnet_simulations.simulate_field(params, file_name = file_name,**kwargs_field)['B']
         d_space = kwargs_field['d_space']
+        fields = magnet_simulations.simulate_field(params, file_name = file_name,**kwargs_field)['B']
     elif exists(file_name):
         print('Using field map from file', file_name)
         with h5py.File(file_name, 'r') as f:
             fields = f["B"][:]
             d_space = f["d_space"][:].tolist()
-        #d_space = [[round(float(val), 2) for val in axis] for axis in d_space]
-    
     if only_grid_params: 
-        d_space_mm = [[int(round(val * 1000)) for val in axis] for axis in d_space]
-        d_space = d_space_mm
         fields = {'B': file_name,
-                'range_x': [0.,d_space[0][1], d_space[0][2]],
-                'range_y': [0.,d_space[1][1], d_space[1][2]],
-                'range_z': [d_space[2][0],d_space[2][1], d_space[2][2]]}
+                'range_x': [d_space[0][0],d_space[0][1], RESOL_DEF[0]],
+                'range_y': [d_space[1][0],d_space[1][1], RESOL_DEF[1]],
+                'range_z': [d_space[2][0],d_space[2][1], RESOL_DEF[2]]}
     return fields
 
 
 def CreateArb8(arbName, medium, dZ, corners, magField, field_profile,
-               tShield, x_translation, y_translation, z_translation, stepGeo):
-
-    corners /= 100
-    dZ /= 100
-    z_translation /= 100
-
+               tShield, z_translation):
     tShield['components'].append({
-        'corners' : corners.tolist(),
+        'corners' : (corners/100).tolist(),
         'field_profile' : field_profile,
         'field' : magField,
         'name': arbName,
-        'dz' : float(dZ),
-        "z_center" : float(z_translation),
+        'dz' : float(dZ)/100,
+        "z_center" : float(z_translation)/100,
+        "material": medium
     })
+
 def CreateTarget(z_start:float):
     target = {}
     target_components = []
     N = 0#13
     T = 18#5
-    z_gap = 0.001
     materials = N * ["G4_Mo"] + T * ["G4_W"]
     lengths = [8., 2.5, 2.5, 2.5, 2.5, 
         2.5, 2.5, 2.5, 5.0, 5.0, 
         6.5, 8., 8., 5., 8., 
         10., 20., 50.]#35.]
-    h20_l = 0.5 / 100 # H20 slit *17 times
-    diameter  = 30. / 100  # full length in x and y
+    h20_l = 0.5 # H20 slit *17 times
+    diameter  = 30.  # full length in x and y
     z = z_start
     for i in range(N+T):
-        L = lengths[i]/100
+        L = lengths[i]
         if i!=0:
             target_components.append({
-            "radius": diameter / 2,
-            "dz": h20_l-z_gap,
-            "z_center": z + h20_l/2,
+            "radius": (diameter / 2) / 100,
+            "dz": (h20_l) / 100,
+            "z_center": (z + h20_l/2) / 100,
             "material": "G4_WATER",
             })
             z += h20_l
         target_components.append({
-            "radius": diameter / 2,
-            "dz": L-z_gap,
-            "z_center": z + L/2,
+            "radius": (diameter / 2) / 100,
+            "dz": (L) / 100,
+            "z_center": (z + L/2) / 100,
             "material": materials[i],
         })
         z += L
-    target = {'z_center' : (z_start + z)/2,
-              'length' : z - z_start,
+    target = {'z_center' : ((z_start + z)/2)/100,
+              'length' : (z - z_start)/100,
               'components' : target_components}
     return target
 
-def CreateCavern(shift = 0, length:float = 90.):
+def CreateCavern(shift = CAVERN_TRANSITION/100, length:float = 90.):
     cavern = []
     def cavern_components(x_translation, 
                y_translation, 
@@ -387,6 +368,10 @@ def CreateCavern(shift = 0, length:float = 90.):
             "name": 'TCC8',
             "dz": TCC8_length/2,
             "z_center" : TCC8_shift[2]+shift,
+            "x1": TCC8_shift[0]-dX_TCC8,
+            "x2": TCC8_shift[0]+dX_TCC8,
+            "y1": TCC8_shift[1]-dY_TCC8,
+            "y2": TCC8_shift[1]+dY_TCC8,
             "components" : []}
     TCC8["components"] = cavern_components(*TCC8_shift[:2],dX_TCC8,dY_TCC8,external_rock)
     cavern.append(TCC8)
@@ -395,6 +380,10 @@ def CreateCavern(shift = 0, length:float = 90.):
             "name": 'ECN3',
             "dz" : ECN3_length/2,
             "z_center" : ECN3_shift[2]+shift,
+            "x1": ECN3_shift[0]-dX_ECN3,
+            "x2": ECN3_shift[0]+dX_ECN3,
+            "y1": ECN3_shift[1]-dY_ECN3,
+            "y2": ECN3_shift[1]+dY_ECN3,
             "components" : []}
     ECN3["components"] = cavern_components(*ECN3_shift[:2],dX_ECN3,dY_ECN3,external_rock)
     cavern.append(ECN3)
@@ -402,12 +391,12 @@ def CreateCavern(shift = 0, length:float = 90.):
     return cavern
 
 def CreateDecayVessel(z_start:float = 31):
-    length = 50
-    z_center = z_start+ length/2
-    dXin = 1 / 2
-    dYin = 2.70 / 2
-    dXout = 4 / 2
-    dYout = 6 / 2
+    length = 5000
+    z_center = z_start + length/2
+    dXin = 100 / 2
+    dYin = 270 / 2
+    dXout = 400 / 2
+    dYout = 600 / 2
 
 
     corners = np.array([-dXin, -dYin,
@@ -420,10 +409,10 @@ def CreateDecayVessel(z_start:float = 31):
                         -dXout, dYout])
 
     DecayVessel = {'name': 'DecayVessel',
-                    'corners': corners.tolist(),
+                    'corners': (corners/100).tolist(),
                    'material': "G4_AIR",
-                   'z_center': z_center,
-                   'dz': length / 2}
+                   'z_center': z_center/100,
+                   'dz': (length / 2) / 100}
     return DecayVessel
 
 # fields should be 4x3 np array
@@ -431,12 +420,11 @@ def create_magnet(magnetName, medium, tShield,
                   fields,field_profile, dX,
                   dY, dX2, dY2, dZ, middleGap,
                   middleGap2,ratio_yoke_1, ratio_yoke_2, dY_yoke_1,dY_yoke_2, gap,
-                  gap2, Z, stepGeo, Ymgap = 0):
+                  gap2, Z, Ymgap = 0):
     dY += Ymgap #by doing in this way, the gap is filled with iron in Geant4, but simplifies
     coil_gap = gap
     coil_gap2 = gap2
-    anti_overlap = 0.0# gap between fields in the corners for mitred joints (Geant goes crazy when
-    # they touch each other)
+    anti_overlap = 0.01
 
 
     cornersMainL = np.array([
@@ -534,237 +522,172 @@ def create_magnet(magnetName, medium, tShield,
     str10 = "_MagBotLeft"
     str11 = "_MagBotRight"
 
-    stepGeo = False
-
     theMagnet = {
         'components' : [],
-        'dz' : float(dZ)/100,
-        'z_center' : float(Z)/100,
+        'dz' : float(dZ) / 100,
+        'z_center' : float(Z) / 100,
+        'material' : medium,
     }
 
     if field_profile == 'uniform':
-        CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, fields[0], field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, fields[1], field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str8, medium, dZ, cornersTL, fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str9, medium, dZ, cornersTR, fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str10, medium, dZ, cornersBL, fields[2], field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str11, medium, dZ, cornersBR, fields[3], field_profile, theMagnet, 0, 0, Z, stepGeo)
+        CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, fields[0], field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, fields[0], field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, fields[1], field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, fields[1], field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str8, medium, dZ, cornersTL, fields[3], field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str9, medium, dZ, cornersTR, fields[2], field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str10, medium, dZ, cornersBL, fields[2], field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str11, medium, dZ, cornersBR, fields[3], field_profile, theMagnet, Z)
 
     else:
-        CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str8, medium, dZ, cornersTL, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str9, medium, dZ, cornersTR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str10, medium, dZ, cornersBL, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-        CreateArb8(magnetName + str11, medium, dZ, cornersBR, fields, field_profile, theMagnet, 0, 0, Z, stepGeo)
-    
+        CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, fields, field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, fields, field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, fields, field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, fields, field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str8, medium, dZ, cornersTL, fields, field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str9, medium, dZ, cornersTR, fields, field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str10, medium, dZ, cornersBL, fields, field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str11, medium, dZ, cornersBR, fields, field_profile, theMagnet, Z)
+
 
     tShield['magnets'].append(theMagnet)
 
 
-def construct_block(medium, tShield,field_profile, stepGeo, length):
+def construct_block(medium, tShield,field_profile, length):
     #iron block before the magnet
-    z_gap = 1.
+    z_gap = 2.
     dX = 50.
     dY = 50.
     dZ = length/2 - z_gap/2
     Z = -length/2
-    cornersIronBlock = np.array([
+    cornersIronBlock = np.tile(np.array([
         -dX, -dY,
-        dX, -dY,
-        dX, dY,
         -dX, dY,
-        -dX, -dY,
-        dX, -dY,
         dX, dY,
-        -dX, dY
-    ])
+        dX, -dY,
+    ]), 2)
     Block = {
         'components' : [],
         'dz' : float(dZ)/100,
         'z_center' : float(Z)/100,
+        'material' : medium
     }
     #cornersIronBlock = contraints_cavern_intersection(cornersIronBlock/100, dZ/100, Z/100, 22-2.345)
-    CreateArb8('IronAfterTarget', medium, dZ, cornersIronBlock, [0.,0.,0.], field_profile, Block, 0, 0, Z, stepGeo)
+    CreateArb8('IronAfterTarget', medium, dZ, cornersIronBlock, [0.,0.,0.], field_profile, Block, Z)
     tShield['magnets'].append(Block)
 
 
-def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1,extra_magnet = False, NI_from_B = True, use_diluted = False, SND = False):
+def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1, NI_from_B = True, use_diluted = False, SND = False):
 
-    
-    n_magnets = 7 + int(extra_magnet)
-    cm = 1
-    m = 100 * cm
-    tesla = 1
-    zgap = Z_GAP*cm
-
-    magnetName = ["MagnAbsorb2", "Magn1", "Magn2", "Magn3", "Magn4", "Magn5", "Magn6", "Magn7"]
-
-
-    dZ1 = params[0]
-    dZ2 = params[1]
-    dZ3 = params[2]
-    dZ4 = params[3]
-    dZ5 = params[4]
-    dZ6 = params[5]
-    dZ7 = params[6]
-    fMuonShieldLength = 2 * (dZ1 + dZ2 + dZ3 + dZ4 + dZ5 + dZ6 + dZ7)+ zgap
-
-
-    dXIn = np.zeros(n_magnets)
-    dXOut = np.zeros(n_magnets)
-    gapIn = np.zeros(n_magnets)
-    dYIn = np.zeros(n_magnets)
-    dYOut = np.zeros(n_magnets)
-    gapOut = np.zeros(n_magnets)
-    dZf = np.zeros(n_magnets)
-    ratio_yokesIn = np.ones(n_magnets)
-    ratio_yokesOut = np.ones(n_magnets)
-    dY_yokeIn = np.zeros(n_magnets)
-    dY_yokeOut = np.zeros(n_magnets)
-
-    Z = np.zeros(n_magnets)
-    midGapIn= np.zeros(n_magnets)
-    midGapOut= np.zeros(n_magnets)
-    NI = np.zeros(n_magnets)
-
-
-    offset = n_magnets - int(extra_magnet)
-    n_params = len(params)/n_magnets - 1
-    n_params = 13
-
-    for i in range(n_magnets - int(extra_magnet)):
-        dXIn[i] = params[offset + i * n_params]
-        dXOut[i] = params[offset + i * n_params + 1]
-        dYIn[i] = params[offset + i * n_params + 2]
-        dYOut[i] = params[offset + i * n_params + 3]
-        gapIn[i] = params[offset + i * n_params + 4]
-        gapOut[i] = params[offset + i * n_params + 5]
-        ratio_yokesIn[i] = params[offset + i * n_params + 6]
-        ratio_yokesOut[i] = params[offset + i * n_params + 7]
-        dY_yokeIn[i] = params[offset + i * n_params + 8]
-        dY_yokeOut[i] = params[offset + i * n_params + 9]
-        midGapIn[i] = params[offset + i * n_params + 10]
-        midGapOut[i] = params[offset + i * n_params + 11]
-        NI[i] = params[offset + i * n_params + 12]
-    dZf[0] = dZ1 - zgap / 2
-    Z[0] = dZf[0]
-    dZf[1] = dZ2 - zgap / 2
-    Z[1] = Z[0] + dZf[0] + dZf[1] + 2 * zgap
-    dZf[2] = dZ3 - zgap / 2
-    Z[2] = Z[1] + dZf[1] + dZf[2] + zgap
-    dZf[3] = dZ4 - zgap / 2
-    Z[3] = Z[2] + dZf[2] + dZf[3] + zgap
-    dZf[4] = dZ5 - zgap / 2
-    Z[4] = Z[3] + dZf[3] + dZf[4] + zgap
-    dZf[5] = dZ6 - zgap / 2
-    Z[5] = Z[4] + dZf[4] + dZf[5] + zgap
-    dZf[6] = dZ7 - zgap / 2
-    Z[6] = Z[5] + dZf[5] + dZf[6] + zgap
-
-    if extra_magnet:
-        dXIn[7] = dXOut[6] #last small magnet
-        dYIn[7] = dYOut[6]
-        dXOut[7] = dXIn[7]
-        dYOut[7] = dYIn[7]
-        gapIn[7] = gapOut[6]
-        gapOut[7] = gapIn[7]
-        ratio_yokesIn[7] = ratio_yokesOut[6]
-        ratio_yokesOut[7] = ratio_yokesIn[7]
-        dY_yokeIn[7] = dY_yokeOut[6]
-        dY_yokeOut[7] = dY_yokeIn[7]
-        midGapIn[7] = midGapOut[6]
-        midGapOut[7] = midGapIn[7]
-        NI[7] = NI[6]
-        dZf[7] = 0.1 * m
-        Z[7] = Z[6] + dZf[6] + dZf[7]
-        fMuonShieldLength += dZf[7]
+    n_magnets = len(params)
+    length = (params[:,:0].sum() + 2*params[:,1].sum()).item()
 
     tShield = {
-        'dz': float(fMuonShieldLength/100),
+        'dz': length / 100,
         'magnets':[],
         'global_field_map': {},
     }
-    if field_map_file is not None or simulate_fields: 
-        simulate_fields = (not exists(field_map_file)) or simulate_fields
-        max_x = max(np.max(dXIn + dXIn * ratio_yokesIn + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokesOut+gapOut+midGapOut))/100
-        max_y = max(np.max(dYIn + dY_yokeIn), np.max(dYOut + dY_yokeOut))/100
-        max_x = np.round(max_x,decimals=1).item()
-        max_y = np.round(max_y,decimals=1).item()
-        d_space = ((0,max_x+0.3, RESOL_DEF[0]), (0,max_y+0.3, RESOL_DEF[1]), (-0.5, np.ceil((Z[-1]+dZf[-1]+50+10)/100).item(), RESOL_DEF[2]))
-        field_map = get_field(simulate_fields,np.asarray(params),Z_init = (Z[0] - dZf[0]), fSC_mag=fSC_mag,  d_space = d_space,
-                              file_name=field_map_file, only_grid_params=True, NI_from_B_goal = NI_from_B, z_gap=zgap,
-                              cores = min(cores_field,n_magnets), use_diluted = use_diluted)
-        tShield['global_field_map'] = field_map
-        #tShield['cost'] = cost
+
+    Z = 0
     cost = 0
-    for nM in range(0,n_magnets):
-        if dZf[nM] < 1 or dXIn[nM] < 1: continue
-        if fSC_mag and (nM in [1,3]):
-            continue
-        if nM == 2 and fSC_mag:
-            Ymgap = SC_Ymgap*cm
-        else: Ymgap = 0.0
+    max_x = 0
+    max_y = 0
+    for nM,magnet in enumerate(params):
+        magnet = magnet.tolist()
+        zgap = magnet[0]
+        dZ = magnet[1]
+        dXIn = magnet[2]
+        dXOut = magnet[3]
+        dYIn = magnet[4]
+        dYOut = magnet[5]
+        gapIn = magnet[6]
+        gapOut = magnet[7]
+        ratio_yokesIn = magnet[8]
+        ratio_yokesOut = magnet[9]
+        dY_yokeIn = magnet[10]
+        dY_yokeOut = magnet[11]
+        midGapIn = magnet[12]
+        midGapOut = magnet[13]
+        NI = magnet[14]
 
-        ironField_s = float(NI[nM]) * tesla
+        if dZ < 1 or dXIn < 1: Z += dZ + zgap; continue
 
-        ratio_yoke = float(ratio_yokesIn[nM])
+        is_SC = fSC_mag and (NI>1e6)
+        Ymgap = SC_Ymgap if is_SC else 0
+        Z += zgap + dZ
 
-        if simulate_fields or field_map_file is not  None:
+        if simulate_fields or field_map_file is not None:
             field_profile = 'global'
             fields_s = [[],[],[]]
         else:
             field_profile = 'uniform'
-            if ironField_s<0: ironField_s *= ratio_yoke
+            ironField_s = 5.7 if is_SC else 1.9
+            if NI<0:
+                ironField_s = -ironField_s
             magFieldIron_s = [0., ironField_s, 0.]
-            RetField_s = [0., -ironField_s/ratio_yoke, 0.]
-            ConRField_s = [-ironField_s/ratio_yoke, 0., 0.]
-            ConLField_s = [ironField_s/ratio_yoke, 0., 0.]
+            RetField_s = [0., -ironField_s/ratio_yokesIn, 0.]
+            ConRField_s = [-ironField_s/ratio_yokesIn, 0., 0.]
+            ConLField_s = [ironField_s/ratio_yokesIn, 0., 0.]
             fields_s = [magFieldIron_s, RetField_s, ConRField_s, ConLField_s]
 
-        create_magnet(magnetName[nM], "G4_Fe", tShield, fields_s, field_profile, dXIn[nM], dYIn[nM], dXOut[nM],
-              dYOut[nM], dZf[nM], midGapIn[nM], midGapOut[nM], ratio_yoke, ratio_yokesOut[nM],
-              dY_yokeIn[nM], dY_yokeOut[nM], gapIn[nM], gapOut[nM], Z[nM], False, Ymgap=Ymgap)
-        yoke_type = 'Mag1' if nM in [0,1,2,3] else 'Mag3'
-        if fSC_mag and nM==2: yoke_type = 'Mag2'
-        cost += get_iron_cost([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yoke, ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM]], Ymgap=Ymgap, zGap=zgap)        
-        cost += estimate_electrical_cost(np.array([dZf[nM]+zgap/2, dXIn[nM], dXOut[nM], dYIn[nM], dYOut[nM], gapIn[nM], gapOut[nM], ratio_yoke, ratio_yokesOut[nM], dY_yokeIn[nM], dY_yokeOut[nM], midGapIn[nM], midGapOut[nM], NI[nM]]), Ymgap=Ymgap, z_gap=zgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
-    if SND and (midGapIn[5] > 30) and (midGapOut[5] > 30):
-        gap = 10 * cm
-        dX = 20.-gap
-        dY = 20.-gap
-        dZ = 172/2
-        Z = (Z[5]+dZf[5])-dZ
-        corners = np.array([
-            -dX, -dY,
-            dX, -dY,
-            dX, dY,
-            -dX, dY,
-            -dX, -dY,
-            dX, -dY,
-            dX, dY,
-            -dX, dY
-        ])
-        Block = {
-            'components' : [],
-            'dz' : dZ/100,
-            'z_center' : Z/100,
-        }
-        #cornersIronBlock = contraints_cavern_intersection(cornersIronBlock/100, dZ/100, Z/100, 22-2.345)
-        CreateArb8('SND_Emu_Si', 'G4_Fe', dZ, corners, [0.,0.,0.], 'uniform', Block, 0, 0, Z, False)
-        tShield['magnets'].append(Block)
-    elif SND:
-        print("WARNING")
-        print("No space for the SND: midGapIn[5] <= 30 or midGapOut[5] <= 30")
-    tShield['cost'] = float(cost)
+        create_magnet(f"Mag_{nM}", "G4_Fe", tShield, fields_s, field_profile, dXIn, dYIn, dXOut,
+              dYOut, dZ, midGapIn, midGapOut, ratio_yokesIn, ratio_yokesOut,
+              dY_yokeIn, dY_yokeOut, gapIn, gapOut, Z, Ymgap=Ymgap)
+        yoke_type = 'Mag1' if NI>0 else 'Mag3'
+        if is_SC: yoke_type = 'Mag2'
+        cost += get_iron_cost([0,dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, ratio_yokesIn, ratio_yokesOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut], Ymgap=Ymgap)        
+        cost += estimate_electrical_cost(np.array([0,dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, ratio_yokesIn, ratio_yokesOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut, NI]), Ymgap=Ymgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
+        Z += dZ
+        max_x = max(max_x, np.max(dXIn + dXIn * ratio_yokesIn + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokesOut+gapOut+midGapOut))
+        max_y = max(max_y, np.max(dYIn + dY_yokeIn), np.max(dYOut + dY_yokeOut))
+        if SND and nM == (n_magnets - 2): 
+
+            if (midGapIn > 30) and (midGapOut > 30):
+                gap = 10
+                dX = 20.-gap
+                dY = 20.-gap
+                dZ_snd = 172/2
+                Z = (Z+dZ)-dZ_snd
+                corners = np.array([
+                    -dX, -dY,
+                    dX, -dY,
+                    dX, dY,
+                    -dX, dY,
+                    -dX, -dY,
+                    dX, -dY,
+                    dX, dY,
+                    -dX, dY
+                ])
+                Block = {
+                    'components' : [],
+                    'dz' : dZ_snd,
+                    'z_center' : Z,
+                }
+                CreateArb8('SND_Emu_Si', 'G4_Fe', dZ, corners, [0.,0.,0.], 'uniform', Block, Z)
+                tShield['magnets'].append(Block)
+            else:
+                print("WARNING")
+                print("No space for the SND: midGapIn[5] <= 30 or midGapOut[5] <= 30")
+
+
+    if field_map_file is not None or simulate_fields: 
+        simulate_fields = (not exists(field_map_file)) or simulate_fields
+        resol = RESOL_DEF
+        max_x = int((max_x.item() // resol[0]) * resol[0])
+        max_y = int((max_y.item() // resol[1]) * resol[1])
+        d_space = ((0,max_x+30), (0,max_y+30), (-50, int(((length+200) // resol[2]) * resol[2])))
+
+        field_map = get_field(simulate_fields,np.asarray(params),
+                              Z_init = 0, fSC_mag=fSC_mag, 
+                              resol = resol, d_space = d_space,
+                              file_name=field_map_file, only_grid_params=True, NI_from_B_goal = NI_from_B,
+                              cores = min(cores_field,n_magnets), use_diluted = use_diluted)
+        tShield['global_field_map'] = field_map
+
+
+    tShield['cost'] = cost
+    field_profile = 'global' if simulate_fields else 'uniform'
     return tShield
-
-
-
 
 
 def get_design_from_params(params, 
@@ -782,32 +705,24 @@ def get_design_from_params(params,
                            use_diluted = False,
                            SND = False):
     params = np.round(params, 2)
-    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, extra_magnet = extra_magnet, NI_from_B = NI_from_B, use_diluted=use_diluted, SND=SND)
+    assert params.shape[-1] == 15
+    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, NI_from_B = NI_from_B, use_diluted=use_diluted, SND=SND)
     
-    World_dZ = 200 #m
-    World_dX = World_dY = 20 if add_cavern else 12
-    
-    if add_cavern: shield["cavern"] = CreateCavern(CAVERN_TRANSITION, length = World_dZ)
+    World_dZ = 200
+    World_dX = World_dY = 20 if add_cavern else 15
+
+    if add_cavern: shield["cavern"] = CreateCavern(CAVERN_TRANSITION/100, length = World_dZ)
     if add_target: 
         shield['target'] = CreateTarget(z_start=SHIFT)
-        construct_block("G4_Fe", shield, 'global' if simulate_fields else 'uniform', False, -100*(SHIFT+shield['target']['length']))
-    if sensitive_decay_vessel: shield['sensitive_box'] = CreateDecayVessel(z_start=33.12+SHIFT)
+        construct_block("G4_Fe", shield, 'global' if simulate_fields else 'uniform',  -(SHIFT+100*shield['target']['length']))
+    if sensitive_decay_vessel: shield['sensitive_box'] = CreateDecayVessel(z_start=3312+SHIFT)
     
-    i=0
-    max_z = 0
-    for mag in shield['magnets']:
-        i+=1
-        mag['z_center'] = mag['z_center']
-        for x in mag['components']:
-            if force_remove_magnetic_field:
-                x['field'] = (0.0, 0.0, 0.0)
-                x['field_profile'] = 'uniform'
-            elif x['field_profile'] not in ['uniform','global']: 
-                x['field']['B'] = x['field']['B'].tolist()
-            #if add_cavern: x['corners'] = contraints_cavern_intersection(np.array(x['corners']), x['dz'], x['z_center'], cavern_transition).tolist()
-        mag['material'] = 'G4_Fe'
-        if mag['dz'] + mag['z_center'] > max_z:
-            max_z = mag['dz'] + mag['z_center']
+    if force_remove_magnetic_field:
+        for mag in shield['magnets']:
+            mag['z_center'] = mag['z_center']
+            for x in mag['components']:
+                    x['field'] = (0.0, 0.0, 0.0)
+                    x['field_profile'] = 'uniform'
 
     shield.update({
      "worldSizeX": World_dX, "worldSizeY": World_dY, "worldSizeZ": World_dZ,
@@ -835,7 +750,7 @@ def get_design_from_params(params,
 def initialize_geant4(detector, seed = None):
     if seed is None: seeds = (np.random.randint(256), np.random.randint(256), np.random.randint(256), np.random.randint(256))
     else: seeds = (seed, seed, seed, seed)
-    detector = json.dumps(detector)#,default=lambda o: float(o) if (isinstance(o, np.float32) or isinstance(o, np.float64)) else o)
+    detector = json.dumps(detector)
     output_data = initialize(*seeds,detector)
     return output_data
 
@@ -859,6 +774,7 @@ if __name__ == '__main__':
     use_diluted =  False
     detector = get_design_from_params(params, simulate_fields=True,field_map_file = file_map_file, add_cavern=True, cores_field=core_field, fSC_mag = fSC_mag, use_diluted = use_diluted)
     t1_init = time()
+    
     output_data = initialize_geant4(detector)
     print('Time to initialize', time()-t1_init)
     print('TOTAL TIME', time()-t1)

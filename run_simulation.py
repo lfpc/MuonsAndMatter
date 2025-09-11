@@ -88,7 +88,7 @@ def run(muons,
     print('Time to initialize', time()-t1)
     output_data = json.loads(output_data)    
 
-    # set_kill_momenta(65)
+    # set_kill_momenta(1)
     
     kill_secondary_tracks(True)
     if muons.shape[-1] == 8: px,py,pz,x,y,z,charge,weights = muons.T
@@ -165,12 +165,14 @@ if __name__ == '__main__':
     from functools import partial
     import os
     
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     parser.add_argument("--n", type=int, default=0, help="Number of muons to process, 0 means all")
     parser.add_argument("--c", type=int, default=45, help="Number of CPU cores to use for parallel processing")
     parser.add_argument("-seed", type=int, default=None, help="Random seed for reproducibility")
     parser.add_argument("--f", type=str, default=DEF_INPUT_FILE, help="Input file (gzip .pkl) path containing muon data")
-    parser.add_argument("-params", type=str, default='sc_v6', help="Magnet parameters configuration - name or file path. Available names: " + ', '.join(params_lib.params.keys()) + ". If 'test', will prompt for input.")
+    parser.add_argument("-params", type=str, default='tokanut_v5', help="Magnet parameters configuration - name or file path. Available names: " + ', '.join(params_lib.params.keys()) + ". If 'test', will prompt for input.")
     parser.add_argument("--z", type=float, default=None, help="Initial z-position distance for all muons if specified (default is to use from input file)")
     parser.add_argument("-sens_plane", type=float, nargs='+', default=[82], help="Position(s) of the sensitive plane in z (m), 0 means no sensitive plane. Can specify multiple values separated by space.")
     parser.add_argument("-uniform_fields", dest="real_fields", action='store_false', help="Use uniform fields instead of realistic field maps (FEM)")
@@ -190,7 +192,7 @@ if __name__ == '__main__':
     parser.add_argument("-angle", type=float, default=90, help="Azimuthal viewing angle for 3D plot")
     parser.add_argument("-elev", type=float, default=90, help="Elevation viewing angle for 3D plot")
     parser.add_argument("-SND", action='store_true', help="Use SND configuration")
-
+    parser.add_argument("-remove_target", dest="add_target", action='store_false', help="Remove target from simulation")
 
     args = parser.parse_args()
     cores = args.c
@@ -216,19 +218,18 @@ if __name__ == '__main__':
     n_muons = args.n
     input_file = args.f
     input_dist = args.z
-    if args.sens_plane is None or args.sens_plane == [-1]:
-        sensitive_film_params = None
-    elif args.expanded_sens_plane:
-        sensitive_film_params = {'dz': 0.01, 'dx': 8, 'dy': 8, 'position':args.sens_plane}
-    else: 
-        sensitive_film_params = [{'dz': 0.01, 'dx': 4, 'dy': 6, 'position':pos} for pos in args.sens_plane]
-    t1_fem = time()
+    if args.sens_plane == [-1]: sensitive_film_params = None
+    elif args.expanded_sens_plane and args.add_cavern: dx,dy = 9.,7.
+    elif args.expanded_sens_plane: dx,dy = 14,14
+    else: dx, dy = 4.0, 6.0
+    sensitive_film_params = [{'dz': 0.01, 'dx': dx, 'dy': dy, 'position':pos} for pos in args.sens_plane]
+    t1_fem = time() 
     detector = None
     if not args.real_fields:
         args.field_file = None
     else:
         core_fields = 8
-        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, sensitive_film_params, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet, NI_from_B=args.use_B_goal, use_diluted = args.use_diluted)
+        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, None, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet, NI_from_B=args.use_B_goal, use_diluted = args.use_diluted)
     t2_fem = time()
 
     if input_file.endswith('.npy') or input_file.endswith('.pkl'):
@@ -266,7 +267,7 @@ if __name__ == '__main__':
                               seed=args.seed, 
                               draw_magnet=False, 
                               SmearBeamRadius=5, 
-                              add_target=True, 
+                              add_target=args.add_target, 
                               add_decay_vessel=args.decay_vessel,
                               keep_tracks_of_hits=args.keep_tracks_of_hits, 
                               extra_magnet=args.extra_magnet,
@@ -301,22 +302,31 @@ if __name__ == '__main__':
         with open(data_file, "wb") as f:
             pickle.dump(all_results, f)
         print("Data saved to ", data_file)
+
+    
     if args.plot_magnet:
         if args.real_fields: 
             with h5py.File(detector['global_field_map']['B'], 'r') as f:
                 fields = f["B"][:]
-                d_space = f["d_space"][:].tolist()
-            d_space = [[round(val, 2) for val in axis] for axis in d_space]
-            limits = ((d_space[0][0], d_space[1][0], d_space[2][0]), (d_space[0][1], d_space[1][1], d_space[2][1]))
-            resol = (d_space[0][2], d_space[1][2], d_space[2][2])
-            assert resol == RESOL_DEF, resol
-            X, Y, Z = construct_grid(limits=limits, resol=resol)
-            points = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+                points = f["points"][:]
             plot_fields(points,fields)
-        all_results = all_results[:3000]
-        if sensitive_film_params is None: sensitive_film_params = {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82}
+        if sensitive_film_params is None: sensitive_film_params = [{'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82}]
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = args.angle, elev = args.elev)
         else:
-            result = construct_and_plot(muons = all_results,phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = None, cavern = False, decay_vessel = args.decay_vessel, azim = args.angle, elev = args.elev)#args.add_cavern)
+            result = construct_and_plot(muons = all_results[:1000],phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = None, cavern = False, decay_vessel = args.decay_vessel, azim = args.angle, elev = args.elev)
+        import matplotlib.pyplot as plt
+        if isinstance(all_results, np.ndarray) and all_results.ndim == 2:
+            labels = ['px', 'py', 'pz', 'x', 'y', 'z']
+            for i, label in enumerate(labels):
+                plt.figure()
+                plt.hist(data[:, i], bins=100, histtype='step', label='input', linewidth=1.5, log=True)
+                plt.hist(all_results[:, i], bins=100, histtype='step', label='output', linewidth=1.5, log=True)
+                plt.xlabel(label)
+                plt.ylabel('Count')
+                plt.title(f'Histogram of {label} (GEANT4)')
+                plt.legend()
+                plt.tight_layout()
+                plt.savefig(f'plot_test_cuda/{label}_hist.png')
+                plt.close()
                                          

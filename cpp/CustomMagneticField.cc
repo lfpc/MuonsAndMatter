@@ -30,6 +30,9 @@ void CustomMagneticField::initializeGrid(const std::map<std::string, std::vector
     nx = static_cast<int>(std::round((x_max - x_min) * dx_inv))+1;
     ny = static_cast<int>(std::round((y_max - y_min) * dy_inv))+1;
     nz = static_cast<int>(std::round((z_max - z_min) * dz_inv))+1;
+    if (fFields.size() != static_cast<size_t>(nx * ny * nz)) {
+        throw std::runtime_error("Size of fFields does not match grid dimensions (nx*ny*nz)");
+    }
 
     std::cout << "Grid initialized with dimensions: " << nx << " x " << ny << " x " << nz << std::endl;
 }
@@ -50,7 +53,7 @@ void CustomMagneticField::GetFieldValueNearestNeighbor(const G4double Point[4], 
         quadrant = 2;
     } else if (Point[0] < 0 && Point[1] < 0) {
         quadrant = 3;
-    } else if (Point[0] >= 0 && Point[1] < 0) {
+    } else {
         quadrant = 4;
     }
     // Create a copy of Point and give it the value of the corresponding symmetry to the 1st quadrant

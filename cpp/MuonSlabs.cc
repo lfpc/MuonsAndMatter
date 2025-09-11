@@ -59,7 +59,8 @@ void simulate_muon(double px, double py, double pz, int charge,
     ui_manager->ApplyCommand(std::string("/run/beamOn ") + std::to_string(1));
 }
 
-py::dict collect_from_sensitive() {
+// DEPRECATED. Use collect_from_multiple_sensitive() instead.
+/*py::dict collect_from_sensitive() {
     auto detector2 = dynamic_cast<GDetectorConstruction*>(detector);
     if (detector2 == nullptr) {
         throw std::runtime_error("Sensitive film only possible for GDetectorConstruction.");
@@ -114,12 +115,16 @@ py::dict collect_from_sensitive() {
     );
 
     return d;
-}
+}*/
 
 py::dict collect_from_multiple_sensitive() {
-    auto detector2 = dynamic_cast<GDetectorConstruction*>(detector);
+    DetectorConstruction* detector2 = nullptr;
+    detector2 = dynamic_cast<GDetectorConstruction*>(detector);
     if (!detector2) {
-        throw std::runtime_error("Sensitive film only possible for GDetectorConstruction.");
+        detector2 = dynamic_cast<DetectorConstruction*>(detector);
+    }
+    if (!detector2) {
+        throw std::runtime_error("Sensitive film only possible for DetectorConstruction or GDetectorConstruction.");
     }
 
     const auto& detectors = detector2->slimFilmSensitiveDetectors;
@@ -162,73 +167,6 @@ py::dict collect_from_multiple_sensitive() {
 
     return d;
 }
-
-
-
-/*py::dict collect_from_multiple_sensitive() {
-    // Safely cast the global detector pointer to our derived class type
-    auto detector2 = dynamic_cast<GDetectorConstruction*>(detector);
-    if (detector2 == nullptr) {
-        throw std::runtime_error("Sensitive film data collection only possible for GDetectorConstruction.");
-    }
-
-    if (detector2->slimFilmSensitiveDetectors.empty()) {
-        // Return an empty dictionary if no detectors were created to avoid errors
-        std::cout << "Warning: No sensitive films were installed. Returning empty data." << std::endl;
-        return py::dict();
-    }
-
-    // Create master vectors to aggregate data from all detectors
-    std::vector<double> all_px, all_py, all_pz;
-    std::vector<double> all_x, all_y, all_z;
-    std::vector<int> all_trackId, all_pdgid;
-    // NEW: Add a vector to store which detector a hit belongs to.
-    std::vector<int> all_detectorId;
-
-    // Loop through each sensitive detector instance that was created
-    for (size_t i = 0; i < detector2->slimFilmSensitiveDetectors.size(); ++i) {
-        const auto& sd = detector2->slimFilmSensitiveDetectors[i];
-
-        // Append data from the current detector to the master vectors
-        std::cout << "all_pz.end(): " << static_cast<const void*>(&(*all_pz.end())) << std::endl;
-        all_px.insert(all_px.end(), sd->px.begin(), sd->px.end());
-        all_py.insert(all_py.end(), sd->py.begin(), sd->py.end());
-        all_pz.insert(all_pz.end(), sd->pz.begin(), sd->pz.end());
-        std::cout << "all_pz size before: " << all_pz.size() << std::endl;
-        std::cout << "Appending " << sd->pz.size() << " elements from detector " << i << std::endl;
-        for (const auto& val : sd->pz) {
-            std::cout << val << " ";
-        }
-        std::cout << std::endl;
-
-        all_x.insert(all_x.end(), sd->x.begin(), sd->x.end());
-        all_y.insert(all_y.end(), sd->y.begin(), sd->y.end());
-        all_z.insert(all_z.end(), sd->z.begin(), sd->z.end());
-
-        all_trackId.insert(all_trackId.end(), sd->trackId.begin(), sd->trackId.end());
-        all_pdgid.insert(all_pdgid.end(), sd->pid.begin(), sd->pid.end());
-
-        // For each hit from this detector, record its index 'i' as the detector ID.
-        std::vector<int> detector_ids(sd->trackId.size(), i);
-        all_detectorId.insert(all_detectorId.end(), detector_ids.begin(), detector_ids.end());
-    }
-
-    // Cast the aggregated C++ vectors into NumPy arrays and return them in a Python dictionary.
-    // There is no need to create intermediate copies of the vectors.
-    py::dict d = py::dict(
-        "px"_a = py::cast(all_px),
-        "py"_a = py::cast(all_py),
-        "pz"_a = py::cast(all_pz),
-        "x"_a = py::cast(all_x),
-        "y"_a = py::cast(all_y),
-        "z"_a = py::cast(all_z),
-        "track_id"_a = py::cast(all_trackId),
-        "pdg_id"_a = py::cast(all_pdgid),
-        "detector_id"_a = py::cast(all_detectorId) // The new detector ID field
-    );
-
-    return d;
-}*/
 
 py::dict collect() {
 
@@ -295,10 +233,6 @@ void set_kill_momenta(double kill_momenta) {
 std::string initialize( int rseed_0,
                  int rseed_1, int rseed_2, int rseed_3, std::string detector_specs) {
     randomEngine = new CLHEP::MTwistEngine(rseed_0);
-    //#include <chrono>
-    //auto start = std::chrono::high_resolution_clock::now(); 
-    //auto end = std::chrono::high_resolution_clock::now();
-    //std::cout<<"TIME JSON" << std::chrono::duration_cast<std::chrono::seconds>(end - start).count() << std::endl;
 
 
     long seeds[4] = {rseed_0, rseed_1, rseed_2, rseed_3};
