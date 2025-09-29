@@ -249,8 +249,7 @@ def get_iron_cost(params, Ymgap = 0, material = 'aisi1010.json', materials_direc
     
     M_iron = 4*volume*density
     C_iron = M_iron*(iron_material_data["material_cost(CHF/kg)"]
-                     +  iron_material_data["manufacturing_cost(CHF/kg)"])
-    print('The iron mass is = {:.2f} kg'.format(M_iron))   
+                     +  iron_material_data["manufacturing_cost(CHF/kg)"]) 
     return C_iron
 
 
@@ -572,6 +571,7 @@ def construct_block(medium, tShield,field_profile, length):
         'z_center' : float(Z)/100,
         'material' : medium
     }
+    
     #cornersIronBlock = contraints_cavern_intersection(cornersIronBlock/100, dZ/100, Z/100, 22-2.345)
     CreateArb8('IronAfterTarget', medium, dZ, cornersIronBlock, [0.,0.,0.], field_profile, Block, Z)
     tShield['magnets'].append(Block)
@@ -667,7 +667,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
                 tShield['magnets'].append(Block)
             else:
                 print("WARNING")
-                print("No space for the SND: midGapIn[5] <= 30 or midGapOut[5] <= 30")
+                print("No space for the SND: midGapIn[5] <= 30 or midGapOut[5] <= 30, got", midGapIn, midGapOut)
 
 
     if field_map_file is not None or simulate_fields: 

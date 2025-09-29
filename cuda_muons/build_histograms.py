@@ -6,6 +6,7 @@ import pickle
 import os
 import argparse
 import torch
+torch.set_default_dtype(torch.float64)
 
 parser = argparse.ArgumentParser(description="Run muon simulations.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--material', type=str, default='G4_Fe', help='Material to use for simulations (G4_Fe, G4_CONCRETE)')
@@ -14,16 +15,9 @@ args = parser.parse_args()
 
 material = args.material
 # Ensure all necessary directories exist
-directories = [
-    "data/multi",
-    "plots/edges", 
-    "plots/hists_a"
-]
 
-for directory in directories:
-    if not os.path.exists(directory):
-        print(f"Creating directory: {directory}")
-        os.makedirs(directory)
+
+os.makedirs("plots/hists_geant4", exist_ok=True)
 
 def compute_2d_histo(array_a, array_b, edges_a, edges_b):
     t1 = time.time()
@@ -56,19 +50,23 @@ def get_min_max_bin(h5_filename):
             delta_pz_f = np.log(np.abs((pz - initial_momenta) / initial_momenta))
             delta_pz_f = np.where(np.isnan(delta_pz_f), min_bin, delta_pz_f)
             delta_pz_f = np.where(delta_pz_f == float('-inf'), min_bin, delta_pz_f)
+            delta_pz_f = np.clip(delta_pz_f, min_bin, 0)
             min_dpz = min(min_dpz, np.min(delta_pz_f))
             max_dpz = max(max_dpz, np.max(delta_pz_f))
 
             secondary_f = np.log(np.sqrt(px**2 + py**2) / initial_momenta)
             secondary_f = np.where(np.isnan(secondary_f), min_bin, secondary_f)
+            secondary_f = np.where(secondary_f == float('-inf'), min_bin, secondary_f)
+            secondary_f = np.clip(secondary_f, min_bin, 0)
             min_secondary = min(min_secondary, np.min(secondary_f))
             max_secondary = max(max_secondary, np.max(secondary_f))
     min_dpz = np.floor(min_dpz * 10) / 10
     max_dpz = np.ceil(max_dpz * 10) / 10
     min_secondary = np.floor(min_secondary * 10) / 10
     max_secondary = np.ceil(max_secondary * 10) / 10
+    max_dpz = max(max_dpz, 0.0)
+    max_secondary = max(max_secondary, 0.0)
     return min_dpz, max_dpz, min_secondary, max_secondary
-
 min_delta_pz_f, max_delta_pz_f, min_secondary_f, max_secondary_f = get_min_max_bin(h5_filename)
 print(f"Min/Max delta_pz_f: {min_delta_pz_f}, {max_delta_pz_f}; Min/Max secondary_f: {min_secondary_f}, {max_secondary_f}")
 edges_dpz = np.linspace(min_delta_pz_f, max_delta_pz_f, nbins + 1)
@@ -83,7 +81,7 @@ with h5py.File(h5_filename, 'r') as f:
     hists_dict['step_length'] = step_length
     for energy_seg in sorted(
         f.keys(),
-        key=lambda k: int(k.strip("()").split(",")[0])):
+        key=lambda k: float(k.strip("()").split(",")[0])):
 
         print(f"Processing energy segment {energy_seg} GeV")
         px = f[energy_seg]['px'][:]
@@ -92,7 +90,9 @@ with h5py.File(h5_filename, 'r') as f:
         initial_momenta = f[energy_seg]['initial_momenta'][:]
 
         # Filtered values for delta_pz_f and delta_px_f
-        delta_pz_f_filt = np.log(np.abs((pz - initial_momenta) / initial_momenta))
+        assert (pz <= initial_momenta).all(), "Some final pz values are greater than initial momenta"
+        delta_pz_f_filt = np.log(np.abs(pz - initial_momenta) / initial_momenta)
+        #delta_pz_f_filt = np.clip(delta_pz_f_filt, min_bin, 0)
         delta_pz_f_filt = np.where(np.isnan(delta_pz_f_filt), min_bin, delta_pz_f_filt)
         delta_pz_f_filt = np.where(delta_pz_f_filt == float('-inf'), min_bin, delta_pz_f_filt)
     
@@ -107,7 +107,8 @@ with h5py.File(h5_filename, 'r') as f:
 
         hist_2d = compute_2d_histo(delta_pz_f_filt, secondary_f_filt, edges_dpz, edges_secondary)
 
-        energy_seg = tuple(int(x.strip()) for x in energy_seg.strip("()").split(","))
+        energy_seg = tuple(round(float(x.strip()), 4) for x in energy_seg.strip("()").split(","))
+        assert np.all((energy_seg[0]-0.0001 < initial_momenta) & (initial_momenta < energy_seg[1]+0.0001)), f"Initial momenta not in energy segment range. Min: {initial_momenta.min()}, Max: {initial_momenta.max()}, Segment: {energy_seg}"
         hists_dict[energy_seg] = {
             #'hist_dpz': hist_dpz,
             #'hist_secondary': hist_secondary,
@@ -147,7 +148,7 @@ with h5py.File(h5_filename, 'r') as f:
             ax[1].set_yscale('log')
             
             print("Plotting...")
-            plt.savefig(f'plots/hists_a/{energy_seg[0]}-{energy_seg[1]}_dpz_{material}.pdf', bbox_inches='tight')
+            plt.savefig(f'plots/hists_geant4/{energy_seg[0]}-{energy_seg[1]}_dpz_{material}.pdf', bbox_inches='tight')
             plt.close()
 
 # Save histograms

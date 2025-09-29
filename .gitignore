@@ -1,9 +1,6 @@
 # Ignore __pycache__ directories
 __pycache__/
 
-# Ignore .idea folder
-.idea/
-
 # Ignore .DS_Store files
 .DS_Store
 
@@ -14,7 +11,7 @@ cpp/build/*
 plots/*.png
 
 # Ignore data directory
-data/full_sample/
+data/full_sample/*.h5
 data/muons/*.pkl
 data/muons/*.npy
 data/muons/*.h5

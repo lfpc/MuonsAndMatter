@@ -189,14 +189,19 @@ __global__ void fill_arb8s_kernel(
     arb8s_out[i].dz = 0.5f * fabsf(z_pos - z_neg);
 }
 
-__device__ int get_first_bin(int num) {
+
+__constant__ float LOG_START;
+__constant__ float LOG_STOP;
+__constant__ float INV_LOG_STEP;
+
+__device__ int get_first_bin(float num) {
     // Clip num to be within [10, 300]
 
-    if (num > 400) {
-        num = 400;
-    }
+    num = fmaxf(0.18f, num);
+    num = fminf(400.0f, num);
     // Calculate the range index
-    int index = num / 5;
+    //int index = num / 5;
+    int index = static_cast<int>((log10f(num) - LOG_START) * INV_LOG_STEP);
     return index;
 }
 
@@ -301,9 +306,9 @@ __host__ __device__ inline float3 getFieldAt(const float *field,
     int quadrant = 0;
     if (x >= 0.0f && y >= 0.0f) {
         quadrant = 1;
-    } else if (x < 0.0f && y >= 0.0f) {
+    } else if (x <= 0.0f && y >= 0.0f) {
         quadrant = 2;
-    } else if (x < 0.0f && y < 0.0f) {
+    } else if (x <= 0.0f && y <= 0.0f) {
         quadrant = 3;
     } else {
         quadrant = 4;
@@ -369,14 +374,6 @@ __device__ void derivative(float* state, float charge, const float* B, float* de
     float py = state[4];
     float pz = state[5];
 
-    // Calculate the magnitude of the momentum and the energy
-//     float p_mag  = sqrt(px * px + py * py + pz * pz);
-//     float energy = sqrt(p_mag * p_mag + MUON_MASS * MUON_MASS);
-
-
-//     printf("p_mag = %f, energy = %f\n", p_mag, energy);
-
-    // Velocity components (v = p/E * c)
 
     float vx = (px / energy) * c_speed_of_light;
     float vy = (py / energy) * c_speed_of_light;
@@ -532,7 +529,8 @@ __device__ bool is_inside_arb8(const float3& particle_pos, const ARB8_Data& bloc
     return false;
 }
 __device__ MaterialType get_material(float x, float y, float z, const ARB8_Data* arb8s, int num_arb8s, const float* cavern_params) {
-    
+    return MATERIAL_IRON;
+    printf("This should not be printed\n", x, y, z);
     if (
         (z <= cavern_params[4] && (x <= cavern_params[0] || x >= cavern_params[1] || y <= cavern_params[2] || y >= cavern_params[3])) ||
         (z > cavern_params[4] && (x <= cavern_params[5] || x >= cavern_params[6] || y <= cavern_params[7] || y >= cavern_params[8]))
@@ -604,13 +602,17 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
         // Normalize P to get the direction unit vector
         float P_unit[3];
         normalize(muon_data_momenta_this_cached, P_unit);
-        int hist_idx = get_first_bin((int)mag_P);
+        int hist_idx = get_first_bin(mag_P);
 
         if (hist_idx==-1)
             break;
 
         if (mag_P < kill_at)
             break;
+
+        if (fabsf(muon_data_positions_this_cached[0]) > 10.0f || fabsf(muon_data_positions_this_cached[1]) > 10.0f) {
+            break;
+        }
 
         // 2. Generate a uniform random number in [0, 1] for sampling from CDF
         float rand_value = curand_uniform(&state);
@@ -654,17 +656,19 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
                 bin_idx = tbin;
             else
                 bin_idx =  hist_2d_alias_table_concrete[tbin+hist_idx*H_2d];
-            // 3. Retrieve the bin value and add it to muon_valu
             float bin_value_first_dim = hist_2d_bin_centers_first_dim_concrete[bin_idx]; // Initialize bin_value at the bin center
             float bin_jitter_first_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_first_dim_concrete[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
             bin_value_first_dim += bin_jitter_first_dim; // Apply jitter to the bin value
 
             float bin_value_second_dim = hist_2d_bin_centers_second_dim_concrete[bin_idx]; // Initialize bin_value at the bin center
             float bin_jitter_second_dim = (curand_uniform(&state) - 0.5f) * hist_2d_bin_widths_second_dim_concrete[bin_idx]; // Calculate jitter in range [-bin_width/2, bin_width/2]
+            
+            
             bin_value_second_dim += bin_jitter_second_dim; // Apply jitter to the bin value
 
             delta = mag_P * exp(bin_value_first_dim);
             delta_second_dim = mag_P * exp(bin_value_second_dim);
+
         }
 
         float phi = curand_uniform(&state) * 2 * M_PI;
@@ -696,12 +700,7 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
               fieldStartY, fieldEndY,
               fieldStartZ, fieldEndZ);
         if (sensitive_plane_z >= 0) {
-            float z_after = muon_data_positions_this_cached[2];
-            //float half_thick = 0.011f;
-            //float z_min = sensitive_plane_z - half_thick;
-            //float z_max = sensitive_plane_z + half_thick;
-            bool crossed = z_after >= sensitive_plane_z;
-            if (crossed) {
+            if (muon_data_positions_this_cached[2] >= sensitive_plane_z) {
                 break;
             }
         }
@@ -766,6 +765,13 @@ void propagate_muons_with_alias_sampling_cuda(
     float rangeEndY = data_ptr[3];
     float rangeStartZ = data_ptr[4];
     float rangeEndZ = data_ptr[5];
+
+    float log_start_val = log10f(0.18f);
+    float log_stop_val = log10f(400.0f);
+    float inv_log_step_val = 95 / (log_stop_val - log_start_val);
+    cudaMemcpyToSymbol(LOG_START, &log_start_val, sizeof(float));
+    cudaMemcpyToSymbol(LOG_STOP, &log_stop_val, sizeof(float));
+    cudaMemcpyToSymbol(INV_LOG_STEP, &inv_log_step_val, sizeof(float));
 
     /*float rangeStartXArbs = data_ptr_arbs[0];
     float rangeEndXArbs = data_ptr_arbs[1];
@@ -835,8 +841,5 @@ void propagate_muons_with_alias_sampling_cuda(
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
     cudaFree(arb8s_device);
-
-
-//     // Synchronize to ensure kernel completion
-//     cudaDeviceSynchronize();
+    cudaDeviceSynchronize();
 }

@@ -259,6 +259,8 @@ def get_blocks_hash(geo:torch.tensor,grid_dims = (100, 100, 1000),grid_lims = ((
 
 
 def get_cavern(detector):
+    if 'cavern' not in detector:
+        return torch.tensor([[-30, 30, -30, 30, 0], [-30, 30, -30, 30, 0]], dtype=torch.float32)
     cavern = detector['cavern']
     TCC8 = cavern[0]
     ECN3 = cavern[1]

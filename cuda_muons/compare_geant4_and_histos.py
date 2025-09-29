@@ -1,262 +1,403 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
-import gzip
 import os
 
-
-def hist_with_errors(ax, data, bins=10, density=False, histtype='step', errors=True, **kwargs):
-    """
-    Wrapper function to plot histogram with optional error bars.
-
-    Parameters:
-        ax : matplotlib.axes.Axes
-            Axis on which to plot the histogram.
-        data : array-like
-            Data to plot in the histogram.
-        bins : int or sequence, optional
-            Number of bins or bin edges.
-        density : bool, optional
-            If True, normalize the histogram.
-        histtype : {'bar', 'barstacked', 'step', 'stepfilled'}, optional
-            The type of histogram to draw.
-        errors : bool, optional
-            If True, add error bars to the histogram.
-        **kwargs : additional keyword arguments
-            Additional arguments passed to the hist function.
-
-    Returns:
-        n : array or list of arrays
-            The values of the histogram bins.
-        bins : array
-            The edges of the bins.
-        patches : list or list of lists
-            Silent list of individual patches used to create the histogram.
-    """
-    # Calculate the histogram
-    n, bins, patches = ax.hist(data, bins=bins, density=density, histtype=histtype, **kwargs)
-
-    if errors:
-        # Calculate the bin centers
-        bin_centers = 0.5 * (bins[1:] + bins[:-1])
-
-        # Calculate error bars assuming Poisson (sqrt(n) for each bin count)
-        if density:
-            # For density, scale errors accordingly
-            bin_widths = np.diff(bins)
-            errors = np.sqrt(n) / (len(data) * bin_widths)  # Error with density normalization
-        else:
-            errors = np.sqrt(n)  # Error without density normalization
-
-        # Plot error bars
-        ax.errorbar(bin_centers, n, yerr=errors, fmt='none', ecolor='black', capsize=3, label='Error bars')
-
-    return n, bins, patches
+from muon_slabs import simulate_muon, initialize, kill_secondary_tracks, collect_from_sensitive
+import json
+import lib.gigantic_sphere as sphere_design
+from faster_muons.run_cuda_muons import propagate_muons_with_cuda
+import argparse
+import multiprocessing as mp
+import torch    
+import h5py
+import time
 
 
+sensitive_film = {"name": "SensitiveFilm", "dz": 0.001, "dx": 20, "dy": 20,"shape": "plane"}
 
-def plot_histograms(data_geant4, data_cuda, geant4_filter, cuda_filter, output_filename):
-    # Apply Geant4 filter
-    px = data_geant4['px'][geant4_filter]
-    py = data_geant4['py'][geant4_filter]
-    pz = data_geant4['pz'][geant4_filter]
-    x = data_geant4['x'][geant4_filter]
-    y = data_geant4['y'][geant4_filter]
-    z = data_geant4['z'][geant4_filter]
+def run_geant4_sim(muons, n_steps=500, mag_field=[0., 0., 0.], material = 'G4_Fe'):
+    sensitive_film['z_center'] = 0.02*n_steps
+    np.random.seed((os.getpid() * int(time.time())) % 2**16)
+    detector = sphere_design.get_design(mag_field=mag_field, sens_film=sensitive_film, material=material)
+    detector["store_primary"] = False
+    detector["store_all"] = False
+    initialize(np.random.randint(32000), np.random.randint(32000), np.random.randint(32000), np.random.randint(32000), json.dumps(detector))
+    kill_secondary_tracks(True)
+    results = {
+        'px': [],
+        'py': [],
+        'pz': [],
+        'x': [],
+        'y': [],
+        'z': [],
+        'step_length': [],
+    }
+    for muon in muons:
+        simulate_muon(*muon[:3], -1, *muon[3:6])
+        data = collect_from_sensitive()
+        index = 0
+        if len(data['z'])>0 and 13 in np.abs(data['pdg_id']): 
+            while int(abs(data['pdg_id'][index])) != 13:
+                index += 1
+        else: continue
 
-    # Apply CUDA filter
-    px_cuda = data_cuda['px'][cuda_filter]
-    py_cuda = data_cuda['py'][cuda_filter]
-    pz_cuda = data_cuda['pz'][cuda_filter]
-    x_cuda = data_cuda['x'][cuda_filter]
-    y_cuda = data_cuda['y'][cuda_filter]
-    z_cuda = data_cuda['z'][cuda_filter]
+        results['px'].append(data['px'][index])
+        results['py'].append(data['py'][index])
+        results['pz'].append(data['pz'][index])
+        results['x'].append(data['x'][index])
+        results['y'].append(data['y'][index])
+        results['z'].append(data['z'][index])
+        #results['step_length'].append(data['step_length'][index])
+    return results
 
-    print("Length of G4 is",int(np.sum(geant4_filter)), "and length of CUDA is %d."%int(np.sum(cuda_filter)))
+def run_cuda_simulation(muons, n_steps=500, mag_field=[0., 0., 0.],histogram_dir = 'data', material = 'G4_Fe'):
+    muons = torch.from_numpy(muons)
+    muons_momenta = muons[:,:3]
+    muons_positions = muons[:,3:6]
+    muons_charge = muons[:,6]
 
-    # Calculate total distance and momentum magnitudes
-    dist_total = np.sqrt(x ** 2 + y ** 2 + z ** 2)
-    dist_total_cuda = np.sqrt(x_cuda ** 2 + y_cuda ** 2 + z_cuda ** 2)
+    if material == 'G4_Fe':
+        hist_file = os.path.join(histogram_dir, 'alias_histograms_G4_Fe.pkl')
+    elif material == 'G4_CONCRETE':
+        hist_file = os.path.join(histogram_dir, 'alias_histograms_G4_CONCRETE.pkl')
 
-    p_mag = np.sqrt(px ** 2 + py ** 2 + pz ** 2)
+    with open(hist_file, 'rb') as f:
+        hist_data = pickle.load(f)
+        histograms = [hist_data['hist_2d_probability_table'],hist_data['hist_2d_alias_table'],
+                        hist_data['centers_first_dim'], hist_data['centers_second_dim'],
+                        hist_data['width_first_dim'], hist_data['width_second_dim']]
+        step_length = hist_data['step_length']
+    histograms_sec = [torch.zeros_like(s) for s in histograms]
+
+    corners = torch.tensor([[-100, -100, -100], [100, -100, -100], [100, 100, -100], [-100, 100, -100],
+                             [-100, -100, 100], [100, -100, 100], [100, 100, 100], [-100, 100, 100]],
+                            dtype=torch.float32).reshape(1, 8, 3)
+    mag_field = np.tile(np.asarray(mag_field), (12, 12, 12, 1))
+    mag_dict = {'B': mag_field,'range_x':[-10_00,100_00,10_00], 'range_y':[-10_00,100_00,10_00], 'range_z':[-10_00,100_00,10_00]}
+
+    out_position, out_momenta = propagate_muons_with_cuda (
+            muons_positions,
+            muons_momenta,
+            muons_charge,
+            corners,
+            torch.tensor([[-30, 30, -30, 30, 0], [-30, 30, -30, 30, 0]], dtype=torch.float32),
+            *histograms,
+            *histograms_sec,
+            mag_dict,
+            n_steps*0.02 - sensitive_film['dz']/2,
+            n_steps,
+            step_length,
+        )
+    if n_steps > 1:
+        in_sens_plane = (out_position[:,0].abs() < sensitive_film['dx']/2) & \
+                        (out_position[:,1].abs() < sensitive_film['dy']/2) & \
+                        (out_position[:,2] >= (n_steps*0.02 - sensitive_film['dz']/2))
+
+        out_momenta = out_momenta[in_sens_plane]
+        out_position = out_position[in_sens_plane]
+        muons_charge = muons_charge[in_sens_plane].int()
+    print("Number of outputs:", out_momenta.shape[0])
+
+
+    out_position = out_position.cpu().numpy()
+    out_momenta = out_momenta.cpu().numpy()
+    output = {
+        'px': out_momenta[:,0],
+        'py': out_momenta[:,1],
+        'pz': out_momenta[:,2],
+        'x': out_position[:,0],
+        'y': out_position[:,1],
+        'z': out_position[:,2],
+        'pdg_id': muons_charge*(-13)
+    }
+    return output
+
+
+def main(muons, n_steps=500, mag_field=[0., 0., 0.], material = 'G4_Fe'):
+    file_cuda = 'data/outputs_cuda.pkl'
+    file_geant4 = 'data/outputs_geant4.pkl'
+    n_cores = 90
+    muons_split = np.array_split(muons, n_cores)
+    with mp.Pool(n_cores) as pool:
+        geant4_results = pool.starmap(run_geant4_sim, [(muon_batch, n_steps, mag_field, material) for muon_batch in muons_split])
+    print("Geant4 simulation completed.")
+    outputs_geant4 = {}
+    for key in geant4_results[0].keys():
+        outputs_geant4[key] = np.concatenate([np.array(res[key]) for res in geant4_results], axis=0)
+    outputs_cuda = run_cuda_simulation(muons, mag_field = mag_field, histogram_dir=f'data/', n_steps=n_steps, material=material)
+    print("CUDA simulation completed.")
+    print("Data collection completed.")
+    with open(file_cuda, 'wb') as f:
+        pickle.dump(outputs_cuda, f)
+    print("CUDA data saved to ", file_cuda)
+    with open(file_geant4, 'wb') as f:
+        pickle.dump(outputs_geant4, f)
+    print("Geant4 data saved to ", file_geant4)
+    return outputs_geant4, outputs_cuda
+
+
+def plot_histograms(output_filename, 
+                    px_g4, py_g4, pz_g4, x_g4, y_g4, z_g4,
+                    px_cuda, py_cuda, pz_cuda, x_cuda, y_cuda, z_cuda):
+
+    p_mag_g4 = np.sqrt(px_g4 ** 2 + py_g4 ** 2 + pz_g4 ** 2)
     p_mag_cuda = np.sqrt(px_cuda ** 2 + py_cuda ** 2 + pz_cuda ** 2)
 
-    # Calculate transverse momentum sqrt(px^2 + py^2) for both datasets
-    p_transverse = np.sqrt(px ** 2 + py ** 2)
+    mask_g4 = (p_mag_g4 >= args.filter_p[0]) & (p_mag_g4 <= args.filter_p[1])
+    mask_cuda = (p_mag_cuda >= args.filter_p[0]) & (p_mag_cuda <= args.filter_p[1])
+
+    px_g4 = px_g4[mask_g4]
+    py_g4 = py_g4[mask_g4]
+    pz_g4 = pz_g4[mask_g4]
+    x_g4 = x_g4[mask_g4]
+    y_g4 = y_g4[mask_g4]
+    z_g4 = z_g4[mask_g4]
+    p_mag_g4 = p_mag_g4[mask_g4]
+
+    px_cuda = px_cuda[mask_cuda]
+    py_cuda = py_cuda[mask_cuda]
+    pz_cuda = pz_cuda[mask_cuda]
+    x_cuda = x_cuda[mask_cuda]
+    y_cuda = y_cuda[mask_cuda]
+    z_cuda = z_cuda[mask_cuda]
+    p_mag_cuda = p_mag_cuda[mask_cuda]
+
+    print(f"Number of GEANT4 samples after filter: {px_g4.shape[0]}")
+    print(f"Number of CUDA samples after filter: {px_cuda.shape[0]}")
+
+    print(f"Error:", np.abs(px_g4.shape[0] - px_cuda.shape[0]) / px_g4.shape[0] * 100, "%")
+
+    p_transverse_g4 = np.sqrt(px_g4 ** 2 + py_g4 ** 2)
     p_transverse_cuda = np.sqrt(px_cuda ** 2 + py_cuda ** 2)
 
+    num_bins = 100
+    bins_px = np.linspace(min(px_g4.min(), px_cuda.min()), max(px_g4.max(), px_cuda.max()), num_bins)
+    bins_py = np.linspace(min(py_g4.min(), py_cuda.min()), max(py_g4.max(), py_cuda.max()), num_bins)
+    bins_pz = np.linspace(min(pz_g4.min(), pz_cuda.min()), max(pz_g4.max(), pz_cuda.max()), num_bins)
+    bins_p_mag = np.linspace(min(p_mag_g4.min(), p_mag_cuda.min()), max(p_mag_g4.max(), p_mag_cuda.max()), num_bins)
+    bins_p_transverse = np.linspace(min(p_transverse_g4.min(), p_transverse_cuda.min()), max(p_transverse_g4.max(), p_transverse_cuda.max()), num_bins)
+    bins_x = np.linspace(min(x_g4.min(), x_cuda.min()), max(x_g4.max(), x_cuda.max()), num_bins)
+    bins_y = np.linspace(min(y_g4.min(), y_cuda.min()), max(y_g4.max(), y_cuda.max()), num_bins)
+    bins_z = np.linspace(min(z_g4.min(), z_cuda.min()), max(z_g4.max(), z_cuda.max()), num_bins)
 
-    # Define the number of bins and compute bins for each metric based on Geant4 data range
-    num_bins = 50
-    bins_px = np.linspace(px_cuda.min(), px_cuda.max(), num_bins)
-    bins_py = np.linspace(py_cuda.min(), py_cuda.max(), num_bins)
-    bins_pz = np.linspace(pz_cuda.min(), pz_cuda.max(), num_bins)
-    bins_p_mag = np.linspace(p_mag_cuda.min(), p_mag_cuda.max(), num_bins)
-    bins_p_transverse = np.linspace(p_transverse.min(), p_transverse.max(), num_bins)
-    bins_dist_total = np.linspace(dist_total.min(), dist_total.max(), num_bins)
-
-    # print("Check A", np.sum(px_cuda>15), np.sum(p_transverse_cuda>15))
-    # print(bins_p_transverse)
-    # 0/0
-
-
-    bins_x = np.linspace(x_cuda.min(), x_cuda.max(), num_bins)
-    bins_y = np.linspace(y_cuda.min(), y_cuda.max(), num_bins)
-    bins_z = np.linspace(z.min(), z.max(), num_bins)
-
-    # Plotting with 3x3 layout
     fig, axs = plt.subplots(3, 3, figsize=(15, 12))
+    density = args.density
 
-    # Row 1: Plot px, py, pz comparison
-    axs[0, 0].hist(px, bins=bins_px, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
-    axs[0, 0].hist(px_cuda, bins=bins_px, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
-    axs[0, 0].set_title(r'$p_x$ Component')
-    axs[0, 0].set_xlabel(r'$p_x$')
-    axs[0, 0].set_ylabel('Density')
-    axs[0, 0].legend()
+    ylabel = 'Density' if density else 'Count'
 
+    title_fontsize = 18
+    label_fontsize = 16
+    tick_fontsize = 14
+    legend_fontsize = 14
 
-    axs[0, 1].hist(py, bins=bins_py, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
-    axs[0, 1].hist(py_cuda, bins=bins_py, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
-    axs[0, 1].set_title(r'$p_y$ Component')
-    axs[0, 1].set_xlabel(r'$p_y$')
-    axs[0, 1].set_ylabel('Density')
-    axs[0, 1].legend()
+    axs[0, 0].hist(px_g4, bins=bins_px, density=density, histtype='step', color='firebrick', label='Geant4', log=True)
+    axs[0, 0].hist(px_cuda, bins=bins_px, density=density, histtype='step', color='steelblue', label='CUDA', log=True)
+    axs[0, 0].set_title(r'$p_x$ Component', fontsize=title_fontsize)
+    axs[0, 0].set_xlabel(r'$p_x$', fontsize=label_fontsize)
+    axs[0, 0].set_ylabel(ylabel, fontsize=label_fontsize)
+    axs[0, 0].legend(fontsize=legend_fontsize)
 
-    axs[0, 2].hist(pz, bins=bins_pz, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
-    axs[0, 2].hist(pz_cuda, bins=bins_pz, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
-    axs[0, 2].set_title(r'$p_z$ Component')
-    axs[0, 2].set_xlabel(r'$p_z$')
-    axs[0, 2].set_ylabel('Density')
-    axs[0, 2].legend()
+    axs[0, 1].hist(py_g4, bins=bins_py, density=density, histtype='step', color='firebrick', label='Geant4', log=True)
+    axs[0, 1].hist(py_cuda, bins=bins_py, density=density, histtype='step', color='steelblue', label='CUDA', log=True)
+    axs[0, 1].set_title(r'$p_y$ Component', fontsize=title_fontsize)
+    axs[0, 1].set_xlabel(r'$p_y$', fontsize=label_fontsize)
+    axs[0, 1].set_ylabel(ylabel, fontsize=label_fontsize)
+    axs[0, 1].legend(fontsize=legend_fontsize)
 
-    # Row 2: Plot p_mag, p_transverse, dist_total comparison
-    axs[1, 0].hist(p_mag, bins=bins_p_mag, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
-    axs[1, 0].hist(p_mag_cuda, bins=bins_p_mag, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
+    axs[0, 2].hist(pz_g4, bins=bins_pz, density=density, histtype='step', color='firebrick', label='Geant4', log=True)
+    axs[0, 2].hist(pz_cuda, bins=bins_pz, density=density, histtype='step', color='steelblue', label='CUDA', log=True)
+    axs[0, 2].set_title(r'$p_z$ Component', fontsize=title_fontsize)
+    axs[0, 2].set_xlabel(r'$p_z$', fontsize=label_fontsize)
+    axs[0, 2].set_ylabel(ylabel, fontsize=label_fontsize)
+    axs[0, 2].legend(fontsize=legend_fontsize)
+
+    axs[1, 0].hist(p_mag_g4, bins=bins_p_mag, density=density, histtype='step', color='firebrick', label='Geant4', log=True)
+    axs[1, 0].hist(p_mag_cuda, bins=bins_p_mag, density=density, histtype='step', color='steelblue', label='CUDA', log=True)
     axs[1, 0].set_title(r'Momentum Magnitude $(|p|)$')
     axs[1, 0].set_xlabel(r'$|p|$')
-    axs[1, 0].set_ylabel('Density')
+    axs[1, 0].set_ylabel(ylabel)
     axs[1, 0].legend()
 
-    axs[1, 1].hist(p_transverse, bins=bins_p_transverse, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
-    axs[1, 1].hist(p_transverse_cuda, bins=bins_p_transverse, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
+    axs[1, 1].hist(p_transverse_g4, bins=bins_p_transverse, density=density, histtype='step', color='firebrick', label='Geant4', log=True)
+    axs[1, 1].hist(p_transverse_cuda, bins=bins_p_transverse, density=density, histtype='step', color='steelblue', label='CUDA', log=True)
     axs[1, 1].set_title(r'Transverse Momentum $(\sqrt{p_x^2 + p_y^2})$')
     axs[1, 1].set_xlabel(r'$\sqrt{p_x^2 + p_y^2}$')
-    axs[1, 1].set_ylabel('Density')
+    axs[1, 1].set_ylabel(ylabel)
     axs[1, 1].legend()
 
-    axs[1, 2].hist(dist_total, bins=bins_dist_total, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
-    axs[1, 2].hist(dist_total_cuda, bins=bins_dist_total, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
-    axs[1, 2].set_title(r'Total Distance $(\sqrt{x^2 + y^2 + z^2})$')
-    axs[1, 2].set_xlabel(r'$\sqrt{x^2 + y^2 + z^2}$')
-    axs[1, 2].set_ylabel('Density')
-    axs[1, 2].legend()
-
-    # Row 3: Plot x, y, z comparison
-    axs[2, 0].hist(x, bins=bins_x, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
-    axs[2, 0].hist(x_cuda, bins=bins_x, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
+    axs[2, 0].hist(x_g4, bins=bins_x, density=density, histtype='step', color='firebrick', label='Geant4', log=True)
+    axs[2, 0].hist(x_cuda, bins=bins_x, density=density, histtype='step', color='steelblue', label='CUDA', log=True)
     axs[2, 0].set_title(r'$x$ Position')
     axs[2, 0].set_xlabel(r'$x$')
-    axs[2, 0].set_ylabel('Density')
+    axs[2, 0].set_ylabel(ylabel)
     axs[2, 0].legend()
 
-    axs[2, 1].hist(y, bins=bins_y, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
-    axs[2, 1].hist(y_cuda, bins=bins_y, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
+    axs[2, 1].hist(y_g4, bins=bins_y, density=density, histtype='step', color='firebrick', label='Geant4', log=True)
+    axs[2, 1].hist(y_cuda, bins=bins_y, density=density, histtype='step', color='steelblue', label='CUDA', log=True)
     axs[2, 1].set_title(r'$y$ Position')
     axs[2, 1].set_xlabel(r'$y$')
-    axs[2, 1].set_ylabel('Density')
+    axs[2, 1].set_ylabel(ylabel)
     axs[2, 1].legend()
 
-    axs[2, 2].hist(z, bins=bins_z, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
-    axs[2, 2].hist(z_cuda, bins=bins_z, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
+    axs[2, 2].hist(z_g4, bins=bins_z, density=density, histtype='step', color='firebrick', label='Geant4', log=True)
+    axs[2, 2].hist(z_cuda, bins=bins_z, density=density, histtype='step', color='steelblue', label='CUDA', log=True)
     axs[2, 2].set_title(r'$z$ Position')
     axs[2, 2].set_xlabel(r'$z$')
-    axs[2, 2].set_ylabel('Density')
+    axs[2, 2].set_ylabel(ylabel)
     axs[2, 2].legend()
+
+    n = int(1e6)
+    axs[1, 2].scatter(x_g4[:n], y_g4[:n], s=1, alpha=0.1, c=p_mag_g4[:n], cmap='Reds', vmin=max(0, args.filter_p[0]), vmax=min(250, args.filter_p[1]), label='Geant4')
+    axs[1, 2].scatter(x_cuda[:n], y_cuda[:n], s=1, alpha=0.1, c=p_mag_cuda[:n], cmap='Blues', vmin=max(0, args.filter_p[0]), vmax=min(250, args.filter_p[1]), label='CUDA')
+    axs[1, 2].set_title(r'Y vs X', fontsize=title_fontsize)
+    axs[1, 2].set_xlabel(r'$x$ [m]', fontsize=label_fontsize)
+    axs[1, 2].set_ylabel(r'$y$ [m]', fontsize=label_fontsize)
 
     for ax in axs.flatten():
         ax.grid(True)
 
     plt.tight_layout()
     plt.savefig(output_filename)
+    print(f'Plot saved to {output_filename}')
     plt.close()
 
-    
 
-
-# Generate plots
-#plot_histograms(data_geant4, data_cuda, np.ones_like(data_geant4['x'], dtype=bool), np.ones_like(data_cuda['x'], dtype=bool), 'plots/hists_a/g4vscuda.pdf')
-#plot_histograms(data_geant4, data_cuda, geant4_filter, cuda_filter, 'plots/hists_a/g4vscuda_filt_dist.pdf')
 
 if __name__ == "__main__":
 
-    #with open("data/histograms.pkl", "rb") as file:
-    #    hists_dict = pickle.load(file)[(190,200)]
-    
+    parser = argparse.ArgumentParser(description="Run muon simulations with specified number of muons.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--n_muons', type=int, default=int(5e6), help='Number of muons to simulate')
+    parser.add_argument('--n_steps', type=int, default=500, help='Number of steps to simulate')
+    parser.add_argument('--mag_field', type=float, nargs=3, default=[0., 0., 0.], help='Magnetic field vector components (Bx, By, Bz)')
+    parser.add_argument('--material', type=str, default='G4_Fe', help='Material to use for simulations (G4_Fe, G4_CONCRETE)')
+    parser.add_argument('--load_data', action='store_true', help='Load existing data instead of running simulations')
+    parser.add_argument('--initial_momenta', type=float, default=195., help='Initial momenta of muons in GeV/c')
+    parser.add_argument('--output_filename', type=str, default='histograms_comparison_geant4_cuda.png', help='Output filename for the histogram plot')
+    parser.add_argument('--file_name_g4', type=str, help='Path to GEANT4 HDF5 file', default='/home/hep/lprate/projects/MuonsAndMatter/data/outputs/results/final_concatenated_results.h5')
+    parser.add_argument('--file_name_cuda', type=str, help='Path to CUDA pickle file', default =  '/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/data/outputs_cuda.pkl')
+    parser.add_argument('--density', action='store_true', help='Plot histograms with density normalization')
+    parser.add_argument('--filter_p', type=float, nargs=2, default=[0.0, 500.0], help='Thresholds to filter muons by min_p <= |P| <= max_p')
+    args = parser.parse_args()
+    n_muons = args.n_muons
 
-    # the_gfile = 'data/data_batch_1/joined.pklj'
-    the_gfile = 'data/outputs_geant4.pkl'
-    with open(the_gfile, 'rb') as f:
-        data_geant4 = pickle.load(f)
-    print("Loaded G4 data. Shape of data:", len(data_geant4['px']))
+    if args.load_data:
+        print("Loading GEANT4 data...")
+        file_name_g4 = args.file_name_g4
+        file_name_cuda = args.file_name_cuda
+        with h5py.File(file_name_g4,'r') as f:
+            data_geant4 = {key: f[key][:] for key in f.keys()}
+        print("Loaded G4 data. Shape of data:", len(data_geant4['px']))
 
-    print("Loading CUDA data...")
-    with open('data/outputs_cuda.pkl', 'rb') as f:
-        data_cuda = pickle.load(f)
-    print("Loaded CUDA data. Shape of data:", len(data_cuda['px']))
+        print("Loading CUDA data...")
+        with open(file_name_cuda, 'rb') as f:
+            data_cuda = pickle.load(f)
+        for key in data_cuda:
+            if not isinstance(data_cuda[key], np.ndarray): data_cuda[key] = data_cuda[key].numpy()
+        print("Loaded CUDA data. Shape of data:", len(data_cuda['px']))
+    else:
+        initial_momenta = np.array([[0.,0.,args.initial_momenta]])
+        initial_positions_charge = np.array([[0.,0.,0., -1]])
+        print("Generating %d muons..."%n_muons)
+        muons = np.concatenate((initial_momenta, initial_positions_charge), axis=1)*np.ones((n_muons,1))
+        data_geant4, data_cuda = main(muons, n_steps=args.n_steps, mag_field=list(args.mag_field), material=args.material)
 
-    # Plot histograms for each key in data_cuda and data_geant4 (last value for each list)
 
     output_dir = "plots/hists_comparisons"
     os.makedirs(output_dir, exist_ok=True)
 
     for key in data_cuda:
+        if key in ['pdg_id', 'W']: continue
         print("=" * 30, key, "=" * 30)
         cuda_vals = np.array(data_cuda[key])
         geant4_vals = np.array(data_geant4[key])
+        print(f"Number of entries - CUDA: {len(cuda_vals)}, Geant4: {len(geant4_vals)}")
         print(f"CUDA {key} values: {cuda_vals}, Geant4 {key} values: {geant4_vals}")
         print(f"CUDA {key} average: {cuda_vals.mean()}, Geant4 {key} average: {geant4_vals.mean()}")
         print(f"CUDA {key} std: {cuda_vals.std()}, Geant4 {key} std: {geant4_vals.std()}")
 
 
-        plt.figure(figsize=(8, 5))
-        if key == 'pz': bins = np.linspace(100, 195, 100)
-        else: bins = 100
-        plt.hist(geant4_vals, bins=bins, density=True, histtype='step', color='firebrick', label='Geant4 (last step)')
-        plt.hist(cuda_vals, bins=bins, density=True, histtype='step', color='steelblue', label='CUDA')
-        plt.xlabel(key)
-        plt.ylabel("Density")
-        if key == 'pz': plt.xlim(bins[0], bins[-1])
-        plt.title(f"Histogram of {key}")
-        plt.legend()
+    px_g4 = data_geant4['px']
+    py_g4 = data_geant4['py']
+    pz_g4 = data_geant4['pz']
+    x_g4 = data_geant4['x']
+    y_g4 = data_geant4['y']
+    z_g4 = data_geant4['z']
+
+    px_cuda = data_cuda['px']
+    py_cuda = data_cuda['py']
+    pz_cuda = data_cuda['pz']
+    x_cuda = data_cuda['x']
+    y_cuda = data_cuda['y']
+    z_cuda = data_cuda['z']
+
+    
+
+    print("=" * 60)
+    print('Number of samples GEANT4:', px_g4.shape[0])
+    print('Number of samples CUDA:', px_cuda.shape[0])
+    if 'weight' in data_geant4:
+        weights_g4 = data_geant4['weight']
+        print('Sum of weights GEANT4:', np.sum(weights_g4))
+    if 'W' in data_cuda:
+        print('Sum of weights CUDA:', np.sum(data_cuda['W']))
+
+    output_filename = os.path.join('/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/plots', args.output_filename)
+    plot_histograms(output_filename, 
+                px_g4, py_g4, pz_g4, x_g4, y_g4, z_g4,
+                px_cuda, py_cuda, pz_cuda, x_cuda, y_cuda, z_cuda)
+    if args.n_steps == 1:
+        log_start = np.log10(0.18)
+        log_end = np.log10(400)
+        inv_log_step = 90/(log_end - log_start)
+        index = int((np.log10(args.initial_momenta) - log_start)*inv_log_step)
+        with h5py.File("/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/data/muon_data_energy_loss_sens_{}.h5".format(args.material), "r") as f:
+            keys = sorted(list(f.keys()),key=lambda k: float(k.strip("()").split(",")[0]))
+            pz = f[keys[index]]["pz"][:]
+            initial_momenta = f[keys[index]]["initial_momenta"][:]
+            pt = np.sqrt(f[keys[index]]["px"][:]**2 + f[keys[index]]["py"][:]**2)
+        pt_g4 = np.sqrt(px_g4**2 + py_g4**2)
+        pt_cuda = np.sqrt(px_cuda**2 + py_cuda**2)
+        bins = np.linspace(-5,1, 500)
+        plt.hist(np.log(np.abs(pz_g4-args.initial_momenta)), bins=bins, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
+        plt.hist(np.log(np.abs(pz-initial_momenta)), bins=bins, density=True, histtype='step', color='green', label='GEANT4 (HDF5)', log=True)
+        plt.hist(np.log(np.abs(pz_cuda-args.initial_momenta)), bins=bins, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
+        plt.title(r'$p_z$ Component', fontsize=18)
+        plt.xlabel(r'$p_z$ [GeV/c]', fontsize=16)
+        plt.ylabel('Density', fontsize=16)
+        plt.legend(fontsize=14)
         plt.grid(True)
-        plt.savefig(f"{output_dir}/{key}_hist.png")
+        plt.tight_layout()
+        plt.savefig(os.path.join('/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/plots', 'pz_comparison_geant4_cuda.png'))
         plt.close()
-        print("Saved histogram for", key)
+        print("Plot saved to ", os.path.join('/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/plots', 'pz_comparison_geant4_cuda.png'))
 
-    bins = np.linspace(-10, 0, 100)
-    if False:
-        import h5py
-        with h5py.File("/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/data/muon_data_energy_loss_sens_step_2.h5", "r") as f:
-            energy_seg = '(195, 200)'
-            pz = f[energy_seg]['pz'][:]
-            p0 = f[energy_seg]['initial_momenta'][:]
-        delta_hist = (pz - p0) / p0
-        plt.hist(np.log(-delta_hist), bins=bins, density=False, histtype='step', color='green', label='Sampling Geant4', log=True, linewidth=2)
+        bins = np.linspace(min(np.min(np.log(pt_g4)), np.min(np.log(pt_cuda))), 0.1, 200)
+        plt.hist(np.log(pt_g4/args.initial_momenta), bins=bins, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
+        plt.hist(np.log(pt/initial_momenta), bins=bins, density=True, histtype='step', color='green', label='GEANT4 (HDF5)', log=True)
+        plt.hist(np.log(pt_cuda/args.initial_momenta), bins=bins, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
+        plt.title(r'$p_T$ Component', fontsize=18)
+        plt.xlabel(r'$p_T$ [GeV/c]', fontsize=16)
+        plt.ylabel('Density', fontsize=16)
+        plt.legend(fontsize=14)
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(os.path.join('/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/plots', 'log_pt_comparison_geant4_cuda.png'))
+        plt.close()
 
-    delta = (data_geant4['pz'] - 195) / 195
-    delta_cuda = (data_cuda['pz'] - 195) / 195
+        bins = np.linspace(min(np.min(pt_g4), np.min(pt_cuda)), max(np.max(pt_g4), np.max(pt_cuda)), 200)
+        plt.hist(pt_g4, bins=bins, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
+        plt.hist(pt, bins=bins, density=True, histtype='step', color='green', label='GEANT4 (HDF5)', log=True)
+        plt.hist(pt_cuda, bins=bins, density=True, histtype='step', color='steelblue', label='CUDA', log=True)
+        plt.title(r'$p_T$ Component', fontsize=18)
+        plt.xlabel(r'$p_T$ [GeV/c]', fontsize=16)
+        plt.ylabel('Density', fontsize=16)
+        plt.legend(fontsize=14)
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(os.path.join('/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/plots', 'pt_comparison_geant4_cuda.png'))
+        plt.close()
 
-    plt.hist(np.log(-delta + 1e-10), bins=bins, density=False, histtype='step', color='firebrick', label='Geant4', log=True)
-    plt.hist(np.log(-delta_cuda + 1e-10), bins=bins, density=False, histtype='step', color='steelblue', label='CUDA', log=True)
-    plt.xlabel(r'$\Delta p_z / p_z$')
-    plt.ylabel('Density')
-    plt.title(r'$\Delta p_z / p_z$ Distribution')
-    plt.legend()
-    plt.grid(True)
-    plt.savefig(f"{output_dir}/delta_pz_hist.png")
-    plt.close()
-    print("Saved histogram for delta pz")
 
 
 

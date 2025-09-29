@@ -7,80 +7,121 @@ sys.path.insert(1, os.path.join(PROJECTS_DIR,'BlackBoxOptimization/src'))
 from problems import ShipMuonShieldCluster
 from time import time
 import h5py
-import pickle
 
-def extract_number_from_string(s):
-    s = s.split('.')[0]
-    number_str = ''
-    for char in s:
-        if char.isdigit():
-            number_str += char
-    return int(number_str)
 
-def concatenate_files(direc, file_number, direc_output = None):
-    if direc_output is None: direc_output = direc
-    data_idx = {}
-    for f in os.listdir(direc):
-        parts = f.split('_')
-        assert len(parts) == 3, parts
-        if int(parts[1]) != file_number: continue
-        idx = int(parts[2][:-4])  # Remove '.npy'
-        data_idx[idx] = np.load(os.path.join(direc, f))
-        os.remove(os.path.join(direc,f))
-    all_data = []
-    for idx in sorted(data_idx.keys()):
-        data = data_idx[idx]
-        if data.shape != (8,):
-            all_data.append(data)
-    all_data = np.concatenate(all_data,axis=1)
-    np.save(os.path.join(direc_output, f'muonsdata_{file_number}.npy'), all_data)
+def _process_and_append_chunk_outputs(temp_dir: str, output_file_handle, feature_order: list):
+    temp_files = [f for f in os.listdir(temp_dir) if f.startswith('outputs_') and f.endswith('.npy')]
+    if not temp_files:
+        print("No temporary simulation outputs found to process for this chunk.")
+        return
+
+    all_chunk_arrays = []
+    print(f"  -> Found {len(temp_files)} temporary .npy files to process.")
+    for filename in temp_files:
+        f_path = os.path.join(temp_dir, filename)
+        data = np.load(f_path)
+        if data.size > 0: all_chunk_arrays.append(data)
+        os.remove(f_path)
+
+    if not all_chunk_arrays:
+        return
+    concatenated_array = np.concatenate(all_chunk_arrays, axis=1).T
+
+    for j, key in enumerate(feature_order):
+        column_data = concatenated_array[:, j]
+
+        if key not in output_file_handle:
+            maxshape = (None,)
+            output_file_handle.create_dataset(key, data=column_data, maxshape=maxshape, chunks=True)
+        else:
+            dset = output_file_handle[key]
+            old_size = dset.shape[0]
+            dset.resize(old_size + column_data.shape[0], axis=0)
+            dset[old_size:] = column_data
+            
+    print(f"  -> Processed and appended data for keys: {feature_order}")
 
 def get_total_hits(phi,
-                   inputs_dir:str = 'data/full_sample',
-                    outputs_dir:str = '', 
-                    n_files:int = 67,
-                    config:dict = {}):
+                   n_split: int = 5_000_000,
+                   n_muons: int = 0,
+                   inputs_file: str = 'data/muons/full_sample.h5',
+                   outputs_dir: str = 'data/outputs/results',
+                   config: dict = {}):
     SHIP = ShipMuonShieldCluster(dimensions_phi=phi.size(-1), **config)
-    assert not SHIP.use_B_goal 
+    
+    feature_order = ['px', 'py', 'pz', 'x', 'y', 'z', 'pdg', 'weight']
+    
+    if not inputs_file.endswith('.h5'):
+        raise ValueError("Input file must be an HDF5 file (.h5)")
+
+    print(f"Checking HDF5 input file '{inputs_file}'...")
+    with h5py.File(inputs_file, 'r') as f:
+        if not all(key in f for key in feature_order):
+            raise ValueError(f"Input HDF5 file is missing required keys. Expected: {feature_order}. Got: {list(f.keys())}")
+        total_events = f[feature_order[0]].shape[0]
+    
+    print(f"Found {total_events} total events.")
+    if n_muons > 0:
+        total_events = min(total_events, n_muons)
+        print(f"Limiting to first {total_events} events as specified.")
+
     n_muons_total = 0
-    n_muons_unweighted = 0
     n_hits_total = 0
+    n_muons_unweighted = 0
     all_results = {}
-    print('LENGTH:', SHIP.get_total_length(phi))
-    print('COST:', SHIP.get_total_cost(phi))
-    for name in os.listdir(inputs_dir)[:n_files]:
-        n_name = extract_number_from_string(name)
-        print('FILE:', name)
-        t1 = time()
-        with h5py.File(os.path.join(inputs_dir,name), 'r') as f:
-            factor = f['weight'][:]
-        SHIP.n_samples = factor.shape[0]
-        n_muons = factor.sum()
-        print(f'n_events_input: {SHIP.n_samples}')
-        print(f'n_particles: {n_muons}')
 
-        n_muons_total += n_muons
-        time1 = time()
-        n_hits = SHIP.simulate(phi,file = n_name).item()
-        print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
-        #concatenate_files('/home/hep/lprate/projects/MuonsAndMatter/data/outputs/results', n_name, outputs_dir)
-        n_hits_total += n_hits
-        n_muons_unweighted += len(factor)
-        all_results[n_name] = (n_muons,n_hits)
-        print('TIME:', time()-t1)
-        print('N EVENTS: ', len(factor))
-        print('N MUONS: ', n_muons)
-        print('N_HITS: ', n_hits)
-        print('Survival rate: ', n_hits/n_muons)
-        SHIP.simulate_fields = False
-    return n_muons_total,n_hits_total, n_muons_unweighted
+    n_chunks = (total_events + n_split - 1) // n_split
+    print(f"Splitting into {n_chunks} chunks of size {n_split}...\n")
 
+    final_output_file = os.path.join(outputs_dir, 'final_concatenated_results.h5')
+    
+    with h5py.File(final_output_file, 'w') as out_f:
+        for i in range(n_chunks):
+            start_idx = i * n_split
+            end_idx = min((i + 1) * n_split, total_events)
+            
+            with h5py.File(inputs_file, 'r') as in_f:
+                weights_chunk = in_f['weight'][start_idx:end_idx]
+
+            SHIP.n_samples = len(weights_chunk)
+            n_muons_chunk = weights_chunk.sum()
+            
+            print(f"--- Processing Chunk {i+1}/{n_chunks} (Events {start_idx}-{end_idx}) ---")
+            print(f'n_events_input: {SHIP.n_samples}')
+            print(f'n_particles: {n_muons_chunk:.2f}')
+            
+            time1 = time()
+
+            n_hits_chunk = SHIP.simulate(phi, idx = (start_idx, end_idx)).item()
+
+            print(f'SIMULATION FINISHED - TOOK {time()-time1:.3f} seconds')
+            
+            _process_and_append_chunk_outputs(outputs_dir, out_f, feature_order)
+
+            n_hits_total += n_hits_chunk
+            n_muons_total += n_muons_chunk
+            n_muons_unweighted += SHIP.n_samples
+            all_results[i] = (n_muons_chunk, n_hits_chunk)
+
+            print('N MUONS: ', n_muons_chunk)
+            print('N_HITS: ', n_hits_chunk)
+            print('Survival rate: ', n_hits_chunk / n_muons_chunk if n_muons_chunk > 0 else 0)
+            print("-" * 50)
+            SHIP.uniform_fields = True
+
+    print("\n--- Overall Summary ---")
+    print(f"Total events processed: {n_muons_unweighted}")
+    print(f"Total weighted muons: {n_muons_total:.2f}")
+    print(f"Total final hits: {n_hits_total}")
+    print(f"Overall survival rate: {n_hits_total / n_muons_total if n_muons_total > 0 else 0:.6f}")
+    print(f"Data saved to {final_output_file}")    
+    return n_muons_total, n_hits_total, n_muons_unweighted
 
 
 new_parametrization = ShipMuonShieldCluster.parametrization
 if __name__ == '__main__':
-    INPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/full_sample'
-    OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs/trajectories_full_sample/'
+    INPUTS_FILE = '/home/hep/lprate/projects/MuonsAndMatter/data/muons/full_sample.h5'
+    OUTPUTS_DIR = '/home/hep/lprate/projects/MuonsAndMatter/data/outputs/results'
     import argparse
     import json
     # Load config file
@@ -90,30 +131,35 @@ if __name__ == '__main__':
     CONFIG.pop("data_treatment", None)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-n_files", type=int, default=67)
-    parser.add_argument("-inputs_dir", type=str, default=INPUTS_DIR)
+    parser.add_argument("-n_split", type=int, default=5_000_000)
+    parser.add_argument("-n_muons", type=int, default=0)
+    parser.add_argument("-inputs_file", type=str, default=INPUTS_FILE)
     parser.add_argument("-outputs_dir", type=str, default=OUTPUTS_DIR)
     parser.add_argument("-params", type=str, default='tokanut_v5')
     args = parser.parse_args()
 
     # Create outputs directory if it doesn't exist
-    if not os.path.exists(args.outputs_dir):
-        os.makedirs(args.outputs_dir)
+    if not os.path.exists(os.path.dirname(args.outputs_dir)):
+        os.makedirs(os.path.dirname(args.outputs_dir))
     
-    # Remove all the per-parameter extraction, just pass CONFIG
-    if hasattr(ShipMuonShieldCluster, args.params):
-        params = getattr(ShipMuonShieldCluster, args.params)
-    else:
+    if args.params == 'test':
+        params_input = input("Enter the params as a Python list (e.g., [1.0, 2.0, 3.0]): ")
+        params = eval(params_input)
+    elif args.params in ShipMuonShieldCluster.params.keys():
+        params = ShipMuonShieldCluster.params[args.params]
+    elif os.path.isfile(args.params):
         with open(args.params, "r") as txt_file:
-            params = np.array([float(line.strip()) for line in txt_file])
-
+            params = [float(line.strip()) for line in txt_file]
+    else: 
+        raise ValueError(f"Invalid params: {args.params}. Must be a valid parameter name or a file path. \
+                         Avaliable names: {', '.join(ShipMuonShieldCluster.params.keys())}.")
     params = torch.as_tensor(params, dtype=torch.float32)
 
 
 
     t1 = time()
-    n_muons, n_hits, n_un = get_total_hits(params, args.inputs_dir, args.outputs_dir, 
-        n_files=args.n_files,
+    n_muons, n_hits, n_un = get_total_hits(params, inputs_file=args.inputs_file, outputs_dir = args.outputs_dir, 
+        n_split=args.n_split, n_muons = args.n_muons,
         config=CONFIG)
     print(f'number of events: {n_un}')
     print(f'INPUT MUONS: {n_muons}')

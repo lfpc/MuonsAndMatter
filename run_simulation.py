@@ -99,7 +99,6 @@ def run(muons,
 
     if input_dist is not None:
         z = (-input_dist)*np.ones_like(z)
-    z = np.minimum(z, -0.9)
 
     if SmearBeamRadius > 0: #ring transformation
         sigma = 1.6
@@ -219,7 +218,7 @@ if __name__ == '__main__':
     input_file = args.f
     input_dist = args.z
     if args.sens_plane == [-1]: sensitive_film_params = None
-    elif args.expanded_sens_plane and args.add_cavern: dx,dy = 9.,7.
+    elif args.expanded_sens_plane and args.add_cavern: dx,dy = 9.,6.
     elif args.expanded_sens_plane: dx,dy = 14,14
     else: dx, dy = 4.0, 6.0
     sensitive_film_params = [{'dz': 0.01, 'dx': dx, 'dy': dy, 'position':pos} for pos in args.sens_plane]
@@ -315,18 +314,19 @@ if __name__ == '__main__':
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = args.angle, elev = args.elev)
         else:
             result = construct_and_plot(muons = all_results[:1000],phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = None, cavern = False, decay_vessel = args.decay_vessel, azim = args.angle, elev = args.elev)
-        import matplotlib.pyplot as plt
-        if isinstance(all_results, np.ndarray) and all_results.ndim == 2:
-            labels = ['px', 'py', 'pz', 'x', 'y', 'z']
-            for i, label in enumerate(labels):
-                plt.figure()
-                plt.hist(data[:, i], bins=100, histtype='step', label='input', linewidth=1.5, log=True)
-                plt.hist(all_results[:, i], bins=100, histtype='step', label='output', linewidth=1.5, log=True)
-                plt.xlabel(label)
-                plt.ylabel('Count')
-                plt.title(f'Histogram of {label} (GEANT4)')
-                plt.legend()
-                plt.tight_layout()
-                plt.savefig(f'plot_test_cuda/{label}_hist.png')
-                plt.close()
+        if not args.save_data:
+            import matplotlib.pyplot as plt
+            if isinstance(all_results, np.ndarray) and all_results.ndim == 2:
+                labels = ['px', 'py', 'pz', 'x', 'y', 'z']
+                for i, label in enumerate(labels):
+                    plt.figure()
+                    plt.hist(data[:, i], bins=100, histtype='step', label='input', linewidth=1.5, log=True)
+                    plt.hist(all_results[:, i], bins=100, histtype='step', label='output', linewidth=1.5, log=True)
+                    plt.xlabel(label)
+                    plt.ylabel('Count')
+                    plt.title(f'Histogram of {label} (GEANT4)')
+                    plt.legend()
+                    plt.tight_layout()
+                    plt.savefig(f'plot_test_cuda/{label}_hist.png')
+                    plt.close()
                                          
