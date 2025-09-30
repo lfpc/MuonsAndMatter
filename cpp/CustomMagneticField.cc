@@ -93,11 +93,6 @@ void CustomMagneticField::GetFieldValueNearestNeighbor(const G4double Point[4], 
     if (quadrant == 3 || quadrant == 4) {
         Bfield[2] = -Bfield[2];
     }
-    double norm = std::sqrt(Bfield[0]*Bfield[0] + Bfield[1]*Bfield[1] + Bfield[2]*Bfield[2]);
-    if (SymmetricPoint[2] > 35.0 * m && norm > 0.1 * tesla) {
-        std::cerr << "Error: Magnetic field norm > 0.1T above z=35m!" << std::endl;
-        throw std::runtime_error("Magnetic field norm > 0.1T above z=35m!");
-    }
 }
 
 void CustomMagneticField::GetFieldValueLinear(const G4double Point[4], G4double *Bfield) const {

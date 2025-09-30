@@ -77,13 +77,15 @@ def propagate_muons_with_cuda(
     nz = int(round((magnetic_field_ranges[5] - magnetic_field_ranges[4]) / magnetic_field['range_z'][2])) + 1
     magnetic_field_B = magnetic_field_B.view(nx, ny, nz, 3).contiguous()
     magnetic_field_ranges = torch.tensor([magnetic_field_ranges]).div(100).float().cpu().contiguous()
+    
     kill_at = 0.18
+    use_symmetry = True
 
     gx, gy, gz = 10, 10, 10
     arb8_grid_range_np = magnetic_field_ranges  # [minX,maxX,minY,maxY,minZ,maxZ]
     total_cells = gx * gy * gz
     arb8_grid_index = torch.zeros(total_cells + 1, dtype=torch.int32, device = 'cuda')  # start offsets per cell
-    arb8_grid_list = torch.zeros(0, dtype=torch.int32)                # flat list of Arb8 indices
+    arb8_grid_list = torch.zeros(0, dtype=torch.int32) # flat list of Arb8 indices
 
     t1 = time.time()
     faster_muons_torch.propagate_muons_with_alias_sampling(
@@ -108,6 +110,7 @@ def propagate_muons_with_cuda(
         arb8_grid_index,
         arb8_grid_range_np.float(),
         cavern_params,
+        use_symmetry,
         sensitive_plane_z,
         kill_at,
         num_steps,
@@ -198,6 +201,7 @@ def run(params,
     sensitive_plane_z = -2.0 if sensitive_plane is None else sensitive_plane['position']
 
     print("Using CUDA for propagation... (server)")
+    #torch.cuda.synchronize()
     out_position, out_momenta = propagate_muons_with_cuda (
             muons_positions,
             muons_momenta,

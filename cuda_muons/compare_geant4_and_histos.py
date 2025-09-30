@@ -86,7 +86,7 @@ def run_cuda_simulation(muons, n_steps=500, mag_field=[0., 0., 0.],histogram_dir
             *histograms_sec,
             mag_dict,
             n_steps*0.02 - sensitive_film['dz']/2,
-            n_steps,
+            n_steps * 2,
             step_length,
         )
     if n_steps > 1:
@@ -139,13 +139,17 @@ def main(muons, n_steps=500, mag_field=[0., 0., 0.], material = 'G4_Fe'):
 
 def plot_histograms(output_filename, 
                     px_g4, py_g4, pz_g4, x_g4, y_g4, z_g4,
-                    px_cuda, py_cuda, pz_cuda, x_cuda, y_cuda, z_cuda):
+                    px_cuda, py_cuda, pz_cuda, x_cuda, y_cuda, z_cuda, weights_g4 = None, weights_cuda = None):
 
     p_mag_g4 = np.sqrt(px_g4 ** 2 + py_g4 ** 2 + pz_g4 ** 2)
     p_mag_cuda = np.sqrt(px_cuda ** 2 + py_cuda ** 2 + pz_cuda ** 2)
 
     mask_g4 = (p_mag_g4 >= args.filter_p[0]) & (p_mag_g4 <= args.filter_p[1])
-    mask_cuda = (p_mag_cuda >= args.filter_p[0]) & (p_mag_cuda <= args.filter_p[1])
+    if args.sens_plane:
+        mask_g4 &= (np.abs(x_g4) <= 2) & (np.abs(y_g4) <= 3)
+    mask_cuda = (p_mag_cuda >= args.filter_p[0]) & (p_mag_cuda <= args.filter_p[1]) 
+    if args.sens_plane:
+        mask_cuda &= (np.abs(x_cuda) <= 2) & (np.abs(y_cuda) <= 3)
 
     px_g4 = px_g4[mask_g4]
     py_g4 = py_g4[mask_g4]
@@ -164,7 +168,11 @@ def plot_histograms(output_filename,
     p_mag_cuda = p_mag_cuda[mask_cuda]
 
     print(f"Number of GEANT4 samples after filter: {px_g4.shape[0]}")
+    if weights_g4 is not None:
+        print(f"Sum of GEANT4 weights after filter: {np.sum(weights_g4[mask_g4])}")
     print(f"Number of CUDA samples after filter: {px_cuda.shape[0]}")
+    if weights_cuda is not None:
+        print(f"Sum of CUDA weights after filter: {np.sum(weights_cuda[mask_cuda])}")
 
     print(f"Error:", np.abs(px_g4.shape[0] - px_cuda.shape[0]) / px_g4.shape[0] * 100, "%")
 
@@ -278,6 +286,7 @@ if __name__ == "__main__":
     parser.add_argument('--file_name_cuda', type=str, help='Path to CUDA pickle file', default =  '/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/data/outputs_cuda.pkl')
     parser.add_argument('--density', action='store_true', help='Plot histograms with density normalization')
     parser.add_argument('--filter_p', type=float, nargs=2, default=[0.0, 500.0], help='Thresholds to filter muons by min_p <= |P| <= max_p')
+    parser.add_argument('--sens_plane', action='store_true', help='Apply sensitive plane cut (|x|<2, |y|<3)')
     args = parser.parse_args()
     n_muons = args.n_muons
 
@@ -330,26 +339,29 @@ if __name__ == "__main__":
     x_cuda = data_cuda['x']
     y_cuda = data_cuda['y']
     z_cuda = data_cuda['z']
-
     
 
     print("=" * 60)
-    print('Number of samples GEANT4:', px_g4.shape[0])
-    print('Number of samples CUDA:', px_cuda.shape[0])
+    print('TOTAL number of samples GEANT4:', px_g4.shape[0])
+    print('TOTAL number of samples CUDA:', px_cuda.shape[0])
+    weights_g4 = None
+    weights_cuda = None
     if 'weight' in data_geant4:
         weights_g4 = data_geant4['weight']
-        print('Sum of weights GEANT4:', np.sum(weights_g4))
+        print('TOTAL sum of weights GEANT4:', np.sum(weights_g4))
     if 'W' in data_cuda:
-        print('Sum of weights CUDA:', np.sum(data_cuda['W']))
+        weights_cuda = data_cuda['W']
+        print('TOTAL sum of weights CUDA:', np.sum(weights_cuda))
 
     output_filename = os.path.join('/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/plots', args.output_filename)
     plot_histograms(output_filename, 
                 px_g4, py_g4, pz_g4, x_g4, y_g4, z_g4,
-                px_cuda, py_cuda, pz_cuda, x_cuda, y_cuda, z_cuda)
+                px_cuda, py_cuda, pz_cuda, x_cuda, y_cuda, z_cuda,
+                weights_g4, weights_cuda)
     if args.n_steps == 1:
         log_start = np.log10(0.18)
         log_end = np.log10(400)
-        inv_log_step = 90/(log_end - log_start)
+        inv_log_step = 95/(log_end - log_start)
         index = int((np.log10(args.initial_momenta) - log_start)*inv_log_step)
         with h5py.File("/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/data/muon_data_energy_loss_sens_{}.h5".format(args.material), "r") as f:
             keys = sorted(list(f.keys()),key=lambda k: float(k.strip("()").split(",")[0]))
@@ -372,6 +384,7 @@ if __name__ == "__main__":
         plt.close()
         print("Plot saved to ", os.path.join('/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/plots', 'pz_comparison_geant4_cuda.png'))
 
+        
         bins = np.linspace(min(np.min(np.log(pt_g4)), np.min(np.log(pt_cuda))), 0.1, 200)
         plt.hist(np.log(pt_g4/args.initial_momenta), bins=bins, density=True, histtype='step', color='firebrick', label='Geant4', log=True)
         plt.hist(np.log(pt/initial_momenta), bins=bins, density=True, histtype='step', color='green', label='GEANT4 (HDF5)', log=True)

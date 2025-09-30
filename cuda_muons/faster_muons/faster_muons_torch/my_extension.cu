@@ -6,6 +6,8 @@
 #include <vector_types.h>
 
 
+__device__ __constant__ bool _use_symmetry = true;
+
 __global__ void add_kernel(float *x, float *y, float *out, int size) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index < size) {
@@ -148,6 +150,24 @@ struct ARB8_Data {
     float z_center;
     float dz;
 };
+
+struct FieldMeta {
+    int binsX;
+    int binsY;
+    int binsZ;
+    float startX;
+    float endX;
+    float startY;
+    float endY;
+    float startZ;
+    float endZ;
+    float invX;
+    float invY;
+    float invZ;
+    int stride_y;   // binsX * binsZ
+};
+
+__constant__ FieldMeta d_field_meta;
 
 void load_arb8s_from_tensor(const at::Tensor& arb8s_tensor, std::vector<ARB8_Data>& out) {
     int N = arb8s_tensor.size(0);
@@ -294,62 +314,48 @@ __device__ void rotateVector(const float P_unit[3], const float delta_P[3], cons
 
 // For device and host compatibility.
 __host__ __device__ inline float3 getFieldAt(const float *field,
-                                              const float x, const float y, const float z,
-                                              const int binsX, const int binsY, const int binsZ,
-                                              const float startX, const float endX,
-                                              const float startY, const float endY,
-                                              const float startZ, const float endZ)
+                                              const float x, const float y, const float z)
 {
+    const FieldMeta &m = d_field_meta; // read small metadata from constant memory
 
-    // Apply quadrant symmetry: map (x,y) into the first quadrant grid and then apply the
-    // same sign flips to the returned field components as done in CustomMagneticField.
-    int quadrant = 0;
-    if (x >= 0.0f && y >= 0.0f) {
-        quadrant = 1;
-    } else if (x <= 0.0f && y >= 0.0f) {
-        quadrant = 2;
-    } else if (x <= 0.0f && y <= 0.0f) {
-        quadrant = 3;
+    // Map to first quadrant (use symmetry of stored field)
+    float sx, sy, sz, sign_x, sign_z;
+    if (_use_symmetry) {
+        sx = fabsf(x);
+        sy = fabsf(y);
+        sz = z;
+        sign_x = ((x >= 0.0f && y >= 0.0f) || (x <= 0.0f && y <= 0.0f)) ? 1.0f : -1.0f;
+        sign_z = ((x >= 0.0f && y >= 0.0f) || (x <= 0.0f && y >= 0.0f)) ? 1.0f : -1.0f;
     } else {
-        quadrant = 4;
+        sx = x;
+        sy = y;
+        sz = z;
+        sign_x = 1.0f;
+        sign_z = 1.0f;
     }
 
-    // Mirror coordinates into the first quadrant
-    float sx = (quadrant == 2 || quadrant == 3) ? -x : x;
-    float sy = (quadrant == 3 || quadrant == 4) ? -y : y;
-    float sz = z;
-    if (sx < startX || sx > endX || sy < startY || sy > endY || sz < startZ || sz > endZ) {
-        float3 nullField = {0.0f, 0.0f, 0.0f};
-        return nullField;
+    // Quick bounds test in mapped coordinates
+    if (sx < m.startX || sx > m.endX || sy < m.startY || sy > m.endY || sz < m.startZ || sz > m.endZ) {
+        return make_float3(0.0f, 0.0f, 0.0f);
     }
-    // Normalize the physical coordinate into [0, 1].
-    float normX = (sx - startX) / (endX - startX);
-    float normY = (sy - startY) / (endY - startY);
-    float normZ = (sz - startZ) / (endZ - startZ);
+    // Normalize to [0,1] using precomputed reciprocals
+    const float normX = (sx - m.startX) * m.invX;
+    const float normY = (sy - m.startY) * m.invY;
+    const float normZ = (sz - m.startZ) * m.invZ;
 
     // Map the normalized coordinate to a bin index.
-    // Multiplying by binsX (or binsY, binsZ) maps [0,1] to [0, binsX].
-    // We then clamp the index to the valid range.
-    int i = (int)roundf(normX * (binsX - 1));
-    int j = (int)roundf(normY * (binsY - 1));
-    int k = (int)roundf(normZ * (binsZ - 1));
+    int i = (int)roundf(normX * (m.binsX - 1)); //roundf
+    int j = (int)roundf(normY * (m.binsY - 1));
+    int k = (int)roundf(normZ * (m.binsZ - 1));
 
     // Compute the flat array index.
     // Each field point consists of 3 floats.
-    int index = (j * (binsX * binsZ) + i * binsZ + k) * 3;
+    int index = (j * m.stride_y + i * m.binsZ + k) * 3;
 
-    // Create a float3 with the field values.
     float3 fieldVal;
-    fieldVal.x = field[index];
+    fieldVal.x = field[index] * sign_x;
     fieldVal.y = field[index + 1];
-    fieldVal.z = field[index + 2];
-
-    if (quadrant == 2 || quadrant == 4) {
-        fieldVal.x = -fieldVal.x;
-    }
-    if (quadrant == 3 || quadrant == 4) {
-        fieldVal.z = -fieldVal.z;
-    }
+    fieldVal.z = field[index + 2] * sign_z;
 
     return fieldVal;
 }
@@ -361,10 +367,6 @@ __constant__ float e_charge = 1.602176634e-19f;  // Elementary charge in Coulomb
 __constant__ float GeV_over_c_to_SI  = 5.3443e-19f;  // ≈ 5.3443e-19 kg·m/s
 
 __device__ void derivative(float* state, float charge, const float* B, float* deriv,
-              const int fieldBinsX, const int fieldBinsY, const int fieldBinsZ,
-              const float fieldStartX, const float fieldEndX,
-              const float fieldStartY, const float fieldEndY,
-              const float fieldStartZ, const float fieldEndZ,
               const float p_mag, const float energy) {
     // Unpack the state array
     float x  = state[0];
@@ -382,12 +384,7 @@ __device__ void derivative(float* state, float charge, const float* B, float* de
     // Multiply the charge by the elementary charge (e_charge)
     float q = charge * e_charge;
 
-    float3 B_ = getFieldAt(B, x, y, z,
-            fieldBinsX, fieldBinsY, fieldBinsZ,
-            fieldStartX, fieldEndX,
-            fieldStartY, fieldEndY,
-            fieldStartZ, fieldEndZ
-        );
+    float3 B_ = getFieldAt(B, x, y, z);
 
     // Lorentz force: dp/dt = q * (v x B) scaled by the conversion factor.
     float dpx = q * (vy * B_.z - vz * B_.y) / GeV_over_c_to_SI;
@@ -407,11 +404,7 @@ __device__ void derivative(float* state, float charge, const float* B, float* de
 __device__ void rk4_step(float pos[3], float mom[3],
               float charge, float step_length_fixed,
               const float* B,
-              float new_pos[3], float new_mom[3],
-              const int fieldBinsX, const int fieldBinsY, const int fieldBinsZ,
-              const float fieldStartX, const float fieldEndX,
-              const float fieldStartY, const float fieldEndY,
-              const float fieldStartZ, const float fieldEndZ)
+              float new_pos[3], float new_mom[3])
 {
     // Combine position and momentum into a single state vector.
     float state[6] = { pos[0], pos[1], pos[2], mom[0], mom[1], mom[2] };
@@ -438,10 +431,6 @@ __device__ void rk4_step(float pos[3], float mom[3],
 
 //     // First RK4 step: k1
     derivative(state, charge, B, k1,
-              fieldBinsX, fieldBinsY, fieldBinsZ,
-              fieldStartX, fieldEndX,
-              fieldStartY, fieldEndY,
-              fieldStartZ, fieldEndZ,
               p_mag, energy);
 
     // Second RK4 step: k2
@@ -450,10 +439,6 @@ __device__ void rk4_step(float pos[3], float mom[3],
     }
 
     derivative(temp, charge, B, k2,
-              fieldBinsX, fieldBinsY, fieldBinsZ,
-              fieldStartX, fieldEndX,
-              fieldStartY, fieldEndY,
-              fieldStartZ, fieldEndZ,
               p_mag, energy);
 
 
@@ -462,10 +447,6 @@ __device__ void rk4_step(float pos[3], float mom[3],
         temp[i] = state[i] + 0.5 * dt * k2[i];
     }
     derivative(temp, charge, B, k3,
-              fieldBinsX, fieldBinsY, fieldBinsZ,
-              fieldStartX, fieldEndX,
-              fieldStartY, fieldEndY,
-              fieldStartZ, fieldEndZ,
               p_mag, energy);
 
     // Fourth RK4 step: k4
@@ -474,10 +455,6 @@ __device__ void rk4_step(float pos[3], float mom[3],
     }
 
     derivative(temp, charge, B, k4,
-              fieldBinsX, fieldBinsY, fieldBinsZ,
-              fieldStartX, fieldEndX,
-              fieldStartY, fieldEndY,
-              fieldStartZ, fieldEndZ,
               p_mag, energy);
 
 
@@ -502,11 +479,11 @@ __device__ void rk4_step(float pos[3], float mom[3],
 
 enum MaterialType { MATERIAL_IRON, MATERIAL_CONCRETE, MATERIAL_AIR };
 
-__device__ bool is_inside_arb8(const float3& particle_pos, const ARB8_Data& block) {
-    if (fabsf(particle_pos.z - block.z_center) > block.dz) {
+__device__ bool is_inside_arb8(const float x, const float y, const float z, const ARB8_Data& block) {
+    if (fabsf(z - block.z_center) > block.dz) {
         return false;
     }
-    float f = (particle_pos.z - (block.z_center - block.dz)) / (2.0f * block.dz);
+    float f = (z - (block.z_center - block.dz)) / (2.0f * block.dz);
     float2 interpolated_verts[4];
     for (int i = 0; i < 4; ++i) {
         interpolated_verts[i].x = (1.0f - f) * block.vertices_neg_z[i].x + f * block.vertices_pos_z[i].x;
@@ -518,8 +495,8 @@ __device__ bool is_inside_arb8(const float3& particle_pos, const ARB8_Data& bloc
         int j = (i + 1) % 4;
         edge.x = interpolated_verts[j].x - interpolated_verts[i].x;
         edge.y = interpolated_verts[j].y - interpolated_verts[i].y;
-        p_vec.x = particle_pos.x - interpolated_verts[i].x;
-        p_vec.y = particle_pos.y - interpolated_verts[i].y;
+        p_vec.x = x - interpolated_verts[i].x;
+        p_vec.y = y - interpolated_verts[i].y;
         signs[i] = edge.x * p_vec.y - edge.y * p_vec.x;
     }
     if ((signs[0] >= 0 && signs[1] >= 0 && signs[2] >= 0 && signs[3] >= 0) ||
@@ -529,17 +506,18 @@ __device__ bool is_inside_arb8(const float3& particle_pos, const ARB8_Data& bloc
     return false;
 }
 __device__ MaterialType get_material(float x, float y, float z, const ARB8_Data* arb8s, int num_arb8s, const float* cavern_params) {
-    return MATERIAL_IRON;
-    printf("This should not be printed\n", x, y, z);
     if (
         (z <= cavern_params[4] && (x <= cavern_params[0] || x >= cavern_params[1] || y <= cavern_params[2] || y >= cavern_params[3])) ||
         (z > cavern_params[4] && (x <= cavern_params[5] || x >= cavern_params[6] || y <= cavern_params[7] || y >= cavern_params[8]))
     ) {
         return MATERIAL_CONCRETE;
     }
-    float3 pos = {x, y, z};
+    if (_use_symmetry) {
+        x = fabsf(x);
+        y = fabsf(y);
+    }
     for (int i = 0; i < num_arb8s; ++i) {
-        if (is_inside_arb8(pos, arb8s[i])) {
+        if (is_inside_arb8(x,y,z, arb8s[i])) {
             return MATERIAL_IRON;
         }
     }
@@ -569,10 +547,6 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
                                const ARB8_Data* arb8s,
                                const int num_arb8s,
                                const float* cavern_params,
-                               const int fieldBinsX, const int fieldBinsY, const int fieldBinsZ,
-                               const float fieldStartX, const float fieldEndX,
-                               const float fieldStartY, const float fieldEndY,
-                               const float fieldStartZ, const float fieldEndZ,
                                int num_steps,
                                float step_length_fixed,
                                int seed)
@@ -694,11 +668,7 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
         rk4_step(muon_data_positions_this_cached, muon_data_momenta_this_cached,
               charge_this_cached, step_length_fixed,
               magnetic_field,
-              muon_data_positions_this_cached, muon_data_momenta_this_cached,
-              fieldBinsX, fieldBinsY, fieldBinsZ,
-              fieldStartX, fieldEndX,
-              fieldStartY, fieldEndY,
-              fieldStartZ, fieldEndZ);
+              muon_data_positions_this_cached, muon_data_momenta_this_cached);
         if (sensitive_plane_z >= 0) {
             if (muon_data_positions_this_cached[2] >= sensitive_plane_z) {
                 break;
@@ -737,6 +707,7 @@ void propagate_muons_with_alias_sampling_cuda(
     torch::Tensor hashed3d_arb8s,
     torch::Tensor hashed3d_arb8s_range,
     torch::Tensor cavern_params,
+    bool use_symmetry,
     float sensitive_plane_z,
     float kill_at,
     int num_steps,
@@ -748,23 +719,31 @@ void propagate_muons_with_alias_sampling_cuda(
     const auto N = muon_data_positions.size(0);
     const auto H_2D = hist_2d_probability_table_iron.size(1);
 
-    const auto nx_mag_field = magnetic_field.size(0);
-    const auto ny_mag_field = magnetic_field.size(1);
-    const auto nz_mag_field = magnetic_field.size(2);
+    //cudaMemcpyToSymbol(_use_symmetry, &use_symmetry, sizeof(bool));
 
     // Define grid and block sizes
     const int threads_per_block = BLOCK_SIZE;
     const int num_blocks = (N + threads_per_block - 1) / threads_per_block;
 
-    float* data_ptr = magnetic_field_range.data_ptr<float>();
-    float* data_ptr_arbs = hashed3d_arb8s_range.data_ptr<float>();
-
-    float rangeStartX = data_ptr[0];
-    float rangeEndX = data_ptr[1];
-    float rangeStartY = data_ptr[2];
-    float rangeEndY = data_ptr[3];
-    float rangeStartZ = data_ptr[4];
-    float rangeEndZ = data_ptr[5];
+    float* data_ptr_B = magnetic_field_range.data_ptr<float>();
+    FieldMeta magfield_data;
+    magfield_data.binsX = magnetic_field.size(0);
+    magfield_data.binsY = magnetic_field.size(1);
+    magfield_data.binsZ = magnetic_field.size(2);
+    magfield_data.startX = data_ptr_B[0];
+    magfield_data.endX   = data_ptr_B[1];
+    magfield_data.startY = data_ptr_B[2];
+    magfield_data.endY   = data_ptr_B[3];
+    magfield_data.startZ = data_ptr_B[4];
+    magfield_data.endZ   = data_ptr_B[5];
+    magfield_data.invX   = 1.0f / (magfield_data.endX - magfield_data.startX);
+    magfield_data.invY   = 1.0f / (magfield_data.endY - magfield_data.startY);
+    magfield_data.invZ   = 1.0f / (magfield_data.endZ - magfield_data.startZ);
+    magfield_data.stride_y  = magfield_data.binsX * magfield_data.binsZ;
+    cudaError_t _err = cudaMemcpyToSymbol(d_field_meta, &magfield_data, sizeof(FieldMeta));
+    if (_err != cudaSuccess) {
+        fprintf(stderr, "cudaMemcpyToSymbol(d_field_meta) failed: %s\n", cudaGetErrorString(_err));
+    }
 
     float log_start_val = log10f(0.18f);
     float log_stop_val = log10f(400.0f);
@@ -773,7 +752,8 @@ void propagate_muons_with_alias_sampling_cuda(
     cudaMemcpyToSymbol(LOG_STOP, &log_stop_val, sizeof(float));
     cudaMemcpyToSymbol(INV_LOG_STEP, &inv_log_step_val, sizeof(float));
 
-    /*float rangeStartXArbs = data_ptr_arbs[0];
+    /*float* data_ptr_arbs = hashed3d_arb8s_range.data_ptr<float>();
+    float rangeStartXArbs = data_ptr_arbs[0];
     float rangeEndXArbs = data_ptr_arbs[1];
     float rangeStartYArbs = data_ptr_arbs[2];
     float rangeEndYArbs = data_ptr_arbs[3];
@@ -791,7 +771,9 @@ void propagate_muons_with_alias_sampling_cuda(
         arb8s_device,
         N_arbs
     );
-    cudaDeviceSynchronize(); // or CUDA_CHECK(cudaDeviceSynchronize());
+
+
+    cudaDeviceSynchronize();
     
 
     #define CUDA_CHECK(call)                                          \
@@ -803,6 +785,7 @@ void propagate_muons_with_alias_sampling_cuda(
             exit(EXIT_FAILURE);                                   \
         }                                                         \
     } while (0)
+
     cuda_test_propagate_muons_k<<<num_blocks, threads_per_block>>>(
         muon_data_positions.data_ptr<float>(),
         muon_data_momenta.data_ptr<float>(),
@@ -827,12 +810,6 @@ void propagate_muons_with_alias_sampling_cuda(
         arb8s_device,
         N_arbs,
         cavern_params.data_ptr<float>(),
-        nx_mag_field,
-        ny_mag_field,
-        nz_mag_field,
-        rangeStartX, rangeEndX,
-        rangeStartY, rangeEndY,
-        rangeStartZ, rangeEndZ,
         num_steps,
         step_length_fixed,
         seed
@@ -841,5 +818,4 @@ void propagate_muons_with_alias_sampling_cuda(
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
     cudaFree(arb8s_device);
-    cudaDeviceSynchronize();
 }

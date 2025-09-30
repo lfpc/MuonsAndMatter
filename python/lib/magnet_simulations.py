@@ -101,8 +101,8 @@ def get_symmetry(points:np.array, B:np.array, reorder:bool = True):
    points_4 = np.array([points[:,0], -points[:,1], points[:,2]]).T
    B_1 = B
    B_2 = np.array([-B[:,0], B[:,1], B[:,2]]).T
-   B_3 = B
-   B_4 = np.array([-B[:,0], B[:,1], B[:,2]]).T
+   B_3 = np.array([B[:,0], B[:,1], -B[:,2]]).T
+   B_4 = np.array([-B[:,0], B[:,1], -B[:,2]]).T
    points = np.vstack((points_1, points_2, points_3, points_4))
    B = np.vstack((B_1, B_2, B_3, B_4))
    if reorder:

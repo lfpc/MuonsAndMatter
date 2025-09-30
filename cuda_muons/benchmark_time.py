@@ -29,7 +29,7 @@ def run_cuda_simulation(muons, n_steps=5000, mag_field=[0., 0., 0.],histogram_di
         step_length = hist_data['step_length']
     histograms_sec = [torch.zeros_like(s) for s in histograms]
 
-    detector = get_design_from_params(params = params_lib.params['tokanut_v5'],
+    detector = get_design_from_params(params = params_lib.params['only_HA'],
                       fSC_mag = False,
                       simulate_fields=False,
                       sensitive_film_params=None,
@@ -42,13 +42,13 @@ def run_cuda_simulation(muons, n_steps=5000, mag_field=[0., 0., 0.],histogram_di
     corners = get_corners_from_detector(detector)
     cavern = get_cavern(detector)
 
-    mag_dict = detector['global_field_map']
-    with h5py.File(os.path.join("/home/hep/lprate/projects/MuonsAndMatter", mag_dict['B']), 'r') as f:
-        mag_dict['B'] = f["B"][:].astype(np.float64)
-    print(type(mag_dict['B']), mag_dict['B'].dtype, mag_dict['B'].shape)
-    #mag_field = np.tile(np.asarray(mag_field), (116, 124, 620, 1)).reshape(-1,3).astype(np.float16)
-    #mag_dict = {'B': mag_field,'range_x':[0,230,2], 'range_y':[0,246,2], 'range_z':[-50,3045,5]}
-    #print(type(mag_dict['B']), mag_dict['B'].dtype, mag_dict['B'].shape)
+    if mag_field is None:
+        mag_dict = detector['global_field_map']
+        with h5py.File(os.path.join("/home/hep/lprate/projects/MuonsAndMatter", mag_dict['B']), 'r') as f:
+            mag_dict['B'] = f["B"][:]
+    else:
+        mag_field = np.tile(np.asarray(mag_field), (116, 124, 620, 1)).reshape(-1,3).astype(np.float16)
+        mag_dict = {'B': mag_field,'range_x':[0,230,2], 'range_y':[0,246,2], 'range_z':[-50,3045,5]}
     
     print("Starting propagation. Pre-definitions took:", time.time() - t1)
     t1 = time.time()
@@ -94,7 +94,9 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--output_file', type=str, default='benchmark_times.pkl', help='Output file to save benchmark times')
+    parser.add_argument('--mag_field', type=float, nargs=3, default=None, help='Magnetic field vector [Bx, By, Bz] in Tesla')
     args = parser.parse_args()
+    
 
     with h5py.File("/home/hep/lprate/projects/MuonsAndMatter/data/muons/full_sample_after_target.h5", 'r') as f:
         px = f['px'][:]
@@ -112,7 +114,7 @@ if __name__ == "__main__":
         n_muons = int(n_muons)
         print("=" * 60)
         print(f"Running for {n_muons} muons")
-        dt = run_cuda_simulation(muons[:n_muons], n_steps = 5000, mag_field=[0., 1., 0.])
+        dt = run_cuda_simulation(muons[:n_muons], n_steps = 5000, mag_field=args.mag_field, material='G4_Fe')
         times.append(dt)
     output_data = (n_muons_list, times)
     with open(os.path.join('data', args.output_file), 'wb') as f:

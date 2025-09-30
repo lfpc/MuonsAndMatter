@@ -267,3 +267,78 @@ def get_cavern(detector):
     TCC8_params = [TCC8['x1'], TCC8['x2'], TCC8['y1'], TCC8['y2'], TCC8['z_center']+TCC8['dz']]
     ECN3_params = [ECN3['x1'], ECN3['x2'], ECN3['y1'], ECN3['y2'], ECN3['z_center']-ECN3['dz']]
     return torch.tensor([TCC8_params,ECN3_params], dtype=torch.float32)
+
+
+def create_z_axis_grid(corners_tensor: torch.Tensor, sz: int) -> list[list[int]]:
+    """
+    Divides the simulation space into cells along the Z-axis and maps ARB8
+    geometries to the cells they overlap.
+
+    This function is a precursor to a full 3D hash grid. It identifies which
+    geometries are candidates for inclusion in a given Z-slice, which massively
+    reduces the number of checks needed in subsequent steps.
+
+    Args:
+        corners_tensor (torch.Tensor): A tensor of shape (N, 8, 3) containing the
+                                       vertex coordinates for N ARB8 geometries.
+        sz (int): The number of cells (slices) to divide the Z-axis into.
+
+    Returns:
+        list[list[int]]: A list of lists, where the i-th list contains the integer
+                         indices of all geometries that overlap with the i-th
+                         Z-cell.
+    """
+    if sz <= 0:
+        raise ValueError("Number of z-cells (sz) must be a positive integer.")
+
+    num_geometries = corners_tensor.shape[0]
+    if num_geometries == 0:
+        return [[] for _ in range(sz)]
+
+    # --- 1. Determine the global Z-range of the entire simulation space ---
+    all_z_coords = corners_tensor[:, :, 2]
+    z_min_global = all_z_coords.min()
+    z_max_global = all_z_coords.max()
+    
+    # Handle the edge case where all z-coordinates are the same
+    if torch.isclose(z_min_global, z_max_global):
+        z_max_global = z_min_global + 1.0 # Create a small range to avoid division by zero
+
+    # --- 2. Define the boundaries for each Z-cell ---
+    # We create sz+1 boundaries to define sz cells.
+    cell_boundaries = torch.linspace(z_min_global, z_max_global, sz + 1, device=corners_tensor.device)
+    cell_z_starts = cell_boundaries[:-1]
+    cell_z_ends = cell_boundaries[1:]
+
+    # --- 3. Find the Z-range for each individual ARB8 geometry ---
+    # Per the problem description, the first 4 vertices define one z-plane (z0)
+    # and the last 4 define the other (z1).
+    geom_z0 = corners_tensor[:, 0, 2]  # Shape: (N,)
+    geom_z1 = corners_tensor[:, 4, 2]  # Shape: (N,)
+
+    # Ensure we have the min and max z for each geometry, regardless of order
+    geom_z_min = torch.min(geom_z0, geom_z1)
+    geom_z_max = torch.max(geom_z0, geom_z1)
+
+    # --- 4. Perform the overlap check using broadcasting (Vectorized) ---
+    # To check if two ranges [a, b] and [c, d] overlap, the condition is:
+    # a <= d AND b >= c.
+    #
+    # We can do this for all cells and all geometries at once.
+    # Reshape tensors to enable broadcasting:
+    #   - cell starts/ends: (sz, 1)
+    #   - geometry z min/max: (1, N)
+    # The comparison will result in a broadcasted boolean matrix of shape (sz, N).
+    
+    overlap_check1 = geom_z_min.unsqueeze(0) <= cell_z_ends.unsqueeze(1)
+    overlap_check2 = geom_z_max.unsqueeze(0) >= cell_z_starts.unsqueeze(1)
+
+    # The final overlap matrix is True where a geometry overlaps a cell
+    overlap_matrix = overlap_check1 & overlap_check2
+
+    # --- 5. Construct the final list of lists from the boolean matrix ---
+    cell_contents = [
+        torch.where(row)[0].tolist() for row in overlap_matrix
+    ]
+
+    return cell_contents
