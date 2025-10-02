@@ -26,6 +26,9 @@ def _process_and_append_chunk_outputs(temp_dir: str, output_file_handle, feature
     if not all_chunk_arrays:
         return
     concatenated_array = np.concatenate(all_chunk_arrays, axis=1).T
+    print("Found data with shape:", concatenated_array.shape)
+    print('Number of muons that end BEFORE of sens plane:', np.sum(concatenated_array[:,5]<(CONFIG['sensitive_plane'][0]['position']-CONFIG['sensitive_plane'][0]['dz'])))
+    print('Number of muons that end AFTER of sens plane:', np.sum(concatenated_array[:,5]>(CONFIG['sensitive_plane'][0]['position']+CONFIG['sensitive_plane'][0]['dz'])))
 
     for j, key in enumerate(feature_order):
         column_data = concatenated_array[:, j]
@@ -47,7 +50,7 @@ def get_total_hits(phi,
                    inputs_file: str = 'data/muons/full_sample.h5',
                    outputs_dir: str = 'data/outputs/results',
                    config: dict = {}):
-    SHIP = ShipMuonShieldCluster(dimensions_phi=phi.size(-1), **config)
+    SHIP = ShipMuonShieldCluster(dimensions_phi=phi.size(-1), initial_phi=phi, **config)
     
     feature_order = ['px', 'py', 'pz', 'x', 'y', 'z', 'pdg', 'weight']
     

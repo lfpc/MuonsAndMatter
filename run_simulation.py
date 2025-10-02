@@ -142,7 +142,7 @@ def run(muons,
                 if muons.shape[-1] == 8: output_s.append(float(weights[i]))
                 muon_data += [output_s]
             elif return_nan:
-                muon_data += [[0]*muons.shape[-1]]
+                muon_data += [[px[i], py[i], pz[i],x[i], y[i], z[i], charge[i]*-13, weights[i] if muons.shape[-1] == 8 else 1]]
             
 
     muon_data = np.asarray(muon_data)
@@ -221,7 +221,7 @@ if __name__ == '__main__':
     elif args.expanded_sens_plane and args.add_cavern: dx,dy = 9.,6.
     elif args.expanded_sens_plane: dx,dy = 14,14
     else: dx, dy = 4.0, 6.0
-    sensitive_film_params = [{'dz': 0.01, 'dx': dx, 'dy': dy, 'position':pos} for pos in args.sens_plane]
+    sensitive_film_params = [{'dz': 0.001, 'dx': dx, 'dy': dy, 'position':pos} for pos in args.sens_plane]
     t1_fem = time() 
     detector = None
     if not args.real_fields:
@@ -293,6 +293,10 @@ if __name__ == '__main__':
     except: 
         print('Data Shape', len(all_results))
         print('Input Shape', len(data))
+    print('Number of muons that start AFTER of sens plane:', np.sum(data[:,5]>max(args.sens_plane)))
+    print('Number of muons that end BEFORE of sens plane:', np.sum(all_results[:,5]<(max(args.sens_plane)-sensitive_film_params[-1]['dz'])))
+    print('Number of muons that end AFTER of sens plane:', np.sum(all_results[:,5]>(max(args.sens_plane)+sensitive_film_params[-1]['dz'])))
+    print('Number 0 weight outputs:', np.sum(all_results[:,7]==0))
     print(f"Cost = {cost} CHF")
     if args.save_data:
         try: tag = f"{args.params.split('/')[-2]}_{args.f.split('/')[-1].split('.')[0]}"
@@ -327,6 +331,6 @@ if __name__ == '__main__':
                     plt.title(f'Histogram of {label} (GEANT4)')
                     plt.legend()
                     plt.tight_layout()
-                    plt.savefig(f'plot_test_cuda/{label}_hist.png')
+                    plt.savefig(f'plots/{label}_hist.png')
                     plt.close()
                                          

@@ -39,8 +39,8 @@ void propagate_muons_with_alias_sampling_cuda(
     torch::Tensor magnetic_field,
     torch::Tensor magnetic_field_range,
     torch::Tensor arb8s,
-    torch::Tensor hashed3d_arb8s,
-    torch::Tensor hashed3d_arb8s_range,
+    torch::Tensor hashed3d_arb8s_cells,
+    torch::Tensor hashed3d_arb8s_indices,
     torch::Tensor cavern_params,
     bool use_symmetry,
     float sensitive_plane_z,
@@ -71,8 +71,8 @@ void propagate_muons_with_alias_sampling(
     torch::Tensor magnetic_field,
     torch::Tensor magnetic_field_range,
     torch::Tensor arb8s,
-    torch::Tensor hashed3d_arb8s,
-    torch::Tensor hashed3d_arb8s_range,
+    torch::Tensor hashed3d_arb8s_cells,
+    torch::Tensor hashed3d_arb8s_indices,
     torch::Tensor cavern_params,
     bool use_symmetry,
     float sensitive_plane_z,
@@ -99,9 +99,7 @@ void propagate_muons_with_alias_sampling(
         !magnetic_field.is_cuda() ||
         magnetic_field_range.is_cuda() ||
         !arb8s.is_cuda() ||
-        !cavern_params.is_cuda() ||
-        !hashed3d_arb8s.is_cuda() ||
-        hashed3d_arb8s_range.is_cuda()
+        !cavern_params.is_cuda()
         )
     {
         throw std::runtime_error("All tensors except magnetic_field_range and arb8s must be CUDA tensors. magnetic_field_range and hashed3d_arb8s_range should be on the CPU.");
@@ -127,8 +125,8 @@ void propagate_muons_with_alias_sampling(
         magnetic_field,
         magnetic_field_range,
         arb8s,
-        hashed3d_arb8s,
-        hashed3d_arb8s_range,
+        hashed3d_arb8s_cells,
+        hashed3d_arb8s_indices,
         cavern_params,
         use_symmetry,
         sensitive_plane_z,

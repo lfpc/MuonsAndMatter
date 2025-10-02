@@ -6,8 +6,6 @@
 #include <vector_types.h>
 
 
-__device__ __constant__ bool _use_symmetry = true;
-
 __global__ void add_kernel(float *x, float *y, float *out, int size) {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index < size) {
@@ -166,8 +164,12 @@ struct FieldMeta {
     float invZ;
     int stride_y;   // binsX * binsZ
 };
+struct ZGridMeta { float z_min_global; float z_max_global; float z_cell_height_inv; int sz; };
 
 __constant__ FieldMeta d_field_meta;
+__constant__ ZGridMeta d_grid_meta;
+__constant__ float BIG_STEP = 0.2f;
+
 
 void load_arb8s_from_tensor(const at::Tensor& arb8s_tensor, std::vector<ARB8_Data>& out) {
     int N = arb8s_tensor.size(0);
@@ -185,7 +187,6 @@ void load_arb8s_from_tensor(const at::Tensor& arb8s_tensor, std::vector<ARB8_Dat
         out[i].dz = 0.5f * fabs(z_pos - z_neg);
     }
 }
-
 __global__ void fill_arb8s_kernel(
     const float* arb8s_tensor, // shape (N,8,3), row-major, contiguous
     ARB8_Data* arb8s_out,
@@ -210,9 +211,11 @@ __global__ void fill_arb8s_kernel(
 }
 
 
+
 __constant__ float LOG_START;
 __constant__ float LOG_STOP;
 __constant__ float INV_LOG_STEP;
+__device__ __constant__ bool _use_symmetry = true;
 
 __device__ int get_first_bin(float num) {
     // Clip num to be within [10, 300]
@@ -240,19 +243,15 @@ __device__ void crossProduct(const float a[3], const float b[3], float result[3]
 
 // Helper function to compute the norm of a vector
 __device__ float norm(const float v[3]) {
-    return sqrt(dotProduct(v, v));
+    return sqrtf(dotProduct(v, v));
 }
 
 // Helper function to normalize a vector
 __device__ void normalize(const float v[3], float result[3]) {
-    float v_norm = norm(v);
-//     if (v_norm == 0) {
-//         printf("Error: Vector cannot be zero vector.\n");
-//         return; // Or handle as desired in CUDA (e.g., return default unit vector)
-//     }
-    result[0] = v[0] / v_norm;
-    result[1] = v[1] / v_norm;
-    result[2] = v[2] / v_norm;
+    float inv_norm = rsqrtf(dotProduct(v, v));  // 1/sqrt(x)
+    result[0] = v[0] * inv_norm;
+    result[1] = v[1] * inv_norm;
+    result[2] = v[2] * inv_norm;
 }
 
 
@@ -280,7 +279,7 @@ __device__ void rotateVector(const float P_unit[3], const float delta_P[3], cons
 
     // Calculate the rotation angle
     float cos_theta = dotProduct(z_axis, P_unit);
-    float theta = acos(cos_theta);
+    float theta = acosf(cos_theta);
 
     // Construct the rotation matrix using Rodrigues' rotation formula
     float K[3][3] = {
@@ -293,8 +292,8 @@ __device__ void rotateVector(const float P_unit[3], const float delta_P[3], cons
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
             R[i][j] = (i == j ? 1 : 0) +
-                      sin(theta) * K[i][j] +
-                      (1 - cos_theta) * (K[i][0] * K[0][j] + K[i][1] * K[1][j] + K[i][2] * K[2][j]);
+                      sinf(theta) * K[i][j] +
+                      (1 - cosf(theta)) * (K[i][0] * K[0][j] + K[i][1] * K[1][j] + K[i][2] * K[2][j]);
         }
     }
 
@@ -313,25 +312,23 @@ __device__ void rotateVector(const float P_unit[3], const float delta_P[3], cons
 }
 
 // For device and host compatibility.
-__host__ __device__ inline float3 getFieldAt(const float *field,
-                                              const float x, const float y, const float z)
+__device__ inline float3 getFieldAt(const float *field,
+                                    const float x, const float y, const float z,
+                                    const FieldMeta& m)
 {
-    const FieldMeta &m = d_field_meta; // read small metadata from constant memory
+    //const FieldMeta &m = d_field_meta;
 
     // Map to first quadrant (use symmetry of stored field)
-    float sx, sy, sz, sign_x, sign_z;
+    float sx, sy, sz;
     if (_use_symmetry) {
         sx = fabsf(x);
         sy = fabsf(y);
         sz = z;
-        sign_x = ((x >= 0.0f && y >= 0.0f) || (x <= 0.0f && y <= 0.0f)) ? 1.0f : -1.0f;
-        sign_z = ((x >= 0.0f && y >= 0.0f) || (x <= 0.0f && y >= 0.0f)) ? 1.0f : -1.0f;
+        
     } else {
         sx = x;
         sy = y;
         sz = z;
-        sign_x = 1.0f;
-        sign_z = 1.0f;
     }
 
     // Quick bounds test in mapped coordinates
@@ -344,14 +341,21 @@ __host__ __device__ inline float3 getFieldAt(const float *field,
     const float normZ = (sz - m.startZ) * m.invZ;
 
     // Map the normalized coordinate to a bin index.
-    int i = (int)roundf(normX * (m.binsX - 1)); //roundf
-    int j = (int)roundf(normY * (m.binsY - 1));
-    int k = (int)roundf(normZ * (m.binsZ - 1));
+    int i = __float2int_rn(normX * (m.binsX - 1)); 
+    int j = __float2int_rn(normY * (m.binsY - 1));
+    int k = __float2int_rn(normZ * (m.binsZ - 1));
+
 
     // Compute the flat array index.
     // Each field point consists of 3 floats.
     int index = (j * m.stride_y + i * m.binsZ + k) * 3;
 
+    float sign_x = 1.0f, sign_z = 1.0f;
+    if (_use_symmetry) {
+        sign_x = ((x >= 0.0f && y >= 0.0f) || (x <= 0.0f && y <= 0.0f)) ? 1.0f : -1.0f;
+        sign_z = ((x >= 0.0f && y >= 0.0f) || (x <= 0.0f && y >= 0.0f)) ? 1.0f : -1.0f;
+    } 
+    
     float3 fieldVal;
     fieldVal.x = field[index] * sign_x;
     fieldVal.y = field[index + 1];
@@ -359,123 +363,6 @@ __host__ __device__ inline float3 getFieldAt(const float *field,
 
     return fieldVal;
 }
-
-
-__constant__ float MUON_MASS = 0.1056583755f;  // GeV/c²
-__constant__ float c_speed_of_light = 299792458.0f;  // Speed of light in m/s
-__constant__ float e_charge = 1.602176634e-19f;  // Elementary charge in Coulombs
-__constant__ float GeV_over_c_to_SI  = 5.3443e-19f;  // ≈ 5.3443e-19 kg·m/s
-
-__device__ void derivative(float* state, float charge, const float* B, float* deriv,
-              const float p_mag, const float energy) {
-    // Unpack the state array
-    float x  = state[0];
-    float y  = state[1];
-    float z  = state[2];
-    float px = state[3];
-    float py = state[4];
-    float pz = state[5];
-
-
-    float vx = (px / energy) * c_speed_of_light;
-    float vy = (py / energy) * c_speed_of_light;
-    float vz = (pz / energy) * c_speed_of_light;
-
-    // Multiply the charge by the elementary charge (e_charge)
-    float q = charge * e_charge;
-
-    float3 B_ = getFieldAt(B, x, y, z);
-
-    // Lorentz force: dp/dt = q * (v x B) scaled by the conversion factor.
-    float dpx = q * (vy * B_.z - vz * B_.y) / GeV_over_c_to_SI;
-    float dpy = q * (vz * B_.x - vx * B_.z) / GeV_over_c_to_SI;
-    float dpz = q * (vx * B_.y - vy * B_.x) / GeV_over_c_to_SI;
-
-    // Pack the derivatives into the output array
-    deriv[0] = vx;
-    deriv[1] = vy;
-    deriv[2] = vz;
-    deriv[3] = dpx;
-    deriv[4] = dpy;
-    deriv[5] = dpz;
-
-}
-
-__device__ void rk4_step(float pos[3], float mom[3],
-              float charge, float step_length_fixed,
-              const float* B,
-              float new_pos[3], float new_mom[3])
-{
-    // Combine position and momentum into a single state vector.
-    float state[6] = { pos[0], pos[1], pos[2], mom[0], mom[1], mom[2] };
-
-    // Compute the magnitude of the momentum.
-    float p_mag = sqrt(mom[0]*mom[0] + mom[1]*mom[1] + mom[2]*mom[2]);
-
-//     float p_mag  = sqrt(px * px + py * py + pz * pz);
-    float energy = sqrt(p_mag * p_mag + MUON_MASS * MUON_MASS);
-
-    // Calculate the energy: E^2 = p^2 + m^2
-//     float energy = sqrt(p_mag*p_mag + MUON_MASS*MUON_MASS);
-
-    // Determine the velocity magnitude: v = (p/E) * c (for ultra-relativistic particles, v ~ c)
-    float v_mag = (p_mag / energy) * c_speed_of_light;
-
-    // Calculate time step dt = step_length / v
-    float dt = step_length_fixed / v_mag;
-
-    // Allocate arrays for RK4 slopes.
-    float k1[6], k2[6],
-          k3[6], k4[6];
-    float temp[6];
-
-//     // First RK4 step: k1
-    derivative(state, charge, B, k1,
-              p_mag, energy);
-
-    // Second RK4 step: k2
-    for (int i = 0; i < 6; i++) {
-        temp[i] = state[i] + 0.5 * dt * k1[i];
-    }
-
-    derivative(temp, charge, B, k2,
-              p_mag, energy);
-
-
-    // Third RK4 step: k3
-    for (int i = 0; i < 6; i++) {
-        temp[i] = state[i] + 0.5 * dt * k2[i];
-    }
-    derivative(temp, charge, B, k3,
-              p_mag, energy);
-
-    // Fourth RK4 step: k4
-    for (int i = 0; i < 6; i++) {
-        temp[i] = state[i] + dt * k3[i];
-    }
-
-    derivative(temp, charge, B, k4,
-              p_mag, energy);
-
-
-
-    // Combine the intermediate slopes to compute the new state.
-    float new_state[6];
-    for (int i = 0; i < 6; i++) {
-        new_state[i] = state[i]+ dt/6.0 * (k1[i] + 2*k2[i] + 2*k3[i] + k4[i]);
-    }
-
-    // Write the updated state into the output arrays.
-    // The first three elements are position, and the last three are momentum.
-    new_pos[0] = new_state[0];
-    new_pos[1] = new_state[1];
-    new_pos[2] = new_state[2];
-
-    new_mom[0] = new_state[3];
-    new_mom[1] = new_state[4];
-    new_mom[2] = new_state[5];
-}
-
 
 enum MaterialType { MATERIAL_IRON, MATERIAL_CONCRETE, MATERIAL_AIR };
 
@@ -505,24 +392,239 @@ __device__ bool is_inside_arb8(const float x, const float y, const float z, cons
     }
     return false;
 }
-__device__ MaterialType get_material(float x, float y, float z, const ARB8_Data* arb8s, int num_arb8s, const float* cavern_params) {
+__device__ MaterialType get_material(
+    float x, float y, float z, 
+    const ARB8_Data* arb8s, 
+    const int* cell_starts,      // Add these parameters
+    const int* item_indices,     // Add these parameters
+    const float* cavern_params,
+    const ZGridMeta& m
+) {
     if (
         (z <= cavern_params[4] && (x <= cavern_params[0] || x >= cavern_params[1] || y <= cavern_params[2] || y >= cavern_params[3])) ||
         (z > cavern_params[4] && (x <= cavern_params[5] || x >= cavern_params[6] || y <= cavern_params[7] || y >= cavern_params[8]))
     ) {
         return MATERIAL_CONCRETE;
     }
+    if (z >= m.z_max_global || z < m.z_min_global) {
+        return MATERIAL_AIR;
+    }
     if (_use_symmetry) {
         x = fabsf(x);
         y = fabsf(y);
     }
-    for (int i = 0; i < num_arb8s; ++i) {
-        if (is_inside_arb8(x,y,z, arb8s[i])) {
+    int cell_idx = (int)((z - m.z_min_global) * m.z_cell_height_inv);
+
+    int start_idx = cell_starts[cell_idx];
+    int end_idx = cell_starts[cell_idx + 1];
+    for (int i = start_idx; i < end_idx; ++i) {
+        int arb8_idx = item_indices[i];
+        if (is_inside_arb8(x, y, z, arb8s[arb8_idx])) {
             return MATERIAL_IRON;
         }
     }
     return MATERIAL_AIR;
 }
+
+__constant__ float MUON_MASS = 0.1056583755f;  // GeV/c²
+__constant__ float c_speed_of_light = 299792458.0f;  // Speed of light in m/s
+__constant__ float e_charge = 1.602176634e-19f;  // Elementary charge in Coulombs
+__constant__ float GeV_over_c_to_SI  = 5.3443e-19f;  // ≈ 5.3443e-19 kg·m/s
+
+__device__ void derivative(float* state, float charge, const float* B, float* deriv,
+              const float p_mag, const float energy, const FieldMeta& field_meta) {
+    // Unpack the state array
+    float x  = state[0];
+    float y  = state[1];
+    float z  = state[2];
+    float px = state[3];
+    float py = state[4];
+    float pz = state[5];
+
+
+    float vx = (px / energy) * c_speed_of_light;
+    float vy = (py / energy) * c_speed_of_light;
+    float vz = (pz / energy) * c_speed_of_light;
+
+    // Multiply the charge by the elementary charge (e_charge)
+    float q = charge * e_charge;
+
+    float3 B_ = getFieldAt(B, x, y, z, field_meta);
+
+    // Lorentz force: dp/dt = q * (v x B) scaled by the conversion factor.
+    float dpx = q * (vy * B_.z - vz * B_.y) / GeV_over_c_to_SI;
+    float dpy = q * (vz * B_.x - vx * B_.z) / GeV_over_c_to_SI;
+    float dpz = q * (vx * B_.y - vy * B_.x) / GeV_over_c_to_SI;
+
+    // Pack the derivatives into the output array
+    deriv[0] = vx;
+    deriv[1] = vy;
+    deriv[2] = vz;
+    deriv[3] = dpx;
+    deriv[4] = dpy;
+    deriv[5] = dpz;
+
+}
+
+__device__ void rk4_step(float pos[3], float mom[3],
+              float charge, float step_length_fixed,
+              const float* B,
+              float new_pos[3], float new_mom[3],
+              const FieldMeta& field_meta)
+{
+    // Combine position and momentum into a single state vector.
+    float state[6] = { pos[0], pos[1], pos[2], mom[0], mom[1], mom[2] };
+
+    // Compute the magnitude of the momentum.
+    float p_mag = sqrtf(mom[0]*mom[0] + mom[1]*mom[1] + mom[2]*mom[2]);
+
+//     float p_mag  = sqrt(px * px + py * py + pz * pz);
+    float energy = sqrtf(p_mag * p_mag + MUON_MASS * MUON_MASS);
+
+    // Calculate the energy: E^2 = p^2 + m^2
+//     float energy = sqrt(p_mag*p_mag + MUON_MASS*MUON_MASS);
+
+    // Determine the velocity magnitude: v = (p/E) * c (for ultra-relativistic particles, v ~ c)
+    float v_mag = (p_mag / energy) * c_speed_of_light;
+
+    // Calculate time step dt = step_length / v
+    float dt = step_length_fixed / v_mag;
+
+    // Allocate arrays for RK4 slopes.
+    float k1[6], k2[6],
+          k3[6], k4[6];
+    float temp[6];
+
+//     // First RK4 step: k1
+    derivative(state, charge, B, k1,
+              p_mag, energy, field_meta);
+
+    // Second RK4 step: k2
+    for (int i = 0; i < 6; i++) {
+        temp[i] = state[i] + 0.5 * dt * k1[i];
+    }
+
+    derivative(temp, charge, B, k2,
+              p_mag, energy, field_meta);
+
+
+    // Third RK4 step: k3
+    for (int i = 0; i < 6; i++) {
+        temp[i] = state[i] + 0.5 * dt * k2[i];
+    }
+    derivative(temp, charge, B, k3,
+              p_mag, energy, field_meta);
+
+    // Fourth RK4 step: k4
+    for (int i = 0; i < 6; i++) {
+        temp[i] = state[i] + dt * k3[i];
+    }
+
+    derivative(temp, charge, B, k4,
+              p_mag, energy, field_meta);
+
+
+
+    // Combine the intermediate slopes to compute the new state.
+    float new_state[6];
+    for (int i = 0; i < 6; i++) {
+        new_state[i] = state[i]+ dt/6.0 * (k1[i] + 2*k2[i] + 2*k3[i] + k4[i]);
+    }
+
+    // Write the updated state into the output arrays.
+    // The first three elements are position, and the last three are momentum.
+    new_pos[0] = new_state[0];
+    new_pos[1] = new_state[1];
+    new_pos[2] = new_state[2];
+
+    new_mom[0] = new_state[3];
+    new_mom[1] = new_state[4];
+    new_mom[2] = new_state[5];
+}
+
+__device__ void derivative_cached(float* state, float charge, float3 B_vec, float* deriv,
+              const float p_mag, const float energy) {
+    // Unpack the state array
+    float px = state[3];
+    float py = state[4];
+    float pz = state[5];
+
+    float vx = (px / energy) * c_speed_of_light;
+    float vy = (py / energy) * c_speed_of_light;
+    float vz = (pz / energy) * c_speed_of_light;
+
+    // Multiply the charge by the elementary charge (e_charge)
+    float q = charge * e_charge;
+
+    // Lorentz force: dp/dt = q * (v x B) scaled by the conversion factor.
+    float dpx = q * (vy * B_vec.z - vz * B_vec.y) / GeV_over_c_to_SI;
+    float dpy = q * (vz * B_vec.x - vx * B_vec.z) / GeV_over_c_to_SI;
+    float dpz = q * (vx * B_vec.y - vy * B_vec.x) / GeV_over_c_to_SI;
+
+    // Pack the derivatives into the output array
+    deriv[0] = vx;
+    deriv[1] = vy;
+    deriv[2] = vz;
+    deriv[3] = dpx;
+    deriv[4] = dpy;
+    deriv[5] = dpz;
+}
+
+__device__ void rk4_step_cached(float pos[3], float mom[3],
+              float charge, float step_length_fixed,
+              const float* B,
+              float new_pos[3], float new_mom[3],
+              const FieldMeta& field_meta)
+{
+    float state[6] = { pos[0], pos[1], pos[2], mom[0], mom[1], mom[2] };
+    float p_mag = sqrtf(mom[0]*mom[0] + mom[1]*mom[1] + mom[2]*mom[2]);
+    float energy = sqrtf(p_mag * p_mag + MUON_MASS * MUON_MASS);
+    float v_mag = (p_mag / energy) * c_speed_of_light;
+    float dt = step_length_fixed / v_mag;
+
+    float k1[6], k2[6], k3[6], k4[6];
+    float temp[6];
+
+    // Field at START of step
+    float3 B_start = getFieldAt(B, pos[0], pos[1], pos[2], field_meta);
+    derivative_cached(state, charge, B_start, k1, p_mag, energy);
+
+    // Estimate endpoint position
+    float end_pos[3];
+    for (int i = 0; i < 3; i++) {
+        end_pos[i] = pos[i] + dt * k1[i];  // Rough estimate using k1
+    }
+    
+    // Field at END of step
+    float3 B_end = getFieldAt(B, end_pos[0], end_pos[1], end_pos[2], field_meta);
+    
+    // Average field for intermediate calculations
+    float3 B_avg;
+    B_avg.x = 0.5f * (B_start.x + B_end.x);
+    B_avg.y = 0.5f * (B_start.y + B_end.y);
+    B_avg.z = 0.5f * (B_start.z + B_end.z);
+
+    // k2, k3, k4 use averaged field
+    for (int i = 0; i < 6; i++) temp[i] = state[i] + 0.5f * dt * k1[i];
+    derivative_cached(temp, charge, B_avg, k2, p_mag, energy);
+
+    for (int i = 0; i < 6; i++) temp[i] = state[i] + 0.5f * dt * k2[i];
+    derivative_cached(temp, charge, B_avg, k3, p_mag, energy);
+
+    for (int i = 0; i < 6; i++) temp[i] = state[i] + dt * k3[i];
+    derivative_cached(temp, charge, B_avg, k4, p_mag, energy);
+
+    // Combine
+    for (int i = 0; i < 6; i++) {
+        state[i] += dt/6.0f * (k1[i] + 2.0f*k2[i] + 2.0f*k3[i] + k4[i]);
+    }
+
+    new_pos[0] = state[0]; new_pos[1] = state[1]; new_pos[2] = state[2];
+    new_mom[0] = state[3]; new_mom[1] = state[4]; new_mom[2] = state[5];
+}
+
+
+
 
 __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
                                float* muon_data_momenta,
@@ -545,7 +647,10 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
                                const int N,
                                const int H_2d,
                                const ARB8_Data* arb8s,
-                               const int num_arb8s,
+                               const int* hashed3d_arb8s_cells,
+                               const int* hashed3d_arb8s_indices,
+                               const FieldMeta field_meta,
+                               const ZGridMeta grid_meta,
                                const float* cavern_params,
                                int num_steps,
                                float step_length_fixed,
@@ -569,24 +674,20 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
     float muon_data_momenta_this_cached[3] = {muon_data_momenta[offset+0], muon_data_momenta[offset+1], muon_data_momenta[offset+2]};
     float muon_data_positions_this_cached[3] = {muon_data_positions[offset+0], muon_data_positions[offset+1], muon_data_positions[offset+2]};
     float charge_this_cached = charges[idx];
+    float step_length = step_length_fixed;
 
     for (int step = 0; step < num_steps; step++) {
         float mag_P = norm(muon_data_momenta_this_cached);
-
-        // Normalize P to get the direction unit vector
-        float P_unit[3];
-        normalize(muon_data_momenta_this_cached, P_unit);
-        int hist_idx = get_first_bin(mag_P);
-
-        if (hist_idx==-1)
-            break;
-
         if (mag_P < kill_at)
             break;
 
         if (fabsf(muon_data_positions_this_cached[0]) > 10.0f || fabsf(muon_data_positions_this_cached[1]) > 10.0f) {
             break;
         }
+        // Normalize P to get the direction unit vector
+        float P_unit[3];
+        normalize(muon_data_momenta_this_cached, P_unit);
+        int hist_idx = get_first_bin(mag_P);
 
         // 2. Generate a uniform random number in [0, 1] for sampling from CDF
         float rand_value = curand_uniform(&state);
@@ -596,8 +697,10 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
            muon_data_positions_this_cached[1],
             muon_data_positions_this_cached[2],
             arb8s,
-            num_arb8s,
-            cavern_params
+            hashed3d_arb8s_cells, 
+            hashed3d_arb8s_indices,
+            cavern_params,
+            grid_meta
         );
 
         float delta = 0.0f;
@@ -640,16 +743,16 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
             
             bin_value_second_dim += bin_jitter_second_dim; // Apply jitter to the bin value
 
-            delta = mag_P * exp(bin_value_first_dim);
-            delta_second_dim = mag_P * exp(bin_value_second_dim);
+            delta = mag_P * expf(bin_value_first_dim);
+            delta_second_dim = mag_P * expf(bin_value_second_dim);
 
         }
 
         float phi = curand_uniform(&state) * 2 * M_PI;
 
         // Convert polar coordinates to Cartesian coordinates
-        float x = delta_second_dim * cos(phi);
-        float y = delta_second_dim * sin(phi);
+        float x = delta_second_dim * __cosf(phi);
+        float y = delta_second_dim * __sinf(phi);
 
         delta_P[0] = x;
         delta_P[1] = -y;
@@ -664,11 +767,18 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
         if (muon_data_momenta_this_cached[2] < 0.0f) {
             break;
         }
+        if (muon_data_positions_this_cached[0] >= (cavern_params[5]+BIG_STEP) && (muon_data_positions_this_cached[0] <= (cavern_params[6]-BIG_STEP))
+            && (muon_data_positions_this_cached[1] >= (cavern_params[7]+BIG_STEP)) && (muon_data_positions_this_cached[1] <= (cavern_params[8]-BIG_STEP))
+            && (muon_data_positions_this_cached[2] >= grid_meta.z_max_global) && (muon_data_positions_this_cached[2] >= field_meta.endZ)
+            && (muon_data_positions_this_cached[2] <= sensitive_plane_z - BIG_STEP)) {
+            step_length = BIG_STEP;
+        } else {step_length = step_length_fixed;}
 
-        rk4_step(muon_data_positions_this_cached, muon_data_momenta_this_cached,
-              charge_this_cached, step_length_fixed,
+        rk4_step_cached(muon_data_positions_this_cached, muon_data_momenta_this_cached,
+              charge_this_cached, step_length,
               magnetic_field,
-              muon_data_positions_this_cached, muon_data_momenta_this_cached);
+              muon_data_positions_this_cached, muon_data_momenta_this_cached,
+              field_meta);
         if (sensitive_plane_z >= 0) {
             if (muon_data_positions_this_cached[2] >= sensitive_plane_z) {
                 break;
@@ -704,8 +814,8 @@ void propagate_muons_with_alias_sampling_cuda(
     torch::Tensor magnetic_field,
     torch::Tensor magnetic_field_range,
     torch::Tensor arb8s,
-    torch::Tensor hashed3d_arb8s,
-    torch::Tensor hashed3d_arb8s_range,
+    torch::Tensor hashed3d_arb8s_cells,
+    torch::Tensor hashed3d_arb8s_indices,
     torch::Tensor cavern_params,
     bool use_symmetry,
     float sensitive_plane_z,
@@ -715,11 +825,10 @@ void propagate_muons_with_alias_sampling_cuda(
     int seed
 ) {
     TORCH_CHECK(magnetic_field_range.size(1) == 6, "Expected the second dimension of magnetic_field_range to be 6, but got ", magnetic_field_range.size(1));
-    TORCH_CHECK(hashed3d_arb8s_range.size(1) == 6, "Expected the second dimension of hashed3d_arb8s_range to be 6, but got ", hashed3d_arb8s_range.size(1));
     const auto N = muon_data_positions.size(0);
     const auto H_2D = hist_2d_probability_table_iron.size(1);
 
-    //cudaMemcpyToSymbol(_use_symmetry, &use_symmetry, sizeof(bool));
+    cudaMemcpyToSymbol(_use_symmetry, &use_symmetry, sizeof(bool));
 
     // Define grid and block sizes
     const int threads_per_block = BLOCK_SIZE;
@@ -752,13 +861,12 @@ void propagate_muons_with_alias_sampling_cuda(
     cudaMemcpyToSymbol(LOG_STOP, &log_stop_val, sizeof(float));
     cudaMemcpyToSymbol(INV_LOG_STEP, &inv_log_step_val, sizeof(float));
 
-    /*float* data_ptr_arbs = hashed3d_arb8s_range.data_ptr<float>();
-    float rangeStartXArbs = data_ptr_arbs[0];
-    float rangeEndXArbs = data_ptr_arbs[1];
-    float rangeStartYArbs = data_ptr_arbs[2];
-    float rangeEndYArbs = data_ptr_arbs[3];
-    float rangeStartZArbs = data_ptr_arbs[4];
-    float rangeEndZArbs = data_ptr_arbs[5];*/
+    auto z_neg_vals = arb8s.select(1, 0).select(1, 2); 
+    auto z_pos_vals = arb8s.select(1, 4).select(1, 2); 
+    float z_min = std::min(z_neg_vals.min().item<float>(), z_pos_vals.min().item<float>());
+    float z_max = std::max(z_neg_vals.max().item<float>(), z_pos_vals.max().item<float>());
+    z_max = std::max(z_max, 30.0f);
+
 
     int N_arbs = arb8s.size(0);
     ARB8_Data* arb8s_device;
@@ -771,6 +879,15 @@ void propagate_muons_with_alias_sampling_cuda(
         arb8s_device,
         N_arbs
     );
+    
+    const int sz = hashed3d_arb8s_cells.size(0) - 1;
+    ZGridMeta grid_data;
+    grid_data.sz = sz;
+    grid_data.z_min_global = z_min;
+    grid_data.z_max_global = z_max;
+    grid_data.z_cell_height_inv = (float)sz / (z_max - z_min);
+    cudaMemcpyToSymbol(d_grid_meta, &grid_data, sizeof(ZGridMeta));
+
 
 
     cudaDeviceSynchronize();
@@ -808,7 +925,10 @@ void propagate_muons_with_alias_sampling_cuda(
         N,
         H_2D,
         arb8s_device,
-        N_arbs,
+        hashed3d_arb8s_cells.data_ptr<int>(),
+        hashed3d_arb8s_indices.data_ptr<int>(),
+        magfield_data,
+        grid_data,
         cavern_params.data_ptr<float>(),
         num_steps,
         step_length_fixed,

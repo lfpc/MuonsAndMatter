@@ -540,10 +540,10 @@ def create_magnet(magnetName, medium, tShield,
 
     else:
         CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, fields, field_profile, theMagnet, Z)
-        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, fields, field_profile, theMagnet, Z)
-        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, fields, field_profile, theMagnet, Z)
-        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, fields, field_profile, theMagnet, Z)
         CreateArb8(magnetName + str8, medium, dZ, cornersTL, fields, field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, fields, field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, fields, field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, fields, field_profile, theMagnet, Z)
         CreateArb8(magnetName + str9, medium, dZ, cornersTR, fields, field_profile, theMagnet, Z)
         CreateArb8(magnetName + str10, medium, dZ, cornersBL, fields, field_profile, theMagnet, Z)
         CreateArb8(magnetName + str11, medium, dZ, cornersBR, fields, field_profile, theMagnet, Z)

@@ -349,8 +349,8 @@ if __name__ == "__main__":
     if 'weight' in data_geant4:
         weights_g4 = data_geant4['weight']
         print('TOTAL sum of weights GEANT4:', np.sum(weights_g4))
-    if 'W' in data_cuda:
-        weights_cuda = data_cuda['W']
+    if 'weight' in data_cuda:
+        weights_cuda = data_cuda['weight']
         print('TOTAL sum of weights CUDA:', np.sum(weights_cuda))
 
     output_filename = os.path.join('/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/plots', args.output_filename)

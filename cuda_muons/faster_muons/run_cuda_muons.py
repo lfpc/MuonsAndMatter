@@ -9,7 +9,7 @@ import os
 assert torch.cuda.is_available(), f"CUDA is not available. Torch version: {torch.__version__} \n Torch cuda version: {print(torch.version.cuda)}"
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
-from get_geometry import  get_cavern, get_corners_from_detector
+from get_geometry import  get_cavern, get_corners_from_detector, create_z_axis_grid
 from lib.ship_muon_shield_customfield import get_design_from_params
 import lib.reference_designs.params as params_lib
 
@@ -65,27 +65,25 @@ def propagate_muons_with_cuda(
     hist_2d_bin_centers_second_dim_concrete = hist_2d_bin_centers_second_dim_concrete.float().cuda()
     hist_2d_bin_widths_first_dim_concrete = hist_2d_bin_widths_first_dim_concrete.float().cuda()
     hist_2d_bin_widths_second_dim_concrete = hist_2d_bin_widths_second_dim_concrete.float().cuda()
+    cells_arb8, hashed_arb8 = create_z_axis_grid(arb8_corners, sz=15)
+    cells_arb8 = cells_arb8.int().contiguous().cuda()
+    hashed_arb8 = hashed_arb8.int().contiguous().cuda()
     arb8_corners = arb8_corners.float().cuda()
     cavern_params = cavern_params.float().cuda()
 
-    magnetic_field_B = torch.from_numpy(magnetic_field['B']).float().cuda()
+    magnetic_field_B = torch.from_numpy(magnetic_field['B'])
     magnetic_field_ranges = [magnetic_field['range_x'][0], magnetic_field['range_x'][1],
                              magnetic_field['range_y'][0], magnetic_field['range_y'][1],
                              magnetic_field['range_z'][0], magnetic_field['range_z'][1]]
     nx = int(round((magnetic_field_ranges[1] - magnetic_field_ranges[0]) / magnetic_field['range_x'][2])) + 1
     ny = int(round((magnetic_field_ranges[3] - magnetic_field_ranges[2]) / magnetic_field['range_y'][2])) + 1
     nz = int(round((magnetic_field_ranges[5] - magnetic_field_ranges[4]) / magnetic_field['range_z'][2])) + 1
-    magnetic_field_B = magnetic_field_B.view(nx, ny, nz, 3).contiguous()
+    magnetic_field_B = magnetic_field_B.view(nx, ny, nz, 3).float().cuda().contiguous()
     magnetic_field_ranges = torch.tensor([magnetic_field_ranges]).div(100).float().cpu().contiguous()
     
     kill_at = 0.18
     use_symmetry = True
 
-    gx, gy, gz = 10, 10, 10
-    arb8_grid_range_np = magnetic_field_ranges  # [minX,maxX,minY,maxY,minZ,maxZ]
-    total_cells = gx * gy * gz
-    arb8_grid_index = torch.zeros(total_cells + 1, dtype=torch.int32, device = 'cuda')  # start offsets per cell
-    arb8_grid_list = torch.zeros(0, dtype=torch.int32) # flat list of Arb8 indices
 
     t1 = time.time()
     faster_muons_torch.propagate_muons_with_alias_sampling(
@@ -107,8 +105,8 @@ def propagate_muons_with_cuda(
         magnetic_field_B,
         magnetic_field_ranges,
         arb8_corners,
-        arb8_grid_index,
-        arb8_grid_range_np.float(),
+        cells_arb8,
+        hashed_arb8,
         cavern_params,
         use_symmetry,
         sensitive_plane_z,
@@ -139,6 +137,7 @@ def run(params,
         SND = False,
         return_all = False,
         seed = 0):
+    t0 = time.time()
     if seed is None: seed = np.random.randint(0, 10000)
     if not torch.is_tensor(muons): muons = torch.from_numpy(muons).float()
     muons_momenta = muons[:,:3]
@@ -159,7 +158,6 @@ def run(params,
         muons_positions[:,0] = muons_positions[:,0] + (dx / 100)
         muons_positions[:,1] = muons_positions[:,1] + (dy / 100)
 
-    t0 = time.time()
     detector = get_design_from_params(params = params,
                       fSC_mag = fSC_mag,
                       simulate_fields=True,
@@ -241,7 +239,7 @@ def run(params,
         'pdg_id': muons_charge*(-13)
     }
     if muons.shape[1]>7:
-        output['W'] = weights
+        output['weight'] = weights
         print("Number of HITS (weighted)", weights.sum().item())
     if save_dir is not None:
         t1 = time.time()
@@ -332,10 +330,10 @@ if __name__ == '__main__':
             'y': muons[:,4],
             'z': muons[:,5],
             'pdg_id': muons[:,6],
-            'W': muons[:,7]
+            'weight': muons[:,7]
         }
         print('Number of INPUTS:', muons.shape[0], ' (weighted: ', muons[:,7].sum().item())
-        print('Number of OUTPUTS:', output['x'].shape[0], ' (weighted: ', output['W'].sum().item())
+        print('Number of OUTPUTS:', output['x'].shape[0], ' (weighted: ', output['weight'].sum().item())
         for key, values in output.items():
             plt.figure()
             plt.hist(input_data[key], bins='auto', histtype='step', label='Input', linewidth=1.5, log=True)

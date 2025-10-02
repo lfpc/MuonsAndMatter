@@ -15,7 +15,7 @@ def get_corners_from_detector(detector):
 
     all_corners = []
     for magnet in detector['magnets']:
-        for component in magnet['components']:
+        for component in magnet['components'][:3]:
             corners = component['corners']
             dz = component['dz']
             z_center = component['z_center'] 
@@ -205,58 +205,6 @@ def generate_magnet_corners(params, fSC_mag=False, Z_GAP=10.0, SC_Ymgap=15.0, de
     return torch.stack(all_corners) if all_corners else torch.empty((0, 8, 3), device=params.device)
 
 
-def get_blocks_hash(geo:torch.tensor,grid_dims = (100, 100, 1000),grid_lims = ((-5, 5), (-5, 5), (0, 40))):
-
-    x_lim, y_lim, z_lim = grid_lims
-
-    numel_grid = grid_dims[0] * grid_dims[1] * grid_dims[2]
-    grid_size_x = (x_lim[1] - x_lim[0]) / grid_dims[0]
-    grid_size_y = (y_lim[1] - y_lim[0]) / grid_dims[1]
-    grid_size_z = (z_lim[1] - z_lim[0]) / grid_dims[2]
-
-    min_x = geo[:,:,0].min(-1).values - grid_size_x
-    max_x = geo[:,:,0].max(-1).values + grid_size_x
-    min_y = geo[:,:,1].min(-1).values - grid_size_y
-    max_y = geo[:,:,1].max(-1).values + grid_size_y
-    min_z = geo[:,:,2].min(-1).values - grid_size_z
-    max_z = geo[:,:,2].max(-1).values + grid_size_z
-
-    a_positions = torch.meshgrid(
-    torch.linspace(x_lim[0], x_lim[1], grid_dims[0]),
-    torch.linspace(y_lim[0], y_lim[1], grid_dims[1]),
-    torch.linspace(z_lim[0], z_lim[1], grid_dims[2]),
-    indexing='ij'
-    )
-
-    voxel_indices = []
-    block_ids = []
-
-    for i in range(len(geo)):
-        candidate_mask = ((a_positions[0] >= min_x[i]) & (a_positions[0] <= max_x[i]) &
-                        (a_positions[1] >= min_y[i]) & (a_positions[1] <= max_y[i]) &
-                        (a_positions[2] >= min_z[i]) & (a_positions[2] <= max_z[i]))
-        voxel_indices_for_block = torch.nonzero(candidate_mask.flatten(), as_tuple=True)[0]
-        
-        if len(voxel_indices_for_block) > 0:
-            voxel_indices.append(voxel_indices_for_block)
-            block_ids.append(torch.full_like(voxel_indices_for_block, fill_value=i))
-
-    if len(voxel_indices) > 0:
-        voxel_indices = torch.cat(voxel_indices)
-        block_ids = torch.cat(block_ids)
-    else:
-        voxel_indices = torch.tensor([], dtype=torch.long)
-        block_ids = torch.tensor([], dtype=torch.long)
-
-    voxel_indices, sorted_indices = torch.sort(voxel_indices)
-    block_ids = block_ids[sorted_indices]
-    voxel_offsets = torch.zeros(numel_grid + 1, dtype=torch.int32)
-
-    voxel_indices, counts = torch.unique_consecutive(voxel_indices, return_counts=True)
-    voxel_offsets.scatter_add_(0, voxel_indices + 1, counts.to(torch.int32))
-    voxel_offsets = torch.cumsum(voxel_offsets, dim=0)
-    return voxel_offsets, block_ids
-
 
 def get_cavern(detector):
     if 'cavern' not in detector:
@@ -271,12 +219,11 @@ def get_cavern(detector):
 
 def create_z_axis_grid(corners_tensor: torch.Tensor, sz: int) -> list[list[int]]:
     """
-    Divides the simulation space into cells along the Z-axis and maps ARB8
-    geometries to the cells they overlap.
+    Builds a Z-axis spatial grid and returns it in a flattened, GPU-friendly
+    format (CRS) directly, along with the grid's metadata.
 
-    This function is a precursor to a full 3D hash grid. It identifies which
-    geometries are candidates for inclusion in a given Z-slice, which massively
-    reduces the number of checks needed in subsequent steps.
+    This function performs the entire grid construction in a single, vectorized
+    operation without creating intermediate Python list structures.
 
     Args:
         corners_tensor (torch.Tensor): A tensor of shape (N, 8, 3) containing the
@@ -284,61 +231,22 @@ def create_z_axis_grid(corners_tensor: torch.Tensor, sz: int) -> list[list[int]]
         sz (int): The number of cells (slices) to divide the Z-axis into.
 
     Returns:
-        list[list[int]]: A list of lists, where the i-th list contains the integer
-                         indices of all geometries that overlap with the i-th
-                         Z-cell.
+        Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]]: A tuple containing:
+            - cell_starts (torch.Tensor, int32): Start indices for each cell. Shape: (sz + 1,).
+            - item_indices (torch.Tensor, int32): Flat array of all geometry indices, grouped by cell.
     """
-    if sz <= 0:
-        raise ValueError("Number of z-cells (sz) must be a positive integer.")
-
-    num_geometries = corners_tensor.shape[0]
-    if num_geometries == 0:
-        return [[] for _ in range(sz)]
-
-    # --- 1. Determine the global Z-range of the entire simulation space ---
     all_z_coords = corners_tensor[:, :, 2]
     z_min_global = all_z_coords.min()
-    z_max_global = all_z_coords.max()
-    
-    # Handle the edge case where all z-coordinates are the same
-    if torch.isclose(z_min_global, z_max_global):
-        z_max_global = z_min_global + 1.0 # Create a small range to avoid division by zero
-
-    # --- 2. Define the boundaries for each Z-cell ---
-    # We create sz+1 boundaries to define sz cells.
-    cell_boundaries = torch.linspace(z_min_global, z_max_global, sz + 1, device=corners_tensor.device)
+    z_max_global = max(all_z_coords.max(),30.0)
+    cell_boundaries = torch.linspace(z_min_global, z_max_global, sz + 1)
     cell_z_starts = cell_boundaries[:-1]
     cell_z_ends = cell_boundaries[1:]
-
-    # --- 3. Find the Z-range for each individual ARB8 geometry ---
-    # Per the problem description, the first 4 vertices define one z-plane (z0)
-    # and the last 4 define the other (z1).
-    geom_z0 = corners_tensor[:, 0, 2]  # Shape: (N,)
-    geom_z1 = corners_tensor[:, 4, 2]  # Shape: (N,)
-
-    # Ensure we have the min and max z for each geometry, regardless of order
-    geom_z_min = torch.min(geom_z0, geom_z1)
-    geom_z_max = torch.max(geom_z0, geom_z1)
-
-    # --- 4. Perform the overlap check using broadcasting (Vectorized) ---
-    # To check if two ranges [a, b] and [c, d] overlap, the condition is:
-    # a <= d AND b >= c.
-    #
-    # We can do this for all cells and all geometries at once.
-    # Reshape tensors to enable broadcasting:
-    #   - cell starts/ends: (sz, 1)
-    #   - geometry z min/max: (1, N)
-    # The comparison will result in a broadcasted boolean matrix of shape (sz, N).
-    
-    overlap_check1 = geom_z_min.unsqueeze(0) <= cell_z_ends.unsqueeze(1)
-    overlap_check2 = geom_z_max.unsqueeze(0) >= cell_z_starts.unsqueeze(1)
-
-    # The final overlap matrix is True where a geometry overlaps a cell
-    overlap_matrix = overlap_check1 & overlap_check2
-
-    # --- 5. Construct the final list of lists from the boolean matrix ---
-    cell_contents = [
-        torch.where(row)[0].tolist() for row in overlap_matrix
-    ]
-
-    return cell_contents
+    geom_z0 = corners_tensor[:, 0, 2]
+    geom_z1 = corners_tensor[:, 7, 2]
+    overlap_matrix = torch.logical_not((geom_z0.unsqueeze(0) > cell_z_ends.unsqueeze(1)).logical_or(geom_z1.unsqueeze(0) < cell_z_starts.unsqueeze(1)))
+    cell_indices_flat, geom_indices_flat = torch.where(overlap_matrix)
+    item_indices = geom_indices_flat.to(torch.int32)
+    counts = torch.bincount(cell_indices_flat, minlength=sz)
+    zero_prefix = torch.tensor([0], dtype=torch.int32)
+    cell_starts = torch.cat((zero_prefix, counts.cumsum(dim=0))).to(torch.int32)
+    return cell_starts, item_indices
