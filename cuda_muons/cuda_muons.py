@@ -2,18 +2,15 @@ import time
 
 import numpy as np
 import pickle
-import gzip
 import torch
 import h5py
 import os
-assert torch.cuda.is_available(), f"CUDA is not available. Torch version: {torch.__version__} \n Torch cuda version: {print(torch.version.cuda)}"
-import sys
-sys.path.insert(0, os.path.dirname(__file__))
-from get_geometry import  get_cavern, get_corners_from_detector, create_z_axis_grid
+from utils_cuda_muons.get_geometry import  get_cavern, get_corners_from_detector, create_z_axis_grid, get_magnetic_field
 from lib.ship_muon_shield_customfield import get_design_from_params
 import lib.reference_designs.params as params_lib
 
 import faster_muons_torch
+assert torch.cuda.is_available(), f"CUDA is not available. Torch version: {torch.__version__} \n Torch cuda version: {print(torch.version.cuda)}"
 
 import warnings
 # Suppress only the specific torch.storage FutureWarning
@@ -125,7 +122,7 @@ def propagate_muons_with_cuda(
 def run(params,
         muons:np.array,
         sensitive_plane: dict = {'dz': 0.02, 'dx': 4, 'dy': 6, 'position': 82.0},
-        histogram_dir='/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/data',
+        histogram_dir='data',
         save_dir = None,
         n_steps=500,
         SmearBeamRadius=0.0,
@@ -173,9 +170,7 @@ def run(params,
                       cores_field = 8)
     corners = get_corners_from_detector(detector)
     cavern = get_cavern(detector)
-    mag_dict = detector['global_field_map']
-    with h5py.File(os.path.join("/home/hep/lprate/projects/MuonsAndMatter", mag_dict['B']), 'r') as f:
-        mag_dict['B'] = f["B"][:]
+    mag_dict = get_magnetic_field(detector)
     print(f"Field + Detector and corners setup took {time.time() - t0:.2f} seconds.")
 
 
@@ -257,7 +252,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--h',dest = 'histogram_dir', type=str, default='data/',
                         help='Path to the histogram file')
-    parser.add_argument('--muons', '-f', dest='input_file', type=str, default="/home/hep/lprate/projects/MuonsAndMatter/data/muons/full_sample.h5",
+    parser.add_argument('--muons', '-f', dest='input_file', type=str, default="../data/muons/full_sample_after_target.h5",
                         help='Path to input muon file (.npy, .pkl, .h5). If not provided a synthetic example will be used.')
     parser.add_argument('--n_muons', '-n', type=int, default=0,
                         help='Maximum number of muons to load from the input file; 0 means all')
@@ -314,8 +309,8 @@ if __name__ == '__main__':
     output = run(params, muons, sensitive_film_params, 
                  histogram_dir=args.histogram_dir, n_steps=args.n_steps, 
                  SmearBeamRadius=args.SmearBeamRadius, fSC_mag=False, NI_from_B=True, use_diluted=False, add_cavern=args.add_cavern,
-                 field_map_file='/home/hep/lprate/projects/MuonsAndMatter/data/outputs/fields_mm.h5',
-                 save_dir="/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/data/outputs_cuda.pkl")
+                 field_map_file= None,
+                 save_dir="../data/outputs/outputs_cuda.pkl")
     print(f"Run completed in {time.time() - t_run_start:.2f} seconds.")
     if args.plot:
         import matplotlib.pyplot as plt

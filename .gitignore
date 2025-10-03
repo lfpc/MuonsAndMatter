@@ -21,3 +21,4 @@ cuda_muons/data/*.pkl
 cuda_muons/data/*.npy
 cuda_muons/data/*.h5
 cuda_muons/plots/*
+*.egg-info

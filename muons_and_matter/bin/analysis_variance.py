@@ -5,7 +5,7 @@ from lib.ship_muon_shield_customfield import get_design_from_params, get_field
 from muon_slabs import simulate_muon, initialize, collect, kill_secondary_tracks, collect_from_sensitive
 from plot_magnet import plot_magnet, construct_and_plot
 from time import time
-from run_simulation import run
+from MuonsAndMatter.muons_and_matter.muons_and_matter import run
 
 
 DEF_INPUT_FILE = 'data/inputs.pkl'#'data/oliver_data_enriched.pkl'

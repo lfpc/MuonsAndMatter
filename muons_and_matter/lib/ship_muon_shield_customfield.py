@@ -255,7 +255,7 @@ def get_iron_cost(params, Ymgap = 0, material = 'aisi1010.json', materials_direc
 
 def get_field(resimulate_fields = False,
             params = None,
-            file_name = 'data/outputs/fields.pkl',
+            file_name = None,
             only_grid_params = False,
             **kwargs_field):
     '''Returns the field map for the given parameters. If from_file is True, the field map is loaded from the file_name.'''
@@ -268,7 +268,7 @@ def get_field(resimulate_fields = False,
             fields = f["B"][:]
             d_space = f["d_space"][:].tolist()
     if only_grid_params: 
-        fields = {'B': file_name,
+        fields = {'B': file_name if file_name is not None else fields,
                 'range_x': [d_space[0][0],d_space[0][1], RESOL_DEF[0]],
                 'range_y': [d_space[1][0],d_space[1][1], RESOL_DEF[1]],
                 'range_z': [d_space[2][0],d_space[2][1], RESOL_DEF[2]]}
@@ -671,7 +671,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
 
 
     if field_map_file is not None or simulate_fields: 
-        simulate_fields = (not exists(field_map_file)) or simulate_fields
+        simulate_fields = simulate_fields or (not exists(field_map_file))
         resol = RESOL_DEF
         max_x = int((max_x.item() // resol[0]) * resol[0])
         max_y = int((max_y.item() // resol[1]) * resol[1])

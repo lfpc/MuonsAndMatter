@@ -1,8 +1,8 @@
 import json
 import numpy as np
-from lib.ship_muon_shield_customfield import get_design_from_params, initialize_geant4, get_field
+from lib.ship_muon_shield_customfield import get_design_from_params, initialize_geant4, get_field, estimate_electrical_cost, RESOL_DEF
 from muon_slabs import simulate_muon, collect, kill_secondary_tracks, collect_from_sensitive
-from python.bin.plot_magnet import construct_and_plot, plot_fields
+from bin.plot_magnet import construct_and_plot, plot_fields
 from time import time
 import h5py
 
@@ -153,17 +153,16 @@ def run(muons,
     else: return muon_data
 
 
-DEF_INPUT_FILE = 'data/muons/subsample_biased_v4.npy'
+
 if __name__ == '__main__':
     import argparse
-    import gzip
     import pickle
     import multiprocessing as mp
     import lib.reference_designs.params as params_lib
     from lib.magnet_simulations import construct_grid, RESOL_DEF
     from functools import partial
     import os
-    
+    DEF_INPUT_FILE = 'data/muons/subsample_biased_v4.npy'
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )

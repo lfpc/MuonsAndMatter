@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import os
-from faster_muons.run_cuda_muons import propagate_muons_with_cuda, get_corners_from_detector, get_design_from_params, params_lib, get_cavern
+from MuonsAndMatter.cuda_muons.run_cuda_muons import propagate_muons_with_cuda, get_corners_from_detector, get_design_from_params, params_lib, get_cavern
 import torch    
 import h5py
 import time

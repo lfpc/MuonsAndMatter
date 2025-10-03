@@ -2,7 +2,7 @@ import json
 import numpy as np
 from lib.ship_muon_shield_customfield import get_design_from_params, initialize_geant4, get_field
 from muon_slabs import simulate_muon, collect, kill_secondary_tracks, collect_from_sensitive
-from python.bin.plot_magnet import construct_and_plot, plot_fields
+from muons_and_matter.bin.plot_magnet import construct_and_plot, plot_fields
 from time import time
 import h5py
 

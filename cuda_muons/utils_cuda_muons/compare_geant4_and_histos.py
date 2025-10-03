@@ -6,7 +6,7 @@ import os
 from muon_slabs import simulate_muon, initialize, kill_secondary_tracks, collect_from_sensitive
 import json
 import lib.gigantic_sphere as sphere_design
-from faster_muons.run_cuda_muons import propagate_muons_with_cuda
+from cuda_muons import propagate_muons_with_cuda
 import argparse
 import multiprocessing as mp
 import torch    
@@ -282,8 +282,8 @@ if __name__ == "__main__":
     parser.add_argument('--load_data', action='store_true', help='Load existing data instead of running simulations')
     parser.add_argument('--initial_momenta', type=float, default=195., help='Initial momenta of muons in GeV/c')
     parser.add_argument('--output_filename', type=str, default='histograms_comparison_geant4_cuda.png', help='Output filename for the histogram plot')
-    parser.add_argument('--file_name_g4', type=str, help='Path to GEANT4 HDF5 file', default='/home/hep/lprate/projects/MuonsAndMatter/data/outputs/results/final_concatenated_results.h5')
-    parser.add_argument('--file_name_cuda', type=str, help='Path to CUDA pickle file', default =  '/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/data/outputs_cuda.pkl')
+    parser.add_argument('--file_name_g4', type=str, help='Path to GEANT4 HDF5 file', default='../data/outputs/results/final_concatenated_results.h5')
+    parser.add_argument('--file_name_cuda', type=str, help='Path to CUDA pickle file', default =  'data/outputs_cuda.pkl')
     parser.add_argument('--density', action='store_true', help='Plot histograms with density normalization')
     parser.add_argument('--filter_p', type=float, nargs=2, default=[0.0, 500.0], help='Thresholds to filter muons by min_p <= |P| <= max_p')
     parser.add_argument('--sens_plane', action='store_true', help='Apply sensitive plane cut (|x|<2, |y|<3)')
@@ -299,8 +299,12 @@ if __name__ == "__main__":
         print("Loaded G4 data. Shape of data:", len(data_geant4['px']))
 
         print("Loading CUDA data...")
-        with open(file_name_cuda, 'rb') as f:
-            data_cuda = pickle.load(f)
+        if file_name_cuda.endswith('.h5'):
+            with h5py.File(file_name_cuda,'r') as f:
+                data_cuda = {key: f[key][:] for key in f.keys()}
+        else:
+            with open(file_name_cuda, 'rb') as f:
+                data_cuda = pickle.load(f)
         for key in data_cuda:
             if not isinstance(data_cuda[key], np.ndarray): data_cuda[key] = data_cuda[key].numpy()
         print("Loaded CUDA data. Shape of data:", len(data_cuda['px']))

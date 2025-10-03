@@ -256,13 +256,12 @@ def simulate_field(params,
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)']
-    all_params.to_csv(os.path.join(os.environ.get('PROJECTS_DIR', '../'), 'MuonsAndMatter/data/magnet_params.csv'), index=False)
-    all_params = all_params.to_dict(orient='list')
-    fields = run(all_params, d_space=d_space, apply_symmetry=False, cores=cores, use_diluted = use_diluted)
+    fields = run(all_params.to_dict(orient='list'), d_space=d_space, apply_symmetry=False, cores=cores, use_diluted = use_diluted)
     fields['points'][:,2] += Z_init / 100
     print('Magnetic field simulation took', time()-t1, 'seconds')
 
     if file_name is not None:
+        all_params.to_csv(os.path.join(os.path.dirname(file_name), 'magnet_params.csv'), index=False)
         time_str = time()
         with h5py.File(file_name, "w") as f:
             if '_mm' in file_name: f.create_dataset("points", data=fields['points'].astype(np.float16), compression=None)
