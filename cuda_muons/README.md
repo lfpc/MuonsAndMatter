@@ -9,37 +9,39 @@ Prerequisites
 - CUDA (if you plan to run the CUDA simulation)
 - Project environment: ensure PROJECTS_DIR is set or run from the project root so relative paths resolve.
 
+If you are using uzh-physik cluster, you can use the same container used for muons_and_matter, i.e., shell the container with 
+
+```
+cd ..
+shell_container.sh
+```
+
+To be able to run the CUDA code, one needs first to install the source code. You can do that by executing the script `install_cuda.sh`. The installation currently happens locally, (by using pip install --user). If you are using the container, be sure to execute this step (inside the container) when running for the first time. You won't need to do it again, unless you wish to modify the cuda soruce code.
+
+## Sampling data
+
+In [data](data), one can find the histograms for some materials. If one wish to sample from different materials, one simply needs to do the following procedure, specifying the material as its Geant4 name
+(the following is an example to generate the histograms for iron):
+
 1. Collect single-step sampling data from Geant4 outputs:
    - Run the extractor script:
      ```
-     python3 collect_single_step_data.py
+     python3 utils_cuda_muons/collect_single_step_data.py --material G4_Fe
      ```
-   - See script: [MuonsAndMatter/cuda_muons/collect_single_step_data.py](MuonsAndMatter/cuda_muons/collect_single_step_data.py)
 
 2. Build histograms used by the CUDA sampler:
    - Run:
      ```
-     python3 build_histograms.py --alias
+     python3 utils_cuda_muons/build_histograms.py --alias --material G4_Fe
      ```
-   - See script: [MuonsAndMatter/cuda_muons/build_histograms.py](MuonsAndMatter/cuda_muons/build_histograms.py)
 
-3. Run a full CUDA-accelerated simulation:
-   - Launch the main simulator:
+
+## Running a simulation
+
+   One can launch the main simulator by simply running
      ```
-     python3 faster_muons/run_cuda_muons.py
+     python3 cuda_muons.py
      ```
-   - See entrypoint: [MuonsAndMatter/cuda_muons/faster_muons/run_cuda_muons.py](MuonsAndMatter/cuda_muons/faster_muons/run_cuda_muons.py)
-   - If present, consult the build helper: [MuonsAndMatter/cuda_muons/faster_muons/setup.py](MuonsAndMatter/cuda_muons/faster_muons/setup.py)
 
-## Typical workflow
-
-- Collect raw single-step samples with the extractor, then convert them into histogram files that the CUDA sampler consumes.
-- Build/install any CUDA/PyTorch extensions before running the simulator if required by the `faster_muons` code.
-
-
-## Troubleshooting
-
-- If the CUDA run fails: confirm CUDA drivers/toolkit are installed and compatible with your PyTorch/CUDA bindings.
-- If Python imports fail: ensure your PYTHONPATH includes the project root or activate the virtualenv used to build the extension.
-- For histogram or data-file problems, inspect the `data/outputs` files produced by the collector and builder.
+  Be aware of the possible arguments (run `python3 cuda_muons.py -h`). The construction of the geometry is the same as in muons_and_matter (refer to the [main README file](../README.md)).
 
