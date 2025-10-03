@@ -9,6 +9,7 @@ cpp/cmake-build-debug/
 cpp/build/*
 # Ignore plots directory
 plots/*.png
+!plots/shield.png
 
 # Ignore data directory
 data/full_sample/*.h5

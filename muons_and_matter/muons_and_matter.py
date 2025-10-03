@@ -292,10 +292,6 @@ if __name__ == '__main__':
     except: 
         print('Data Shape', len(all_results))
         print('Input Shape', len(data))
-    print('Number of muons that start AFTER of sens plane:', np.sum(data[:,5]>max(args.sens_plane)))
-    print('Number of muons that end BEFORE of sens plane:', np.sum(all_results[:,5]<(max(args.sens_plane)-sensitive_film_params[-1]['dz'])))
-    print('Number of muons that end AFTER of sens plane:', np.sum(all_results[:,5]>(max(args.sens_plane)+sensitive_film_params[-1]['dz'])))
-    print('Number 0 weight outputs:', np.sum(all_results[:,7]==0))
     print(f"Cost = {cost} CHF")
     if args.save_data:
         try: tag = f"{args.params.split('/')[-2]}_{args.f.split('/')[-1].split('.')[0]}"
