@@ -641,13 +641,13 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         max_x = max(max_x, np.max(dXIn + dXIn * ratio_yokesIn + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokesOut+gapOut+midGapOut))
         max_y = max(max_y, np.max(dYIn + dY_yokeIn), np.max(dYOut + dY_yokeOut))
         if SND and nM == (n_magnets - 2): 
-
+            print("Adding SND after magnet", nM)
             if (midGapIn > 30) and (midGapOut > 30):
                 gap = 10
                 dX = 20.-gap
                 dY = 20.-gap
                 dZ_snd = 172/2
-                Z = (Z+dZ)-dZ_snd
+                Z_snd = Z-dZ_snd
                 corners = np.array([
                     -dX, -dY,
                     dX, -dY,
@@ -660,16 +660,14 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
                 ])
                 Block = {
                     'components' : [],
-                    'dz' : dZ_snd,
-                    'z_center' : Z,
+                    'dz' : dZ_snd / 100,
+                    'z_center' : Z_snd / 100,
                 }
-                CreateArb8('SND_Emu_Si', 'G4_Fe', dZ, corners, [0.,0.,0.], 'uniform', Block, Z)
+                CreateArb8('SND_Emu_Si', 'G4_Fe', dZ_snd, corners, [0.,0.,0.], 'uniform', Block, Z_snd)
                 tShield['magnets'].append(Block)
             else:
                 print("WARNING")
                 print("No space for the SND: midGapIn[5] <= 30 or midGapOut[5] <= 30, got", midGapIn, midGapOut)
-
-
     if field_map_file is not None or simulate_fields: 
         simulate_fields = simulate_fields or (not exists(field_map_file))
         resol = RESOL_DEF
@@ -683,7 +681,6 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
                               file_name=field_map_file, only_grid_params=True, NI_from_B_goal = NI_from_B,
                               cores = min(cores_field,n_magnets), use_diluted = use_diluted)
         tShield['global_field_map'] = field_map
-
 
     tShield['cost'] = cost
     field_profile = 'global' if simulate_fields else 'uniform'

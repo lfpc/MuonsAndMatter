@@ -205,7 +205,8 @@ if __name__ == '__main__':
     else: 
         raise ValueError(f"Invalid params: {args.params}. Must be a valid parameter name or a file path. \
                          Avaliable names: {', '.join(params_lib.params.keys())}.")
-    params = np.asarray(params)
+    params = np.asarray(params).reshape(-1,15)
+    print('Params to simulate:', params)
     def split_array(arr, K):
         N = len(arr)
         base_size = N // K
@@ -312,7 +313,7 @@ if __name__ == '__main__':
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = args.angle, elev = args.elev)
         else:
-            result = construct_and_plot(muons = all_results[:1000],phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = None, cavern = False, decay_vessel = args.decay_vessel, azim = args.angle, elev = args.elev)
+            result = construct_and_plot(muons = all_results[:1000],phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = None, cavern = False, SND = args.SND, decay_vessel = args.decay_vessel, azim = args.angle, elev = args.elev)
         if not args.save_data:
             import matplotlib.pyplot as plt
             if isinstance(all_results, np.ndarray) and all_results.ndim == 2:

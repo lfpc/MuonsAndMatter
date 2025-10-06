@@ -43,34 +43,35 @@ def get_magnet_params(params,
                      materials_directory = None,
                      save_dir = None,
                      use_diluted = False):
+    if len(params) == 15: params = params[1:]
 
-    ratio_yoke_1 = params[8]
-    ratio_yoke_2 = params[9]
-    B_NI = params[14]
+    ratio_yoke_1 = params[7]
+    ratio_yoke_2 = params[8]
+    B_NI = params[13]
     params = params / 100
-    Xmgap_1 = params[12]
-    Xmgap_2 = params[13]
+    Xmgap_1 = params[11]
+    Xmgap_2 = params[12]
     d = get_fixed_params(yoke_type)
     d.update({
     'resol_x(m)': resol[0] / 100,
     'resol_y(m)': resol[1] / 100,
     'resol_z(m)': resol[2] / 100,
-    'Z_pos(m)': -1*params[1],
+    'Z_pos(m)': -1*params[0],
     'Xmgap1(m)': Xmgap_1,
     'Xmgap2(m)': Xmgap_2,
-    'Z_len(m)': 2 * params[1],
-    'Xcore1(m)': params[2] + Xmgap_1,
-    'Xvoid1(m)': params[2] + params[6] + Xmgap_2,
-    'Xyoke1(m)': params[2] + params[6] + ratio_yoke_1 * params[2] + Xmgap_1,
-    'Xcore2(m)': params[3] + Xmgap_2,
-    'Xvoid2(m)': params[3] + params[7] + Xmgap_2,
-    'Xyoke2(m)': params[3] + params[7] + ratio_yoke_2 * params[3] + Xmgap_2,
-    'Ycore1(m)': params[4],
-    'Yvoid1(m)': params[4] + Ymgap,
-    'Yyoke1(m)': params[4] + params[10] + Ymgap,
-    'Ycore2(m)': params[5],
-    'Yvoid2(m)': params[5] + Ymgap,
-    'Yyoke2(m)': params[5] + params[11] + Ymgap
+    'Z_len(m)': 2 * params[0],
+    'Xcore1(m)': params[1] + Xmgap_1,
+    'Xvoid1(m)': params[1] + params[5] + Xmgap_2,
+    'Xyoke1(m)': params[1] + params[5] + ratio_yoke_1 * params[1] + Xmgap_1,
+    'Xcore2(m)': params[2] + Xmgap_2,
+    'Xvoid2(m)': params[2] + params[6] + Xmgap_2,
+    'Xyoke2(m)': params[2] + params[6] + ratio_yoke_2 * params[2] + Xmgap_2,
+    'Ycore1(m)': params[3],
+    'Yvoid1(m)': params[3] + Ymgap,
+    'Yyoke1(m)': params[3] + params[9] + Ymgap,
+    'Ycore2(m)': params[4],
+    'Yvoid2(m)': params[4] + Ymgap,
+    'Yyoke2(m)': params[4] + params[10] + Ymgap
     })
     if use_B_goal:
         if materials_directory is None:

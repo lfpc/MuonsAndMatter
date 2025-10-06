@@ -387,8 +387,9 @@ def construct_and_plot(muons,
         field_map_file = None,
         decay_vessel:bool = False,
         cavern = True,
+        SND = False,
         **kwargs_plot):
-    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, simulate_fields=simulate_fields, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params, add_cavern=cavern, sensitive_decay_vessel=decay_vessel)
+    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, simulate_fields=simulate_fields, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params, add_cavern=cavern, sensitive_decay_vessel=decay_vessel, SND = SND)
     plot_magnet(detector,
                 muon_data = muons, 
                 sensitive_film_position = [sens['position'] for sens in sensitive_film_params],#sensitive_film_params['position'], 
