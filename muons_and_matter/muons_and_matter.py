@@ -166,7 +166,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--n", type=int, default=0, help="Number of muons to process, 0 means all")
+    parser.add_argument("--n", "-n_muons", dest="n", type=int, default=0, help="Number of muons to process, 0 means all")
     parser.add_argument("--c", type=int, default=45, help="Number of CPU cores to use for parallel processing")
     parser.add_argument("-seed", type=int, default=None, help="Random seed for reproducibility")
     parser.add_argument("--f", type=str, default=DEF_INPUT_FILE, help="Input file (gzip .pkl) path containing muon data")

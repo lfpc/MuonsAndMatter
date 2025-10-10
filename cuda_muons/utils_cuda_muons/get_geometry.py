@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import h5py
 
-def get_corners_from_detector(detector):
+def get_corners_from_detector(detector, use_symmetry=True):
 
     def expand_corners(corners, dz, z_center):
         corners = np.array(corners)
@@ -16,7 +16,9 @@ def get_corners_from_detector(detector):
 
     all_corners = []
     for magnet in detector['magnets']:
-        for component in magnet['components'][:3]:
+        if use_symmetry: components = magnet['components'][:3]
+        else: components = magnet['components']
+        for component in components:
             corners = component['corners']
             dz = component['dz']
             z_center = component['z_center'] 

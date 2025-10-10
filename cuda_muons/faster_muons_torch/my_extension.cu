@@ -248,7 +248,7 @@ __device__ float norm(const float v[3]) {
 
 // Helper function to normalize a vector
 __device__ void normalize(const float v[3], float result[3]) {
-    float inv_norm = rsqrtf(dotProduct(v, v));  // 1/sqrt(x)
+    float inv_norm = 1.0f/norm(v); //rsqrtf(dotProduct(v, v));  // 1/sqrt(x)
     result[0] = v[0] * inv_norm;
     result[1] = v[1] * inv_norm;
     result[2] = v[2] * inv_norm;
@@ -779,10 +779,8 @@ __global__ void cuda_test_propagate_muons_k(float* muon_data_positions,
               magnetic_field,
               muon_data_positions_this_cached, muon_data_momenta_this_cached,
               field_meta);
-        if (sensitive_plane_z >= 0) {
-            if (muon_data_positions_this_cached[2] >= sensitive_plane_z) {
-                break;
-            }
+        if (sensitive_plane_z >= 0 && (muon_data_positions_this_cached[2] >= sensitive_plane_z)) {
+            break;
         }
     }
     muon_data_momenta[offset+0] = muon_data_momenta_this_cached[0];

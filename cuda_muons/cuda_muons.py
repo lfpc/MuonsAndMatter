@@ -44,6 +44,7 @@ def propagate_muons_with_cuda(
     sensitive_plane_z: float = 82,
     num_steps=100,
     step_length_fixed=0.02,
+    use_symmetry=True,
     seed=1234,
     ):
     # Ensure inputs are float tensors on CUDA
@@ -79,7 +80,6 @@ def propagate_muons_with_cuda(
     magnetic_field_ranges = torch.tensor([magnetic_field_ranges]).div(100).float().cpu().contiguous()
     
     kill_at = 0.18
-    use_symmetry = True
 
 
     t1 = time.time()
@@ -122,7 +122,7 @@ def propagate_muons_with_cuda(
 def run(params,
         muons:np.array,
         sensitive_plane: dict = {'dz': 0.02, 'dx': 4, 'dy': 6, 'position': 82.0},
-        histogram_dir='data',
+        histogram_dir='cuda_muons/data',
         save_dir = None,
         n_steps=500,
         SmearBeamRadius=0.0,
@@ -154,21 +154,21 @@ def run(params,
         dy = SmearBeamRadius * torch.sin(_phi) + gauss_y
         muons_positions[:,0] = muons_positions[:,0] + (dx / 100)
         muons_positions[:,1] = muons_positions[:,1] + (dy / 100)
-
+    use_symmetry = True
     detector = get_design_from_params(params = params,
                       fSC_mag = fSC_mag,
                       simulate_fields=True,
                       sensitive_film_params=None,
                       field_map_file = field_map_file,
                       add_cavern = add_cavern,
-                      add_target = False,
+                      add_target = True,
                       sensitive_decay_vessel = False,
                       extra_magnet=False,
                       NI_from_B = NI_from_B,
                       use_diluted = use_diluted,
                       SND = SND,
                       cores_field = 8)
-    corners = get_corners_from_detector(detector)
+    corners = get_corners_from_detector(detector, use_symmetry=use_symmetry)
     cavern = get_cavern(detector)
     mag_dict = get_magnetic_field(detector)
     print(f"Field + Detector and corners setup took {time.time() - t0:.2f} seconds.")
@@ -207,8 +207,9 @@ def run(params,
             sensitive_plane_z - sensitive_plane['dz']/2,
             n_steps,
             step_length,
+            use_symmetry,
             seed,
-        )
+        )   
     weights = muons[:,7] if (muons.shape[1]>7) else None
     if sensitive_plane is not None and not return_all:
         in_sens_plane = (out_position[:,0].abs() < sensitive_plane['dx']/2) & \
@@ -250,23 +251,25 @@ def run(params,
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--h',dest = 'histogram_dir', type=str, default='data/',
+    parser.add_argument('--h',dest = 'histogram_dir', type=str, default='cuda_muons/data/',
                         help='Path to the histogram file')
-    parser.add_argument('--muons', '-f', dest='input_file', type=str, default="../data/muons/full_sample_after_target.h5",
+    parser.add_argument('-muons', '--f', dest='input_file', type=str, default="data/muons/full_sample_after_target.h5",
                         help='Path to input muon file (.npy, .pkl, .h5). If not provided a synthetic example will be used.')
-    parser.add_argument('--n_muons', '-n', type=int, default=0,
+    parser.add_argument('-n_muons', '--n', dest='n_muons', type=int, default=0,
                         help='Maximum number of muons to load from the input file; 0 means all')
     parser.add_argument('--n_steps', type=int, default=5000,
                         help='Number of steps for simulation')
-    parser.add_argument('--sens_plane', type=float, default=82.0,
+    parser.add_argument('-sens_plane', type=float, default=82.0,
                         help='Z position of the sensitive plane')
     parser.add_argument("-remove_cavern", dest="add_cavern", action='store_false', help="Remove the cavern from simulation")
     parser.add_argument('-expanded_sens_plane', action='store_true',
                         help='Use extended sensitive plane dimensions')
     parser.add_argument('-plot', action='store_true',
                         help='Plot histograms')
+    parser.add_argument('-SND', action='store_true',
+                        help='Use SND detector geometry')
     parser.add_argument("-params", type=str, default='tokanut_v5', help="Magnet parameters configuration - name or file path. Available names: " + ', '.join(params_lib.params.keys()) + ". If 'test', will prompt for input.")
-    parser.add_argument('--SmearBeamRadius', type=float, default=0.0,
+    parser.add_argument('-SmearBeamRadius', type=float, default=0.0,
                         help='Radius of Ring effect applied to input')
     args = parser.parse_args()
     
@@ -281,7 +284,7 @@ if __name__ == '__main__':
     else: 
         raise ValueError(f"Invalid params: {args.params}. Must be a valid parameter name or a file path. \
                          Avaliable names: {', '.join(params_lib.params.keys())}.")
-    params = np.asarray(params)
+    params = np.asarray(params).reshape(-1,15)
     time0 = time.time()
     if args.input_file is not None:
         input_file = args.input_file
@@ -309,8 +312,8 @@ if __name__ == '__main__':
     output = run(params, muons, sensitive_film_params, 
                  histogram_dir=args.histogram_dir, n_steps=args.n_steps, 
                  SmearBeamRadius=args.SmearBeamRadius, fSC_mag=False, NI_from_B=True, use_diluted=False, add_cavern=args.add_cavern,
-                 field_map_file= None,
-                 save_dir="../data/outputs/outputs_cuda.pkl")
+                 field_map_file= None, SND = args.SND,
+                 save_dir="data/outputs/outputs_cuda.pkl")
     print(f"Run completed in {time.time() - t_run_start:.2f} seconds.")
     if args.plot:
         import matplotlib.pyplot as plt

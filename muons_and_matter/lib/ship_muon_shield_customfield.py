@@ -642,10 +642,10 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         max_y = max(max_y, np.max(dYIn + dY_yokeIn), np.max(dYOut + dY_yokeOut))
         if SND and nM == (n_magnets - 2): 
             print("Adding SND after magnet", nM)
-            if (midGapIn > 30) and (midGapOut > 30):
-                gap = 10
-                dX = 20.-gap
-                dY = 20.-gap
+            if (midGapIn >= 30) and (midGapOut >= 30):
+                gap = 1
+                dX = 30.-gap
+                dY = 30.-gap
                 dZ_snd = 172/2
                 Z_snd = Z-dZ_snd
                 corners = np.array([
