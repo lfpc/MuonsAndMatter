@@ -170,14 +170,15 @@ def plot_histograms(output_filename,
                     px_g4, py_g4, pz_g4, x_g4, y_g4, z_g4,
                     px_cuda, py_cuda, pz_cuda, x_cuda, y_cuda, z_cuda, weights_g4 = None, weights_cuda = None):
 
-    p_mag_g4 = np.sqrt(px_g4 ** 2 + py_g4 ** 2 + pz_g4 ** 2)
-    p_mag_cuda = np.sqrt(px_cuda ** 2 + py_cuda ** 2 + pz_cuda ** 2)
 
     px_g4, py_g4, pz_g4, x_g4, y_g4, z_g4, weights_g4 = filter_data(
         px_g4, py_g4, pz_g4, x_g4, y_g4, z_g4, weights_g4)
     
     px_cuda, py_cuda, pz_cuda, x_cuda, y_cuda, z_cuda, weights_cuda = filter_data(
         px_cuda, py_cuda, pz_cuda, x_cuda, y_cuda, z_cuda, weights_cuda)
+    
+    p_mag_g4 = np.sqrt(px_g4 ** 2 + py_g4 ** 2 + pz_g4 ** 2)
+    p_mag_cuda = np.sqrt(px_cuda ** 2 + py_cuda ** 2 + pz_cuda ** 2)
 
     print(f"Number of GEANT4 samples after filter: {px_g4.shape[0]}")
     if weights_g4 is not None:

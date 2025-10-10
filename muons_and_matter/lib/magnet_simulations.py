@@ -147,7 +147,7 @@ def get_grid_data(points: np.array, B: np.array, new_points: tuple):
     print('Griddind / Interpolation time = {} sec'.format(time() - t1))
     return new_points, new_B
 
-def get_vector_field(magn_params,materials_dir,  use_diluted = False):
+def get_vector_field(magn_params, materials_dir, use_diluted=False):
     if 'Mag2' in magn_params['yoke_type']:
         points, B, M_i, M_c, Q, J = snoopy.get_vector_field_ncsc(magn_params, 0, materials_directory=materials_dir)
     elif magn_params['yoke_type'][0] == 'Mag1':
@@ -169,7 +169,7 @@ def run_fem(magn_params:dict,
     materials_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
     start = time()
     points, B, M_i, M_c, Q, J = get_vector_field(magn_params, materials_dir, use_diluted=use_diluted)
-    C_i, C_c, C_edf = snoopy.compute_prices(magn_params, 0, M_i, M_c, Q,materials_directory = materials_dir)
+    C_i, C_c, C_edf = snoopy.compute_prices(magn_params, 0, M_i, M_c, Q, materials_directory = materials_dir)
     cost = C_i + C_c + C_edf
     end = time()
     print('FEM Computation time = {} sec'.format(end - start))
@@ -211,10 +211,8 @@ def run(magn_params:dict,
             for k in magn_params.keys():
                 params_split[0][0][k] += params_split[1][0][k]
             params_split.pop(1)
-
     with mp.Pool(cores) as pool:
       B = pool.starmap(simulate_and_grid, params_split)
-
     B = np.sum(B, axis=0)
 
     points = np.column_stack([points[i].ravel() for i in range(3)])

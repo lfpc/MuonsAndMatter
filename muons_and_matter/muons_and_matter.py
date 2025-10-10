@@ -231,8 +231,8 @@ if __name__ == '__main__':
         detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, None, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet, NI_from_B=args.use_B_goal, use_diluted = args.use_diluted)
     t2_fem = time()
 
-    if input_file.endswith('.npy') or input_file.endswith('.pkl'):
-        data = np.load(input_file, allow_pickle=True)
+    if input_file.endswith('.npy'):
+        data = np.load(input_file)
         if n_muons > 0: data = data[:n_muons]
     elif input_file.endswith('.h5'):
         with h5py.File(input_file, 'r') as f:
@@ -245,6 +245,13 @@ if __name__ == '__main__':
             pdg = f['pdg'][:n_muons] if n_muons > 0 else f['pdg'][:]
             weight = f['weight'][:n_muons] if n_muons > 0 else f['weight'][:]
             data = np.stack([px, py, pz, x_, y_, z_, pdg, weight], axis=1)
+    elif input_file.endswith('.pkl'):
+        with open(input_file, 'rb') as f:
+            data = pickle.load(f)
+        if isinstance(data,dict):
+            data = np.array([data['px'], data['py'], data['pz'], data['x'], data['y'], data['z'], data['pdg_id'], data.get('W', np.ones_like(data['px']))]).T
+        data = np.array(data)
+        if n_muons > 0: data = data[:n_muons]
     else:
         raise ValueError(f"Unsupported input file format: {input_file}")
 
