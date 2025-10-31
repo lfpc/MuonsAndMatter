@@ -612,7 +612,8 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
 
         if dZ < 1 or dXIn < 1: Z += dZ + zgap; continue
 
-        is_SC = fSC_mag and (NI>1e6)
+        SC_threshold = 3.0 if NI_from_B else 1e6
+        is_SC = fSC_mag and (abs(NI)>SC_threshold)
         Ymgap = SC_Ymgap if is_SC else 0
         Z += zgap + dZ
 
@@ -636,7 +637,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         yoke_type = 'Mag1' if NI>0 else 'Mag3'
         if is_SC: yoke_type = 'Mag2'
         cost += get_iron_cost([0,dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, ratio_yokesIn, ratio_yokesOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut], Ymgap=Ymgap)        
-        cost += estimate_electrical_cost(np.array([0,dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, ratio_yokesIn, ratio_yokesOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut, NI]), Ymgap=Ymgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
+        #cost += estimate_electrical_cost(np.array([0,dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, ratio_yokesIn, ratio_yokesOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut, NI]), Ymgap=Ymgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
         Z += dZ
         max_x = max(max_x, np.max(dXIn + dXIn * ratio_yokesIn + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokesOut+gapOut+midGapOut))
         max_y = max(max_y, np.max(dYIn + dY_yokeIn), np.max(dYOut + dY_yokeOut))

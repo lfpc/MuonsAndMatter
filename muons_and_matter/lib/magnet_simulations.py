@@ -3,15 +3,15 @@
 
    Compute the field map for the NC magnets.
 """
-import os, shutil
+import os
 os.environ["OMP_NUM_THREADS"] = "1"
 import numpy as np
 from time import time
-from scipy.interpolate import griddata
+#from scipy.interpolate import griddata
 import pandas as pd
 from scipy.spatial import cKDTree
+from scipy.interpolate import griddata, Rbf as RbfInterpolator
 import gzip, pickle
-#import roxie_evaluator
 import snoopy
 import multiprocessing as mp
 import h5py
@@ -43,40 +43,40 @@ def get_magnet_params(params,
                      materials_directory = None,
                      save_dir = None,
                      use_diluted = False):
-    if len(params) == 15: params = params[1:]
 
-    ratio_yoke_1 = params[7]
-    ratio_yoke_2 = params[8]
-    B_NI = params[13]
+    ratio_yoke_1 = params[8]
+    ratio_yoke_2 = params[9]
+    B_NI = params[14]
     params = params / 100
-    Xmgap_1 = params[11]
-    Xmgap_2 = params[12]
+    Xmgap_1 = params[12]
+    Xmgap_2 = params[13]
     d = get_fixed_params(yoke_type)
     d.update({
     'resol_x(m)': resol[0] / 100,
     'resol_y(m)': resol[1] / 100,
     'resol_z(m)': resol[2] / 100,
-    'Z_pos(m)': -1*params[0],
+    'Z_pos(m)': -1*params[1],
     'Xmgap1(m)': Xmgap_1,
     'Xmgap2(m)': Xmgap_2,
-    'Z_len(m)': 2 * params[0],
-    'Xcore1(m)': params[1] + Xmgap_1,
-    'Xvoid1(m)': params[1] + params[5] + Xmgap_2,
-    'Xyoke1(m)': params[1] + params[5] + ratio_yoke_1 * params[1] + Xmgap_1,
-    'Xcore2(m)': params[2] + Xmgap_2,
-    'Xvoid2(m)': params[2] + params[6] + Xmgap_2,
-    'Xyoke2(m)': params[2] + params[6] + ratio_yoke_2 * params[2] + Xmgap_2,
-    'Ycore1(m)': params[3],
-    'Yvoid1(m)': params[3] + Ymgap,
-    'Yyoke1(m)': params[3] + params[9] + Ymgap,
-    'Ycore2(m)': params[4],
-    'Yvoid2(m)': params[4] + Ymgap,
-    'Yyoke2(m)': params[4] + params[10] + Ymgap
+    'Z_len(m)': 2 * params[1],
+    'Xcore1(m)': params[2] + Xmgap_1,
+    'Xvoid1(m)': params[2] + params[6] + Xmgap_2,
+    'Xyoke1(m)': params[2] + params[6] + ratio_yoke_1 * params[2] + Xmgap_1,
+    'Xcore2(m)': params[3] + Xmgap_2,
+    'Xvoid2(m)': params[3] + params[7] + Xmgap_2,
+    'Xyoke2(m)': params[3] + params[7] + ratio_yoke_2 * params[3] + Xmgap_2,
+    'Ycore1(m)': params[4],
+    'Yvoid1(m)': params[4] + Ymgap,
+    'Yyoke1(m)': params[4] + params[10] + Ymgap,
+    'Ycore2(m)': params[5],
+    'Yvoid2(m)': params[5] + Ymgap,
+    'Yyoke2(m)': params[5] + params[11] + Ymgap
     })
     if use_B_goal:
         if materials_directory is None:
             materials_directory = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
         d['NI(A)'] = snoopy.get_NI(abs(B_NI), pd.DataFrame([d]),0, materials_directory = materials_directory)[0].item()
+        d['NI(A)'] = min(d['NI(A)'], 4e6)
         if (B_NI > 0 and d['yoke_type'] == 'Mag3') or (B_NI < 0 and d['yoke_type'] == 'Mag1'):
             d['NI(A)'] = -d['NI(A)']
     elif use_diluted: d['NI(A)'] = B_NI
@@ -127,25 +127,40 @@ def construct_grid(limits,
     X, Y, Z = np.meshgrid(X, Y, Z)
     return X / 100, Y / 100, Z / 100
 
-def get_grid_data(points: np.array, B: np.array, new_points: tuple):
+def get_grid_data(points: np.array, B: np.array, new_points: tuple, method='nearest'):
     '''Interpolates the magnetic field data to a new grid.'''
     t1 = time()
-    '''Bx_out = griddata(points, B[:, 0], new_points, method='nearest', fill_value=0.0).ravel()
-    By_out = griddata(points, B[:, 1], new_points, method='nearest', fill_value=0.0).ravel()
-    Bz_out = griddata(points, B[:, 2], new_points, method='nearest', fill_value=0.0).ravel()'''
-    new_points = np.column_stack((new_points[0].ravel(), new_points[1].ravel(), new_points[2].ravel()))
-    Bx_out, By_out, Bz_out = np.zeros_like(new_points).T
-    hull =  (new_points[:, 0] <= points[:, 0].max()) & \
-            (new_points[:, 1] <= points[:, 1].max()) & \
-            (new_points[:, 2] >= points[:, 2].min()) & (new_points[:, 2] <= points[:, 2].max())
-    tree = cKDTree(points)
-    _, idx = tree.query(new_points[hull], k=1)
-    Bx_out[hull] = B[idx, 0]
-    By_out[hull] = B[idx, 1]
-    Bz_out[hull] = B[idx, 2]
-    new_B = np.column_stack((Bx_out, By_out, Bz_out))
-    print('Griddind / Interpolation time = {} sec'.format(time() - t1))
-    return new_points, new_B
+
+    new_points_stacked = np.column_stack((new_points[0].ravel(),
+                                          new_points[1].ravel(),
+                                          new_points[2].ravel()))
+
+    if method == 'linear':
+        Bx_out = griddata(points, B[:, 0], new_points, method=method, fill_value=0.0).ravel()
+        By_out = griddata(points, B[:, 1], new_points, method=method, fill_value=0.0).ravel()
+        Bz_out = griddata(points, B[:, 2], new_points, method=method, fill_value=0.0).ravel()
+        
+        new_B = np.column_stack((Bx_out, By_out, Bz_out))
+        
+    elif method == 'nearest':
+        Bx_out, By_out, Bz_out = np.zeros_like(new_points_stacked).T
+        
+        hull = (new_points_stacked[:, 0] <= points[:, 0].max()) & \
+               (new_points_stacked[:, 1] <= points[:, 1].max()) & \
+               (new_points_stacked[:, 2] >= points[:, 2].min()) & (new_points_stacked[:, 2] <= points[:, 2].max())
+               
+        tree = cKDTree(points)
+        _, idx = tree.query(new_points_stacked[hull], k=1)
+        Bx_out[hull] = B[idx, 0]
+        By_out[hull] = B[idx, 1]
+        Bz_out[hull] = B[idx, 2]
+        
+        new_B = np.column_stack((Bx_out, By_out, Bz_out))
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'nearest', 'linear'.")
+
+    print(f'Gridding / Interpolation time ({method}) = {time() - t1:.4f} sec')
+    return new_points_stacked, new_B
 
 def get_vector_field(magn_params, materials_dir, use_diluted=False):
     if 'Mag2' in magn_params['yoke_type']:
@@ -155,7 +170,7 @@ def get_vector_field(magn_params, materials_dir, use_diluted=False):
     elif magn_params['yoke_type'][0] == 'Mag3':
         points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_3(magn_params, 0, materials_directory=materials_dir, use_diluted_steel=use_diluted)
     else: raise ValueError(f'Invalid yoke type - Received yoke_type {magn_params["yoke_type"][0]}')
-    return points.round(4).astype(np.float16), B.round(4).astype(np.float16), M_i, M_c, Q, J
+    return points, B.round(4), M_i, M_c, Q, J
 
 def run_fem(magn_params:dict,
             materials_dir = None, use_diluted = False):
@@ -223,12 +238,12 @@ def run(magn_params:dict,
         with gzip.open(output_file, 'wb') as f:
             pickle.dump({'points':points, 'B':B}, f)
         print('Results saved to', output_file)
-    return {'points':points, 'B':B}
+    return {'points':points.round(4).astype(np.float16), 'B':B.round(4).astype(np.float16)}
     
 def simulate_field(params,
               Z_init = 0,
               fSC_mag:bool = True,
-              d_space = ((4., 4., (-1, 30.))), 
+              d_space = (((0.,400.), (0.,400.), (-100, 300.))),
               resol = RESOL_DEF,
               NI_from_B_goal:bool = True,
               file_name = 'data/outputs/fields.pkl',
@@ -239,13 +254,15 @@ def simulate_field(params,
     t1 = time()
     all_params = pd.DataFrame()
     Z_pos = 0.
+    SC_threshold = 3.0 if NI_from_B_goal else 1e6
     for i, mag_params in enumerate(params):
+        is_SC = fSC_mag and (abs(mag_params[14])>SC_threshold)
         Z_pos += mag_params[0]/100
         if mag_params[1]<1: continue
         if mag_params[2]<1: 
             Z_pos += 2 * mag_params[1]/100
             continue
-        if fSC_mag and mag_params[14]>1e6:
+        if is_SC:
             Ymgap = SC_Ymgap; yoke_type = 'Mag2'
         elif use_diluted: Ymgap = 0.; yoke_type = 'Mag1'
         else: 
@@ -274,17 +291,15 @@ def simulate_field(params,
 
 
 if __name__ == '__main__':
-   
-   MAIN_DIR = '/home/hep/lprate/projects/roxie_ship'
-   parameters_filename = "/disk/users/gfrise/New_project/MuonsAndMatter/data/magnet_params.csv"
-   output_file = "/disk/users/gfrise/New_project/MuonsAndMatter/data/outputs/fields_mm.npy"
-
-   import pandas as pd
-   magn_params = pd.read_csv(parameters_filename).to_dict(orient='list')
-   print(magn_params)
-   t1 = time()
-   d = run(magn_params,output_file = output_file, save_results=True, cores = 7, use_diluted = False)
-   print('total_time: ', time() - t1, ' sec')
-   points = d['points']
-   print('limits: ', points.min(axis=0), points.max(axis=0))
-   print('shape: ', points.shape)
+    from bin.plot_magnet import plot_fields
+    import argparse
+    parser = argparse.ArgumentParser(description='Simulate the magnetic field for the given parameters.')
+    parser.add_argument('--hybrid', action='store_true', help='Use hybrid magnet (SC + normal conducting). Default is False.')
+    parser.add_argument('--use_diluted', action='store_true', help='Use diluted steel for the yoke. Default is False.')
+    args = parser.parse_args()
+    params = np.array([[0,115.50,50.00, 50.00, 119.00, 119.00, 2.00, 2.00, 1.0, 1.0, 50.00, 50.00, 0.00, 0.00, 1.9]])
+    params = np.round(params, 2)
+    f = simulate_field(params, Z_init = 0, fSC_mag=args.hybrid,d_space = (((0.,150.), (0.,150.), (-50, 300.))), NI_from_B_goal=True, cores = 1, use_diluted = args.use_diluted)
+    fields = f["B"][:]
+    points = f["points"][:]
+    plot_fields(points,fields)

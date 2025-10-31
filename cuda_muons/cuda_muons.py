@@ -80,6 +80,9 @@ def propagate_muons_with_cuda(
     magnetic_field_ranges = torch.tensor([magnetic_field_ranges]).div(100).float().cpu().contiguous()
     
     kill_at = 0.18
+    assert not magnetic_field_B.isnan().any(), "Magnetic field contains NaN values."
+    assert not arb8_corners.isnan().sum().any(), "Arb8 corners contain NaN values."
+    
 
 
     t1 = time.time()
@@ -121,7 +124,7 @@ def propagate_muons_with_cuda(
 
 def run(params,
         muons:np.array,
-        sensitive_plane: dict = {'dz': 0.02, 'dx': 4, 'dy': 6, 'position': 82.0},
+        sensitive_plane={'dz': 0.02, 'dx': 4, 'dy': 6, 'position': 82.0},
         histogram_dir='cuda_muons/data',
         save_dir = None,
         n_steps=500,
@@ -134,6 +137,19 @@ def run(params,
         SND = False,
         return_all = False,
         seed = 0):
+    if isinstance(sensitive_plane,list):
+        assert not ((len(sensitive_plane) > 1) and return_all), "return_all=True is not supported when multiple sensitive planes are used."
+        for plane in sensitive_plane:
+            output = run(params, muons, sensitive_plane=plane,
+                         histogram_dir=histogram_dir, n_steps=n_steps,
+                         SmearBeamRadius=SmearBeamRadius, fSC_mag=fSC_mag,
+                         field_map_file=field_map_file, NI_from_B=NI_from_B,
+                         use_diluted=use_diluted, add_cavern=add_cavern,
+                         SND = SND, return_all=return_all, seed=seed)
+            muons = torch.stack([output['px'], output['py'], output['pz'],
+                                  output['x'], output['y'], output['z'],
+                                  output['pdg_id'], output['weight']], dim=1)
+        return output
     t0 = time.time()
     if seed is None: seed = np.random.randint(0, 10000)
     if not torch.is_tensor(muons): muons = torch.from_numpy(muons).float()
@@ -246,8 +262,6 @@ def run(params,
 
 
 
-
-
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -284,7 +298,7 @@ if __name__ == '__main__':
     else: 
         raise ValueError(f"Invalid params: {args.params}. Must be a valid parameter name or a file path. \
                          Avaliable names: {', '.join(params_lib.params.keys())}.")
-    params = np.asarray(params).reshape(-1,15)
+    params = np.asarray(params).reshape(-1, 15)
     time0 = time.time()
     if args.input_file is not None:
         input_file = args.input_file

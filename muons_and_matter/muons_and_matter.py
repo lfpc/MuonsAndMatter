@@ -26,6 +26,7 @@ def run(muons,
     NI_from_B = True,
     use_diluted = False,
     SND = False,
+    minimum_hits = 1,
     kwargs_plot = {}):
     """
     Simulates the passage of muons through the muon shield and collects the resulting data.
@@ -83,14 +84,6 @@ def run(muons,
 
     detector["store_primary"] = sensitive_film_params is None or keep_tracks_of_hits
     detector["store_all"] = False
-    t1 = time()
-    output_data = initialize_geant4(detector, seed)
-    print('Time to initialize', time()-t1)
-    output_data = json.loads(output_data)    
-
-    # set_kill_momenta(1)
-    
-    kill_secondary_tracks(True)
     if muons.shape[-1] == 8: px,py,pz,x,y,z,charge,weights = muons.T
     else: px,py,pz,x,y,z,charge = muons.T
     
@@ -99,6 +92,13 @@ def run(muons,
 
     if input_dist is not None:
         z = (-input_dist)*np.ones_like(z)
+
+    t1 = time()
+    detector = initialize_geant4(detector, seed)
+    detector = json.loads(detector)
+    # set_kill_momenta(1)
+    
+    kill_secondary_tracks(True)
 
     if SmearBeamRadius > 0: #ring transformation
         sigma = 1.6
@@ -118,18 +118,19 @@ def run(muons,
             #If sensitive film is not present, we collect all the tracks
             data = collect()
             data['pdg_id'] = charge[i]*-13
-            data['W'] = weights[i] if muons.shape[-1] == 8 else 1
+            data['weight'] = weights[i] if muons.shape[-1] == 8 else 1
             muon_data += [data]
         elif keep_tracks_of_hits:
             data = collect()
             data_s = collect_from_sensitive()
             if not (len(data_s['px'])>0 and 13 in np.abs(data_s['pdg_id'])): continue 
             data['pdg_id'] = charge[i]*-13
-            data['W'] = weights[i] if muons.shape[-1] == 8 else 1
+            data['weight'] = weights[i] if muons.shape[-1] == 8 else 1
             muon_data += [data]
         elif (len(sensitive_film_params) > 1) or add_decay_vessel:
             data_s = collect_from_sensitive()
-            if len(data_s['px'])>0:
+            if len(data_s['z'])<minimum_hits: continue
+            if len(np.unique(np.array(data_s['reference'])[np.abs(data_s['pdg_id'])==13])) >= minimum_hits:
                 data_s['weight'] = weights[i] if muons.shape[-1] == 8 else 1
                 muon_data += [data_s]
         else:
@@ -144,10 +145,10 @@ def run(muons,
             elif return_nan:
                 muon_data += [[px[i], py[i], pz[i],x[i], y[i], z[i], charge[i]*-13, weights[i] if muons.shape[-1] == 8 else 1]]
             
-
+    print('TIME:', time()-t1)
     muon_data = np.asarray(muon_data)
     print('TOTAL COST:', cost)
-    print('MASS:', output_data['weight_total'])
+    print('MASS:', ['weight_total'])
     print('LENGTH:', length)
     if return_cost: return muon_data, cost
     else: return muon_data
@@ -191,7 +192,8 @@ if __name__ == '__main__':
     parser.add_argument("-elev", type=float, default=90, help="Elevation viewing angle for 3D plot")
     parser.add_argument("-SND", action='store_true', help="Use SND configuration")
     parser.add_argument("-remove_target", dest="add_target", action='store_false', help="Remove target from simulation")
-
+    parser.add_argument("-smear_beam_radius", type=float, default=5., help="Radius in cm for beam smearing")
+    parser.add_argument("-n_hits", type=int, default=1, help="Minimum number of hits in sensitive planes to consider a muon as detected")
     args = parser.parse_args()
     cores = args.c
     if args.params == 'test':
@@ -221,7 +223,7 @@ if __name__ == '__main__':
     elif args.expanded_sens_plane and args.add_cavern: dx,dy = 9.,6.
     elif args.expanded_sens_plane: dx,dy = 14,14
     else: dx, dy = 4.0, 6.0
-    sensitive_film_params = [{'dz': 0.001, 'dx': dx, 'dy': dy, 'position':pos} for pos in args.sens_plane]
+    sensitive_film_params = [{'dz': 0.0001, 'dx': dx, 'dy': dy, 'position':pos} for pos in args.sens_plane]
     t1_fem = time() 
     detector = None
     if not args.real_fields:
@@ -249,7 +251,7 @@ if __name__ == '__main__':
         with open(input_file, 'rb') as f:
             data = pickle.load(f)
         if isinstance(data,dict):
-            data = np.array([data['px'], data['py'], data['pz'], data['x'], data['y'], data['z'], data['pdg_id'], data.get('W', np.ones_like(data['px']))]).T
+            data = np.array([data['px'], data['py'], data['pz'], data['x'], data['y'], data['z'], data['pdg_id'], data.get('weight', np.ones_like(data['px']))]).T
         data = np.array(data)
         if n_muons > 0: data = data[:n_muons]
     else:
@@ -272,13 +274,14 @@ if __name__ == '__main__':
                               return_nan=args.return_nan, 
                               seed=args.seed, 
                               draw_magnet=False, 
-                              SmearBeamRadius=5, 
+                              SmearBeamRadius=args.smear_beam_radius, 
                               add_target=args.add_target, 
                               add_decay_vessel=args.decay_vessel,
                               keep_tracks_of_hits=args.keep_tracks_of_hits, 
                               extra_magnet=args.extra_magnet,
                               use_diluted = args.use_diluted,
-                              SND  = args.SND)
+                              SND  = args.SND,
+                              minimum_hits = args.n_hits)
 
         result = pool.map(run_partial, workloads)
         cost = 0
@@ -296,10 +299,15 @@ if __name__ == '__main__':
     try: 
         print('Data Shape', all_results.shape)
         print('n_hits', all_results[:,7].sum())
-        print('n_input', data[:,7].sum())
     except: 
         print('Data Shape', len(all_results))
         print('Input Shape', len(data))
+        n_hits = 0
+        for dd in all_results:
+            n_hits += np.mean(dd['weight'])
+        print('n_hits', n_hits)
+    if data.shape[1] > 7: print('n_input', data[:,7].sum())
+
     print(f"Cost = {cost} CHF")
     if args.save_data:
         try: tag = f"{args.params.split('/')[-2]}_{args.f.split('/')[-1].split('.')[0]}"
@@ -308,8 +316,6 @@ if __name__ == '__main__':
         with open(data_file, "wb") as f:
             pickle.dump(all_results, f)
         print("Data saved to ", data_file)
-
-    
     if args.plot_magnet:
         if args.real_fields: 
             with h5py.File(detector['global_field_map']['B'], 'r') as f:
