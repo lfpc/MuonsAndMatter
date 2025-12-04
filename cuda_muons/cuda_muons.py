@@ -21,7 +21,6 @@ warnings.filterwarnings(
     module="torch.storage"
 )
 
-
 def propagate_muons_with_cuda(
     muons_positions,
     muons_momenta,
@@ -81,7 +80,7 @@ def propagate_muons_with_cuda(
     
     kill_at = 0.18
     assert not magnetic_field_B.isnan().any(), "Magnetic field contains NaN values."
-    assert not arb8_corners.isnan().sum().any(), "Arb8 corners contain NaN values."
+    assert not arb8_corners.isnan().any(), "Arb8 corners contain NaN values."
     
 
 
@@ -138,7 +137,6 @@ def run(params,
         return_all = False,
         seed = 0):
     if isinstance(sensitive_plane,list):
-        assert not ((len(sensitive_plane) > 1) and return_all), "return_all=True is not supported when multiple sensitive planes are used."
         for plane in sensitive_plane:
             output = run(params, muons, sensitive_plane=plane,
                          histogram_dir=histogram_dir, n_steps=n_steps,
@@ -149,6 +147,12 @@ def run(params,
             muons = torch.stack([output['px'], output['py'], output['pz'],
                                   output['x'], output['y'], output['z'],
                                   output['pdg_id'], output['weight']], dim=1)
+            if return_all:
+                in_sens_plane = (muons[:,3].abs() < plane['dx']/2) & \
+                            (muons[:,4].abs() < plane['dy']/2) & \
+                            (muons[:,5] >= (plane['position'] - plane['dz']/2)) 
+                muons[~in_sens_plane,:3] = 0.0
+            elif muons.shape[0]==0: break
         return output
     t0 = time.time()
     if seed is None: seed = np.random.randint(0, 10000)

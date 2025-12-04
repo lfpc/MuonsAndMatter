@@ -51,7 +51,7 @@ def plot_histograms(output_filename,
     
     p_mag_1 = np.sqrt(px_1 ** 2 + py_1 ** 2 + pz_1 ** 2)
     p_mag_2 = np.sqrt(px_2 ** 2 + py_2 ** 2 + pz_2 ** 2)
-
+    print("=" * 60)
     print(f"Number of {label_1} samples after filter: {px_1.shape[0]}")
     if weights_1 is not None:
         print(f"Sum of {label_1} weights after filter: {np.sum(weights_1)}")
@@ -91,8 +91,7 @@ def plot_histograms(output_filename,
     axs[0, 0].set_ylabel(ylabel, fontsize=label_fontsize)
     axs[0, 0].legend(fontsize=legend_fontsize)
 
-    mse = np.mean((hist_1 - hist_2)**2)
-    print(f"MSE of Px: {mse:.3e}")
+
 
     hist_1, bins_1, _ = axs[0, 1].hist(py_1, bins=bins_py, density=density, histtype='step', color='firebrick', label=label_1, log=True)
     hist_2, bins_2, _ = axs[0, 1].hist(py_2, bins=bins_py, density=density, histtype='step', color='steelblue', label=label_2, log=True)
@@ -101,8 +100,6 @@ def plot_histograms(output_filename,
     axs[0, 1].set_ylabel(ylabel, fontsize=label_fontsize)
     axs[0, 1].legend(fontsize=legend_fontsize)
 
-    mse = np.mean((hist_1 - hist_2)**2)
-    print(f"MSE of Py: {mse:.3e}")
 
     hist_1, bins_1, _ = axs[0, 2].hist(pz_1, bins=bins_pz, density=density, histtype='step', color='firebrick', label=label_1, log=True)
     hist_2, bins_2, _ = axs[0, 2].hist(pz_2, bins=bins_pz, density=density, histtype='step', color='steelblue', label=label_2, log=True)
@@ -111,9 +108,6 @@ def plot_histograms(output_filename,
     axs[0, 2].set_ylabel(ylabel, fontsize=label_fontsize)
     axs[0, 2].legend(fontsize=legend_fontsize)
 
-    mse = np.mean((hist_1 - hist_2)**2)
-    print(f"MSE of Pz: {mse:.3e}")
-
     hist_1, bins_1, _ = axs[1, 0].hist(p_mag_1, bins=bins_p_mag, density=density, histtype='step', color='firebrick', label=label_1, log=True)
     hist_2, bins_2, _ = axs[1, 0].hist(p_mag_2, bins=bins_p_mag, density=density, histtype='step', color='steelblue', label=label_2, log=True)
     axs[1, 0].set_title(r'Momentum Magnitude $(|p|)$')
@@ -121,8 +115,6 @@ def plot_histograms(output_filename,
     axs[1, 0].set_ylabel(ylabel)
     axs[1, 0].legend()
 
-    mse = np.mean((hist_1 - hist_2)**2)
-    print(f"MSE of |P|: {mse:.3e}")
 
     hist_1, bins_1, _ = axs[1, 1].hist(p_transverse_1, bins=bins_p_transverse, density=density, histtype='step', color='firebrick', label=label_1, log=True)
     hist_2, bins_2, _ = axs[1, 1].hist(p_transverse_2, bins=bins_p_transverse, density=density, histtype='step', color='steelblue', label=label_2, log=True)
@@ -131,8 +123,6 @@ def plot_histograms(output_filename,
     axs[1, 1].set_ylabel(ylabel)
     axs[1, 1].legend()
 
-    mse = np.mean((hist_1 - hist_2)**2)
-    print(f"MSE of Pt: {mse:.3e}")
 
     hist_1, bins_1, _ = axs[2, 0].hist(x_1, bins=bins_x, density=density, histtype='step', color='firebrick', label=label_1, log=True)
     hist_2, bins_2, _ = axs[2, 0].hist(x_2, bins=bins_x, density=density, histtype='step', color='steelblue', label=label_2, log=True)
@@ -141,9 +131,6 @@ def plot_histograms(output_filename,
     axs[2, 0].set_ylabel(ylabel)
     axs[2, 0].legend()
 
-    mse = np.mean((hist_1 - hist_2)**2)
-    print(f"MSE of x: {mse:.3e}")
-
     hist_1, bins_1, _ = axs[2, 1].hist(y_1, bins=bins_y, density=density, histtype='step', color='firebrick', label=label_1, log=True)
     hist_2, bins_2, _ = axs[2, 1].hist(y_2, bins=bins_y, density=density, histtype='step', color='steelblue', label=label_2, log=True)
     axs[2, 1].set_title(r'$y$ Position')
@@ -151,18 +138,12 @@ def plot_histograms(output_filename,
     axs[2, 1].set_ylabel(ylabel)
     axs[2, 1].legend()
 
-    mse = np.mean((hist_1 - hist_2)**2)
-    print(f"MSE of y: {mse:.3e}")
-
     hist_1, bins_1, _ = axs[2, 2].hist(z_1, bins=bins_z, density=density, histtype='step', color='firebrick', label=label_1, log=True)
     hist_2, bins_2, _ = axs[2, 2].hist(z_2, bins=bins_z, density=density, histtype='step', color='steelblue', label=label_2, log=True)
     axs[2, 2].set_title(r'$z$ Position')
     axs[2, 2].set_xlabel(r'$z$')
     axs[2, 2].set_ylabel(ylabel)
     axs[2, 2].legend()
-
-    mse = np.mean((hist_1 - hist_2)**2)
-    print(f"MSE of z: {mse:.3e}")
 
     n = int(1e6)
     axs[1, 2].scatter(x_1[:n], y_1[:n], s=1, alpha=0.1, c=p_mag_1[:n], cmap='Reds', vmin=max(0, args.filter_p[0]), vmax=min(250, args.filter_p[1]), label=label_1)

@@ -18,7 +18,7 @@ import h5py
 
 SC_Ymgap = 15
 RESOL_DEF = (2,2,5)
-def get_fixed_params(yoke_type = 'Mag1'):
+def get_fixed_params(yoke_type = 'Mag1', mesh_size_parameter = 0.15):
     SC = (yoke_type == 'Mag2')
     return {
     'yoke_type': yoke_type,
@@ -33,7 +33,9 @@ def get_fixed_params(yoke_type = 'Mag1'):
     'field_density': 5,
     'delta_x(m)': 1 if SC else 0.5,
     'delta_y(m)': 1 if SC else 0.5,
-    'delta_z(m)': 1 if SC else 0.5}
+    'delta_z(m)': 1 if SC else 0.5,
+    'mesh_size_parameter': mesh_size_parameter,
+    }
 
 def get_magnet_params(params, 
                      Ymgap:float = 0.15,
@@ -42,7 +44,8 @@ def get_magnet_params(params,
                      use_B_goal:bool = False,
                      materials_directory = None,
                      save_dir = None,
-                     use_diluted = False):
+                     use_diluted = False,
+                     mesh_size_parameter = 0.15):
 
     ratio_yoke_1 = params[8]
     ratio_yoke_2 = params[9]
@@ -50,7 +53,7 @@ def get_magnet_params(params,
     params = params / 100
     Xmgap_1 = params[12]
     Xmgap_2 = params[13]
-    d = get_fixed_params(yoke_type)
+    d = get_fixed_params(yoke_type, mesh_size_parameter = mesh_size_parameter)
     d.update({
     'resol_x(m)': resol[0] / 100,
     'resol_y(m)': resol[1] / 100,
@@ -184,8 +187,8 @@ def run_fem(magn_params:dict,
     materials_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
     start = time()
     points, B, M_i, M_c, Q, J = get_vector_field(magn_params, materials_dir, use_diluted=use_diluted)
-    C_i, C_c, C_edf = snoopy.compute_prices(magn_params, 0, M_i, M_c, Q, materials_directory = materials_dir)
-    cost = C_i + C_c + C_edf
+    #C_i, C_c, C_edf = snoopy.compute_prices(magn_params, 0, M_i, M_c, Q, materials_directory = materials_dir)
+    #cost = C_i + C_c + C_edf
     end = time()
     print('FEM Computation time = {} sec'.format(end - start))
     return {'points':points, 'B':B}

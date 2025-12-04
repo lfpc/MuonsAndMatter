@@ -57,10 +57,17 @@ def plot_magnet(detector,
                 sensitive_film_position = None,
                 azim:float = 126,
                 elev:float = 17,
+                plot_axis = True,
                 ignore_magnets = []):
     magnets = detector['magnets']
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
+    if not plot_axis:
+        ax.set_axis_off()
+        ax.grid(False)
+        ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+        ax.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+        ax.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
     if ('B' in detector['global_field_map']) and np.size(detector['global_field_map']['B']) > 0:
         
         points = np.meshgrid(np.arange(*detector['global_field_map']['range_x']),
@@ -231,16 +238,17 @@ def plot_magnet(detector,
         ax.scatter(z[particle>0], x[particle>0], y[particle>0], color=color, label=f'Muon {i + 1}', s=0.1, alpha=alpha)
         ax.scatter(z[particle<0], x[particle<0], y[particle<0], color=color, label=f'AntiMuon {i + 1}', s=0.1, alpha=alpha)
     # Add colorbars
-    sm_muon = cm.ScalarMappable(cmap=cmap_muon, norm=norm)
-    sm_antimuon = cm.ScalarMappable(cmap=cmap_antimuon, norm=norm)
-    sm_muon.set_array([])
-    cbar_muon = plt.colorbar(sm_muon, ax=ax, shrink=0.5)  # Reduced shrink and pad
-    cbar_muon.set_label("Muons")
-    sm_antimuon.set_array([])
-    cbar_antimuon = plt.colorbar(sm_antimuon, ax=ax, shrink=0.5)  # Adjusted shrink and pad
-    cbar_antimuon.set_label("Anti-muons")
-    cbar_muon.ax.set_position([0.85, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
-    cbar_antimuon.ax.set_position([0.88, 0.15, 0.02, 0.7])  # Move closer
+    if plot_axis:
+        sm_muon = cm.ScalarMappable(cmap=cmap_muon, norm=norm)
+        sm_antimuon = cm.ScalarMappable(cmap=cmap_antimuon, norm=norm)
+        sm_muon.set_array([])
+        cbar_muon = plt.colorbar(sm_muon, ax=ax, shrink=0.5)  # Reduced shrink and pad
+        cbar_muon.set_label("Muons")
+        sm_antimuon.set_array([])
+        cbar_antimuon = plt.colorbar(sm_antimuon, ax=ax, shrink=0.5)  # Adjusted shrink and pad
+        cbar_antimuon.set_label("Anti-muons")
+        cbar_muon.ax.set_position([0.85, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
+        cbar_antimuon.ax.set_position([0.88, 0.15, 0.02, 0.7])  # Move closer
     # Plot cavern
     if "cavern" in detector:
         for cavern in detector["cavern"]:
@@ -394,13 +402,267 @@ def construct_and_plot(muons,
                 muon_data = muons, 
                 sensitive_film_position = [sens['position'] for sens in sensitive_film_params],#sensitive_film_params['position'], 
                 **kwargs_plot)
+
+def plot_magnet_fancy(detector, 
+                      output_file='plots/detector_fancy.pdf',
+                      muon_data=[], 
+                      sensitive_film_position=None,
+                      azim: float = 126,
+                      elev: float = 17,
+                      ignore_magnets=[]):
+    """
+    Plots the detector geometry in a high-quality style for papers.
+    Automatically detects if muon_data contains full tracks or point-cloud data.
+    """
     
+    # Initialize Figure with high resolution
+    fig = plt.figure(figsize=(12, 8), dpi=300)
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # --- STYLE: Clean white background ---
+    ax.set_axis_off()
+    ax.grid(False)
+    ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ax.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ax.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+
+    # ==========================================
+    # 1. GEOMETRY PLOTTING (Films, Targets, Magnets)
+    # ==========================================
+    
+    # --- Sensitive Films ---
+    if "sensitive_film" in detector and isinstance(detector["sensitive_film"], list):
+        for sf_idx, sf in enumerate(detector["sensitive_film"]):
+            cz, cx, cy = sf["z_center"], 0, 0
+            if sensitive_film_position is not None:
+                # Logic to determine position based on input or defaults
+                if isinstance(sensitive_film_position, (list, tuple)):
+                    if isinstance(sensitive_film_position, list) and len(sensitive_film_position) > sf_idx:
+                        pos = sensitive_film_position[sf_idx]
+                        if isinstance(pos, tuple):
+                            cz = pos[1] + detector['magnets'][pos[0]]['z_center'] + detector['magnets'][pos[0]]['dz']
+                        else:
+                            cz = pos + detector['magnets'][-1]['z_center'] + detector['magnets'][-1]['dz']
+                    elif isinstance(sensitive_film_position, tuple):
+                        cz = sensitive_film_position[1] + detector['magnets'][sensitive_film_position[0]]['z_center'] + detector['magnets'][sensitive_film_position[0]]['dz']
+                else:
+                    cz = sensitive_film_position + detector['magnets'][-1]['z_center'] + detector['magnets'][-1]['dz']
+            hw, hl, hh = sf["dx"] / 2, sf["dy"] / 2, sf["dz"] / 2
+            
+            # Create box vertices
+            vertices = np.array([
+                [cz - hh, cx - hw, cy - hl], [cz - hh, cx + hw, cy - hl],
+                [cz - hh, cx + hw, cy + hl], [cz - hh, cx - hw, cy + hl],
+                [cz + hh, cx - hw, cy - hl], [cz + hh, cx + hw, cy - hl],
+                [cz + hh, cx + hw, cy + hl], [cz + hh, cx - hw, cy + hl],
+            ])
+            
+            edges = [
+                [vertices[j] for j in [0, 1, 2, 3]], [vertices[j] for j in [4, 5, 6, 7]],
+                [vertices[j] for j in [0, 1, 5, 4]], [vertices[j] for j in [2, 3, 7, 6]],
+                [vertices[j] for j in [1, 2, 6, 5]], [vertices[j] for j in [0, 3, 7, 4]],
+            ]
+            box = Poly3DCollection(edges, facecolors='cyan', linewidths=0.5, edgecolors='teal', alpha=0.4)
+            ax.add_collection3d(box)
+
+    # --- Targets ---
+    if "target" in detector:
+        for target in detector["target"]['components']:
+            z_center, dz, radius = target["z_center"], target["dz"], target["radius"]
+            material = target["material"]
+            
+            color = {'G4_W': 'navy', 'G4_WATER': 'skyblue', 'G4_Mo': 'sienna'}.get(material, 'silver')
+
+            z1, z2 = z_center - dz/2, z_center + dz/2
+            theta = np.linspace(0, 2 * np.pi, 50)
+            x = radius * np.cos(theta)
+            y = radius * np.sin(theta)
+
+            top_circle = np.array([z2 * np.ones_like(theta), x, y]).T
+            bottom_circle = np.array([z1 * np.ones_like(theta), x, y]).T
+
+            side_faces = []
+            for i in range(len(theta) - 1):
+                side_faces.append([bottom_circle[i], bottom_circle[i + 1], top_circle[i + 1], top_circle[i]])
+
+            ax.add_collection3d(Poly3DCollection([top_circle], facecolors=color, linewidths=0, alpha=0.8, shade=True))
+            ax.add_collection3d(Poly3DCollection([bottom_circle], facecolors=color, linewidths=0, alpha=0.8, shade=True))
+            ax.add_collection3d(Poly3DCollection(side_faces, facecolors=color, linewidths=0.1, edgecolors=color, alpha=0.8, shade=True))
+
+    # --- Magnets ---
+    magnets = detector['magnets']
+    for m, mag in enumerate(magnets):
+        if m in ignore_magnets: continue
+        z1 = mag['z_center'] - mag['dz']
+        z2 = mag['z_center'] + mag['dz']
+
+        for component in mag['components']:
+            the_dat = component['corners']
+            
+            # Determine color based on field strength/direction
+            if component['field_profile'] == 'uniform': field = component['field']
+            elif component['field_profile'] == 'global': field = [0., 0., 0.]
+            else: field = np.mean(component['field'][1], axis=0)
+            
+            B_th = 0.7
+            if field[1] < -B_th: col = 'firebrick'
+            elif field[1] > B_th: col = 'forestgreen'
+            elif m<4: col = 'firebrick'
+            else: col = 'forestgreen'
+
+            corners_raw = np.array([
+                [the_dat[0], the_dat[1], z1], [the_dat[2], the_dat[3], z1], 
+                [the_dat[4], the_dat[5], z1], [the_dat[6], the_dat[7], z1],
+                [the_dat[0+8], the_dat[1+8], z2], [the_dat[2+8], the_dat[3+8], z2], 
+                [the_dat[4+8], the_dat[5+8], z2], [the_dat[6+8], the_dat[7+8], z2],
+            ])
+            
+            # Permute to (Z, X, Y) for plotting
+            corners = np.array([[c[2], c[0], c[1]] for c in corners_raw])
+            
+            edges = [
+                [corners[j] for j in [0, 1, 2, 3]], [corners[j] for j in [4, 5, 6, 7]],
+                [corners[j] for j in [0, 1, 5, 4]], [corners[j] for j in [2, 3, 7, 6]],
+                [corners[j] for j in [0, 3, 7, 4]], [corners[j] for j in [1, 2, 6, 5]]
+            ]
+
+            ax.add_collection3d(Poly3DCollection(edges, facecolors=col, linewidths=0.5, edgecolors='black', alpha=0.3))
+    
+    if len(muon_data) > 0:
+        cmap_muon = plt.get_cmap('Blues')
+        cmap_antimuon = plt.get_cmap('Oranges')
+        norm = mcolors.Normalize(vmin=0, vmax=250)
+        
+        # Determine mode based on first element
+        is_track_mode = isinstance(muon_data[0], dict)
+
+        if is_track_mode:
+            # --- MODE A: TRACKS (Lines) ---
+            for i, data in enumerate(muon_data):
+                x = np.array(data['x'])
+                y = np.array(data['y'])
+                z = np.array(data['z'])
+                p = np.sqrt(np.array(data['px'])**2 + np.array(data['py'])**2 + np.array(data['pz'])**2)[0]
+                particle = np.array(data['pdg_id'])
+                
+                if np.all(particle > 0): 
+                    color = cmap_muon(norm(p))
+                else: 
+                    color = cmap_antimuon(norm(p))
+
+                # Plot lines/points
+                ax.scatter(z, x, y, color=color, s=0.1, alpha=0.3)
+
+        else:
+            # --- MODE B: CLOUD (Spheres + Arrows) ---
+            # We aggregate data first for vectorized plotting (much faster and cleaner)
+            
+            # Arrays to hold plotting data
+            cloud_x, cloud_y, cloud_z = [], [], []
+            cloud_u, cloud_v, cloud_w = [], [], [] # Vector directions
+            cloud_c, cloud_s = [], [] # Colors and Sizes
+            
+            for data in muon_data:
+                px, py, pz, x, y, z, particle = data[:7]
+            
+                
+                # Position
+                cloud_x.append(z)
+                cloud_y.append(x)
+                cloud_z.append(y)
+                
+                # Vector Direction (Raw momentum components)
+                # Must match the coordinate mapping above! 
+                # (px -> v, py -> w, pz -> u)
+                cloud_u.append(pz) 
+                cloud_v.append(px)
+                cloud_w.append(py)
+                
+                # Color (Constant based on charge)
+                if particle > 0:
+                    cloud_c.append('tab:blue')
+                else:
+                    cloud_c.append('tab:orange')
+
+            # Convert to numpy for plotting
+            cx, cy, cz = np.array(cloud_x), np.array(cloud_y), np.array(cloud_z)
+            cu, cv, cw = np.array(cloud_u), np.array(cloud_v), np.array(cloud_w)
+            colors = np.array(cloud_c)
+            
+            # 1. Plot Spheres (The particles)
+            # 'depthshade=True' gives them a 3D sphere look
+            ax.scatter(cx, cy, cz, c=colors, s=15, alpha=0.8, depthshade=True, edgecolors='k', linewidth=0.1)
+            
+            # 2. Plot Arrows (The momentum)
+            # normalize=False: Arrow length is proportional to vector magnitude (momentum)
+            # length=0.03: Scaling factor. e.g., 100 GeV -> 3 units long
+            ax.quiver(cx, cy, cz, cu, cv, cw, 
+                      colors=colors, 
+                      length=0.03,  
+                      arrow_length_ratio=0.3, # Size of the arrowhead
+                      linewidth=0.8, 
+                      normalize=False)
+
+    # ==========================================
+    # 3. FINAL LAYOUT ADJUSTMENTS
+    # ==========================================
+    
+    # Calculate limits to ensure 1:1:1 physical aspect ratio
+    if sensitive_film_position is None and not 'sensitive_box' in detector: 
+        z_lims = (31, -2)
+    elif 'sensitive_box' in detector:
+        z_lims = (85, -2)
+    else:
+        z_lims = (sensitive_film_position+1, -3)
+             
+    x_lims = (-1, 1)
+    y_lims = (-1, 1)
+
+
+    # Set Aspect Ratio
+    box_z = abs(z_lims[0] - z_lims[1])
+    box_x = abs(x_lims[0] - x_lims[1])
+    box_y = abs(y_lims[0] - y_lims[1])
+    ax.set_box_aspect((box_z, box_x, box_y))
+
+    ax.set_xlim(z_lims)
+    ax.set_ylim(x_lims)
+    ax.set_zlim(y_lims)
+
+    ax.view_init(elev=elev, azim=azim)
+    fig.tight_layout()
+    fig.subplots_adjust(left=0, bottom=0, right=1, top=1)
+
+    if output_file:
+        fig.savefig(output_file, dpi=600, bbox_inches='tight', pad_inches=0, transparent=True, format='pdf')
+        print(f'Fancy plot saved to {output_file}')
+    
+    plt.close()
+
 if __name__ == "__main__":
-    import pickle
-    import gzip
-    with open("/home/hep/lprate/projects/MuonsAndMatter/detector.pkl", 'rb') as f:
-        detector = pickle.load(f)
-    detector.pop("cavern")
-    with gzip.open("/home/hep/lprate/projects/MuonsAndMatter/cuda_muons/data/outputs_cuda.pkl", 'rb') as f:
-        muons = pickle.load(f)
-    plot_magnet(detector, muon_data=[muons], azim = 90, elev = 90, sensitive_film_position= [82])
+    import argparse
+    parser = argparse.ArgumentParser(description='Plot magnet geometry and muon tracks.')
+    parser.add_argument('--azim', type=float, default=126, help='Azimuth angle for the 3D view')
+    parser.add_argument('--elev', type=float, default=17, help='Elevation angle for the 3D view')
+    args = parser.parse_args()
+    phi = np.array([
+        [0,115.50,50.00, 50.00, 119.00, 119.00, 2.00, 2.00, 1.00, 1.00, 50.00, 50.00, 0.00, 0.00, 1.9],
+        [10,225.38, 52.25, 78.36, 6.54, 9.37, 2.04, 40.36, 1.01, 1.05, 52.88, 82.20, 0.00, 0.00, 1.9],
+        [10,274.43,52.47, 11.70, 41.59, 79.05, 2.19, 2.01, 1.03, 1.00, 54.15, 11.70, 0.00, 0.00, 1.9],
+        [10,284.85, 33.05, 24.10, 55.13, 30.61, 90.36, 2.00, 1.00, 1.00, 33.05, 24.10, 0.11, 0.11, 1.9],
+        [15,114.58, 5.62, 60.38, 31.37, 5.00, 2.00, 2.86, 1.00, 0.74, 5.59, 44.82, 0.00, 0.00, -1.9],
+        [10,165.53, 90.85, 7.44, 137.45, 66.69, 10.09, 2.00, 0.88, 1.00, 80.16, 7.41, 0.00, 0.00, -1.9],
+        [10,244.28,9.81, 47.60, 19.59, 164.19, 2.00, 2.05, 1.00, 0.89, 9.81, 42.16, 0.10, 0.10, -1.9]
+    ])
+    sens_plane = [{'dz': 0.01, 'dx': 4, 'dy': 6, 'position':82}]
+    detector = get_design_from_params(params = phi,fSC_mag = False, simulate_fields=False, field_map_file = None, sensitive_film_params=None, add_cavern=False,add_target = False,  sensitive_decay_vessel=None, SND = False)
+    N = 10
+    px = np.random.normal(0,5,N)
+    py = np.random.normal(0,5,N)
+    pz = np.random.uniform(10,50,N)
+    x = np.random.normal(0,0.2,N)
+    y = np.random.normal(0,0.2,N)
+    z = -1.5*np.ones(N)
+    q = np.random.choice([1,-1],size=N)
+    muons = np.column_stack((px, py, pz, x, y, z, q))
+    plot_magnet(detector, muon_data=muons, azim=args.azim, elev=args.elev, sensitive_film_position=[82], plot_axis = False)
