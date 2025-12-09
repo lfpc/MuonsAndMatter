@@ -45,28 +45,29 @@ def propagate_muons_with_cuda(
     step_length_fixed=0.02,
     use_symmetry=True,
     seed=1234,
+    device='cuda',
     ):
-    # Ensure inputs are float tensors on CUDA
-    muons_positions_cuda = muons_positions.float().cuda()
-    muons_momenta_cuda = muons_momenta.float().cuda()
-    muons_charge = muons_charge.float().cuda()
-    hist_2d_probability_table_iron = hist_2d_probability_table_iron.float().cuda()
-    hist_2d_alias_table_iron = hist_2d_alias_table_iron.int().cuda()
-    hist_2d_bin_centers_first_dim_iron = hist_2d_bin_centers_first_dim_iron.float().cuda()
-    hist_2d_bin_centers_second_dim_iron = hist_2d_bin_centers_second_dim_iron.float().cuda()
-    hist_2d_bin_widths_first_dim_iron = hist_2d_bin_widths_first_dim_iron.float().cuda()
-    hist_2d_bin_widths_second_dim_iron = hist_2d_bin_widths_second_dim_iron.float().cuda()
-    hist_2d_probability_table_concrete = hist_2d_probability_table_concrete.float().cuda()
-    hist_2d_alias_table_concrete = hist_2d_alias_table_concrete.int().cuda()
-    hist_2d_bin_centers_first_dim_concrete = hist_2d_bin_centers_first_dim_concrete.float().cuda()
-    hist_2d_bin_centers_second_dim_concrete = hist_2d_bin_centers_second_dim_concrete.float().cuda()
-    hist_2d_bin_widths_first_dim_concrete = hist_2d_bin_widths_first_dim_concrete.float().cuda()
-    hist_2d_bin_widths_second_dim_concrete = hist_2d_bin_widths_second_dim_concrete.float().cuda()
+
+    muons_positions_cuda = muons_positions.float().to(device)
+    muons_momenta_cuda = muons_momenta.float().to(device)
+    muons_charge = muons_charge.float().to(device)
+    hist_2d_probability_table_iron = hist_2d_probability_table_iron.float().to(device)
+    hist_2d_alias_table_iron = hist_2d_alias_table_iron.int().to(device)
+    hist_2d_bin_centers_first_dim_iron = hist_2d_bin_centers_first_dim_iron.float().to(device)
+    hist_2d_bin_centers_second_dim_iron = hist_2d_bin_centers_second_dim_iron.float().to(device)
+    hist_2d_bin_widths_first_dim_iron = hist_2d_bin_widths_first_dim_iron.float().to(device)
+    hist_2d_bin_widths_second_dim_iron = hist_2d_bin_widths_second_dim_iron.float().to(device)
+    hist_2d_probability_table_concrete = hist_2d_probability_table_concrete.float().to(device)
+    hist_2d_alias_table_concrete = hist_2d_alias_table_concrete.int().to(device)
+    hist_2d_bin_centers_first_dim_concrete = hist_2d_bin_centers_first_dim_concrete.float().to(device)
+    hist_2d_bin_centers_second_dim_concrete = hist_2d_bin_centers_second_dim_concrete.float().to(device)
+    hist_2d_bin_widths_first_dim_concrete = hist_2d_bin_widths_first_dim_concrete.float().to(device)
+    hist_2d_bin_widths_second_dim_concrete = hist_2d_bin_widths_second_dim_concrete.float().to(device)
     cells_arb8, hashed_arb8 = create_z_axis_grid(arb8_corners, sz=15)
-    cells_arb8 = cells_arb8.int().contiguous().cuda()
-    hashed_arb8 = hashed_arb8.int().contiguous().cuda()
-    arb8_corners = arb8_corners.float().cuda()
-    cavern_params = cavern_params.float().cuda()
+    cells_arb8 = cells_arb8.int().contiguous().to(device)
+    hashed_arb8 = hashed_arb8.int().contiguous().to(device)
+    arb8_corners = arb8_corners.float().to(device)
+    cavern_params = cavern_params.float().to(device)
 
     magnetic_field_B = torch.from_numpy(magnetic_field['B'])
     magnetic_field_ranges = [magnetic_field['range_x'][0], magnetic_field['range_x'][1],
@@ -75,7 +76,7 @@ def propagate_muons_with_cuda(
     nx = int(round((magnetic_field_ranges[1] - magnetic_field_ranges[0]) / magnetic_field['range_x'][2])) + 1
     ny = int(round((magnetic_field_ranges[3] - magnetic_field_ranges[2]) / magnetic_field['range_y'][2])) + 1
     nz = int(round((magnetic_field_ranges[5] - magnetic_field_ranges[4]) / magnetic_field['range_z'][2])) + 1
-    magnetic_field_B = magnetic_field_B.view(nx, ny, nz, 3).float().cuda().contiguous()
+    magnetic_field_B = magnetic_field_B.view(nx, ny, nz, 3).float().to(device).contiguous()
     magnetic_field_ranges = torch.tensor([magnetic_field_ranges]).div(100).float().cpu().contiguous()
     
     kill_at = 0.18
@@ -111,18 +112,18 @@ def propagate_muons_with_cuda(
         sensitive_plane_z,
         kill_at,
         num_steps,
-        step_length_fixed, 
+        step_length_fixed,
         seed
     )
     
     torch.cuda.synchronize()
     print("Took", time.time() - t1, "seconds for %.2e muons and %d steps." % (len(muons_positions_cuda), num_steps))
 
-    # Convert results back to numpy arrays and return
+    # Convert results back to numpy arrays and return (on CPU)
     return muons_positions_cuda.cpu(), muons_momenta_cuda.cpu()
 
 def run(params,
-        muons:np.array,
+    muons:np.array,
         sensitive_plane={'dz': 0.02, 'dx': 4, 'dy': 6, 'position': 82.0},
         histogram_dir='cuda_muons/data',
         save_dir = None,
@@ -135,7 +136,8 @@ def run(params,
         add_cavern = True,
         SND = False,
         return_all = False,
-        seed = 0):
+        seed = 0,
+        device='cuda'):
     if isinstance(sensitive_plane,list):
         for plane in sensitive_plane:
             output = run(params, muons, sensitive_plane=plane,
@@ -229,6 +231,7 @@ def run(params,
             step_length,
             use_symmetry,
             seed,
+            device,
         )   
     weights = muons[:,7] if (muons.shape[1]>7) else None
     if sensitive_plane is not None and not return_all:
@@ -289,6 +292,8 @@ if __name__ == '__main__':
     parser.add_argument("-params", type=str, default='tokanut_v5', help="Magnet parameters configuration - name or file path. Available names: " + ', '.join(params_lib.params.keys()) + ". If 'test', will prompt for input.")
     parser.add_argument('-SmearBeamRadius', type=float, default=0.0,
                         help='Radius of Ring effect applied to input')
+    parser.add_argument('--gpu', dest='gpu', type=int, default=0,
+                        help='GPU index to use (e.g., 0, 1, ...).')
     args = parser.parse_args()
     
     if args.params == 'test':
@@ -327,11 +332,12 @@ if __name__ == '__main__':
     else: dx, dy = 4.0, 6.0
     sensitive_film_params = {'dz': 0.01, 'dx': dx, 'dy': dy, 'position':args.sens_plane} if args.sens_plane >0 else None
     t_run_start = time.time()
-    output = run(params, muons, sensitive_film_params, 
-                 histogram_dir=args.histogram_dir, n_steps=args.n_steps, 
+    output = run(params, muons, sensitive_film_params,
+                 histogram_dir=args.histogram_dir, n_steps=args.n_steps,
                  SmearBeamRadius=args.SmearBeamRadius, fSC_mag=False, NI_from_B=True, use_diluted=False, add_cavern=args.add_cavern,
-                 field_map_file= None, SND = args.SND,
-                 save_dir="data/outputs/outputs_cuda.pkl")
+                 field_map_file=None, SND = args.SND,
+                 save_dir="data/outputs/outputs_cuda.pkl",
+                 device=args.gpu)
     print(f"Run completed in {time.time() - t_run_start:.2f} seconds.")
     if args.plot:
         import matplotlib.pyplot as plt
