@@ -26,7 +26,7 @@ def plot_fields(points, fields, output_file='plots/fields.png'):
     # Custom colormap: green for negative, white at zero, red for positive
     colors = [(0, 0.8, 0), (1, 1, 1), (0.8, 0, 0)]
     custom_cmap = LinearSegmentedColormap.from_list('green_white_red', colors)
-    norm = TwoSlopeNorm(vmin=-2, vcenter=0, vmax=6)
+    norm = TwoSlopeNorm(vmin=-2, vcenter=0, vmax=3)
 
     fig, axes = plt.subplots(1, 2, figsize=(16, 8), sharey=True)
     # Left: X vs Z (Y=0)

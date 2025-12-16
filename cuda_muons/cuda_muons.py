@@ -26,6 +26,8 @@ def propagate_muons_with_cuda(
     muons_momenta,
     muons_charge,
     arb8_corners,
+    cells_arb8,
+    hashed_arb8,
     cavern_params,
     hist_2d_probability_table_iron,
     hist_2d_alias_table_iron,
@@ -63,7 +65,6 @@ def propagate_muons_with_cuda(
     hist_2d_bin_centers_second_dim_concrete = hist_2d_bin_centers_second_dim_concrete.float().to(device)
     hist_2d_bin_widths_first_dim_concrete = hist_2d_bin_widths_first_dim_concrete.float().to(device)
     hist_2d_bin_widths_second_dim_concrete = hist_2d_bin_widths_second_dim_concrete.float().to(device)
-    cells_arb8, hashed_arb8 = create_z_axis_grid(arb8_corners, sz=15)
     cells_arb8 = cells_arb8.int().contiguous().to(device)
     hashed_arb8 = hashed_arb8.int().contiguous().to(device)
     arb8_corners = arb8_corners.float().to(device)
@@ -138,44 +139,10 @@ def run(params,
         return_all = False,
         seed = 0,
         device='cuda'):
-    if isinstance(sensitive_plane,list):
-        for plane in sensitive_plane:
-            output = run(params, muons, sensitive_plane=plane,
-                         histogram_dir=histogram_dir, n_steps=n_steps,
-                         SmearBeamRadius=SmearBeamRadius, fSC_mag=fSC_mag,
-                         field_map_file=field_map_file, NI_from_B=NI_from_B,
-                         use_diluted=use_diluted, add_cavern=add_cavern,
-                         SND = SND, return_all=return_all, seed=seed)
-            muons = torch.stack([output['px'], output['py'], output['pz'],
-                                  output['x'], output['y'], output['z'],
-                                  output['pdg_id'], output['weight']], dim=1)
-            if return_all:
-                in_sens_plane = (muons[:,3].abs() < plane['dx']/2) & \
-                            (muons[:,4].abs() < plane['dy']/2) & \
-                            (muons[:,5] >= (plane['position'] - plane['dz']/2)) 
-                muons[~in_sens_plane,:3] = 0.0
-            elif muons.shape[0]==0: break
-        return output
     t0 = time.time()
     if seed is None: seed = np.random.randint(0, 10000)
     if not torch.is_tensor(muons): muons = torch.from_numpy(muons).float()
-    muons_momenta = muons[:,:3]
-    muons_positions = muons[:,3:6]
-    muons_charge = muons[:,6]
-    if muons_charge.abs().eq(13).all(): muons_charge = muons_charge.div(-13)
-    assert muons_charge.abs().eq(1).all(), f"PDG IDs or charges in the input file are not correct. They should be either +/-13 or +/-1., {muons_charge.unique(return_counts=True)}" 
 
-    if SmearBeamRadius > 0: #ring transformation
-        raise ValueError("Target is not implemented. Do not use SmearBeamRadius > 0")
-        sigma = 1.6
-        gauss_x = torch.randn(muons_positions.size(0)) * sigma
-        gauss_y = torch.randn(muons_positions.size(0)) * sigma
-        uniform = torch.rand(muons_positions.size(0))
-        _phi = uniform * 2 * np.pi
-        dx = SmearBeamRadius * torch.cos(_phi) + gauss_x
-        dy = SmearBeamRadius * torch.sin(_phi) + gauss_y
-        muons_positions[:,0] = muons_positions[:,0] + (dx / 100)
-        muons_positions[:,1] = muons_positions[:,1] + (dy / 100)
     use_symmetry = True
     detector = get_design_from_params(params = params,
                       fSC_mag = fSC_mag,
@@ -191,6 +158,7 @@ def run(params,
                       SND = SND,
                       cores_field = 8)
     corners = get_corners_from_detector(detector, use_symmetry=use_symmetry)
+    cells_arb8, hashed_arb8 = create_z_axis_grid(corners, sz=15)
     cavern = get_cavern(detector)
     mag_dict = get_magnetic_field(detector)
     print(f"Field + Detector and corners setup took {time.time() - t0:.2f} seconds.")
@@ -212,39 +180,67 @@ def run(params,
     else:
         histograms_concrete = [torch.zeros_like(s) for s in histograms_iron]
 
-
-    sensitive_plane_z = -2.0 if sensitive_plane is None else sensitive_plane['position']
-
-    print("Using CUDA for propagation... (server)")
-    #torch.cuda.synchronize()
-    out_position, out_momenta = propagate_muons_with_cuda (
-            muons_positions,
-            muons_momenta,
-            muons_charge,
-            corners,
-            cavern,
-            *histograms_iron,
-            *histograms_concrete,
-            mag_dict,
-            sensitive_plane_z - sensitive_plane['dz']/2,
-            n_steps,
-            step_length,
-            use_symmetry,
-            seed,
-            device,
-        )   
+    muons_momenta = muons[:,:3]
+    muons_positions = muons[:,3:6]
+    muons_charge = muons[:,6]
     weights = muons[:,7] if (muons.shape[1]>7) else None
-    if sensitive_plane is not None and not return_all:
-        in_sens_plane = (out_position[:,0].abs() < sensitive_plane['dx']/2) & \
-                        (out_position[:,1].abs() < sensitive_plane['dy']/2) & \
-                        (out_position[:,2] >= (sensitive_plane['position'] - sensitive_plane['dz']/2)) #& \
-                        #(out_position[:,2] <= (sensitive_plane['position'] + sensitive_plane['dz']/2))
+    if muons_charge.abs().eq(13).all(): muons_charge = muons_charge.div(-13)
+    assert muons_charge.abs().eq(1).all(), f"PDG IDs or charges in the input file are not correct. They should be either +/-13 or +/-1., {muons_charge.unique(return_counts=True)}" 
 
-        out_momenta = out_momenta[in_sens_plane]
-        out_position = out_position[in_sens_plane]
-        muons_charge = muons_charge[in_sens_plane].int()
-        print("Number of outputs:", out_momenta.shape[0])
-        weights = weights[in_sens_plane] if weights is not None else None
+    if SmearBeamRadius > 0: #ring transformation
+        raise ValueError("Target is not implemented. Do not use SmearBeamRadius > 0")
+        sigma = 1.6
+        gauss_x = torch.randn(muons_positions.size(0)) * sigma
+        gauss_y = torch.randn(muons_positions.size(0)) * sigma
+        uniform = torch.rand(muons_positions.size(0))
+        _phi = uniform * 2 * np.pi
+        dx = SmearBeamRadius * torch.cos(_phi) + gauss_x
+        dy = SmearBeamRadius * torch.sin(_phi) + gauss_y
+        muons_positions[:,0] = muons_positions[:,0] + (dx / 100)
+        muons_positions[:,1] = muons_positions[:,1] + (dy / 100)
+
+    sensitive_plane = sensitive_plane if isinstance(sensitive_plane, list) else [sensitive_plane]
+    for i, plane in enumerate(sensitive_plane):
+        if muons_positions.shape[0] == 0:
+            print("No muons left to propagate.")
+            break
+        print("Using CUDA for propagation... (server)")
+        #torch.cuda.synchronize()
+        sens_z = n_steps*step_length if plane is None else plane['position'] - plane['dz']/2
+        out_position, out_momenta = propagate_muons_with_cuda (
+                muons_positions,
+                muons_momenta,
+                muons_charge,
+                corners,
+                cells_arb8,
+                hashed_arb8,
+                cavern,
+                *histograms_iron,
+                *histograms_concrete,
+                mag_dict,
+                sens_z,
+                n_steps,
+                step_length,
+                use_symmetry,
+                seed,
+                device,
+            )   
+    
+        if plane is not None:
+            in_sens_plane = (out_position[:,0].abs() < plane['dx']/2) & \
+                            (out_position[:,1].abs() < plane['dy']/2) & \
+                            (out_position[:,2] >= (plane['position'] - plane['dz']/2))
+            print(f"Plane {i} (Z={plane['position']}): {in_sens_plane.sum().item()} muons remaining.")
+            if return_all:
+                out_momenta[~in_sens_plane] = 0.0
+            else:
+                out_momenta = out_momenta[in_sens_plane]
+                out_position = out_position[in_sens_plane]
+                muons_charge = muons_charge[in_sens_plane]
+                if weights is not None:
+                    weights = weights[in_sens_plane]
+        muons_positions = out_position
+        muons_momenta = out_momenta
 
     out_position = out_position.cpu()
     out_momenta = out_momenta.cpu()
@@ -255,10 +251,10 @@ def run(params,
         'x': out_position[:,0],
         'y': out_position[:,1],
         'z': out_position[:,2],
-        'pdg_id': muons_charge*(-13)
+        'pdg_id': muons_charge.cpu()*(-13)
     }
-    if muons.shape[1]>7:
-        output['weight'] = weights
+    if weights is not None:
+        output['weight'] = weights.cpu()
         print("Number of HITS (weighted)", weights.sum().item())
     if save_dir is not None:
         t1 = time.time()
