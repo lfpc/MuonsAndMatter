@@ -131,6 +131,7 @@ def run(params,
         n_steps=500,
         SmearBeamRadius=0.0,
         fSC_mag = False,
+        simulate_fields=True,
         field_map_file = None,
         NI_from_B = True,
         use_diluted = False,
@@ -146,7 +147,7 @@ def run(params,
     use_symmetry = True
     detector = get_design_from_params(params = params,
                       fSC_mag = fSC_mag,
-                      simulate_fields=True,
+                      simulate_fields=simulate_fields,
                       sensitive_film_params=None,
                       field_map_file = field_map_file,
                       add_cavern = add_cavern,
@@ -278,6 +279,7 @@ if __name__ == '__main__':
                         help='Number of steps for simulation')
     parser.add_argument('-sens_plane', type=float, default=82.0,
                         help='Z position of the sensitive plane')
+    parser.add_argument("-uniform_fields", dest="simulate_fields", action='store_false', help="Use uniform fields instead of realistic field maps (FEM)")
     parser.add_argument("-remove_cavern", dest="add_cavern", action='store_false', help="Remove the cavern from simulation")
     parser.add_argument('-expanded_sens_plane', action='store_true',
                         help='Use extended sensitive plane dimensions')
@@ -285,6 +287,7 @@ if __name__ == '__main__':
                         help='Plot histograms')
     parser.add_argument('-SND', action='store_true',
                         help='Use SND detector geometry')
+    parser.add_argument("-diluted_iron", action = 'store_true', help="Use diluted field map")
     parser.add_argument("-params", type=str, default='tokanut_v5', help="Magnet parameters configuration - name or file path. Available names: " + ', '.join(params_lib.params.keys()) + ". If 'test', will prompt for input.")
     parser.add_argument('-SmearBeamRadius', type=float, default=0.0,
                         help='Radius of Ring effect applied to input')
@@ -330,7 +333,8 @@ if __name__ == '__main__':
     t_run_start = time.time()
     output = run(params, muons, sensitive_film_params,
                  histogram_dir=args.histogram_dir, n_steps=args.n_steps,
-                 SmearBeamRadius=args.SmearBeamRadius, fSC_mag=False, NI_from_B=True, use_diluted=False, add_cavern=args.add_cavern,
+                 SmearBeamRadius=args.SmearBeamRadius, fSC_mag=False, simulate_fields=args.simulate_fields,
+                 NI_from_B=True, use_diluted=args.diluted_iron, add_cavern=args.add_cavern,
                  field_map_file=None, SND = args.SND,
                  save_dir="data/outputs/outputs_cuda.pkl",
                  device=args.gpu)

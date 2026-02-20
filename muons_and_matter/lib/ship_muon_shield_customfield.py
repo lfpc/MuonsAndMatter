@@ -50,7 +50,6 @@ def estimate_electrical_cost(params,
 
     current = abs(mag_params['NI(A)'])
     if current < 0.1: 
-        print("Current is too low, returning null electrical cost.")
         return 0.0
 
     # Extract parameters from mag_params instead of using raw params array
@@ -669,12 +668,14 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
             else:
                 print("WARNING")
                 print("No space for the SND: midGapIn[5] <= 30 or midGapOut[5] <= 30, got", midGapIn, midGapOut)
+    tShield['dx'] = max_x / 100
+    tShield['dy'] = max_y / 100
     if field_map_file is not None or simulate_fields: 
         simulate_fields = simulate_fields or (not exists(field_map_file))
         resol = RESOL_DEF
         max_x = int((max_x.item() // resol[0]) * resol[0])
         max_y = int((max_y.item() // resol[1]) * resol[1])
-        d_space = ((0,max_x+30), (0,max_y+30), (-50, int(((length+200) // resol[2]) * resol[2])))
+        d_space = ((0,max_x+50), (0,max_y+50), (-50, int(((length+200) // resol[2]) * resol[2])))
 
         field_map = get_field(simulate_fields,np.asarray(params),
                               Z_init = 0, fSC_mag=fSC_mag, 

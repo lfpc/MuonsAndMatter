@@ -2,9 +2,8 @@ import numpy as np
 import torch
 import h5py
 
-def get_corners_from_detector(detector, use_symmetry=True):
 
-    def expand_corners(corners, dz, z_center):
+def expand_corners(corners, dz, z_center):
         corners = np.array(corners)
         z_min = z_center - dz
         z_max = z_center + dz
@@ -13,7 +12,7 @@ def get_corners_from_detector(detector, use_symmetry=True):
         z[4:] = z_max
         corners = np.hstack([corners, z])
         return corners
-
+def get_corners_from_detector(detector, use_symmetry=True):
     all_corners = []
     for magnet in detector['magnets']:
         if use_symmetry: components = magnet['components'][:3]
@@ -38,6 +37,8 @@ def get_cavern(detector):
 
 def get_magnetic_field(detector):
     mag_dict = detector['global_field_map']
+    if not mag_dict:
+        return get_uniform_field(detector)
     if isinstance(mag_dict['B'], str):
         with h5py.File(mag_dict['B'], 'r') as f:
             mag_dict['B'] = f["B"][:]
@@ -76,3 +77,93 @@ def create_z_axis_grid(corners_tensor: torch.Tensor, sz: int) -> list[list[int]]
     zero_prefix = torch.tensor([0], dtype=torch.int32)
     cell_starts = torch.cat((zero_prefix, counts.cumsum(dim=0))).to(torch.int32)
     return cell_starts, item_indices
+
+def is_inside(points, corners):
+    """
+    Optimized version with AABB (Axis-Aligned Bounding Box) pre-filtering.
+    
+    points: (N_points, 3)
+    corners: (1, 8, 3)  <-- Expecting single config per call as per your usage
+    Returns: (N_points, 1) boolean array
+    """
+
+    points = np.asarray(points)
+    if corners.ndim == 2:
+        corners = corners[None, ...]
+    c_min = corners.min(axis=(1, 2)) 
+    c_max = corners.max(axis=(1, 2)) 
+    in_box_mask = np.all((points >= c_min[0]) & (points <= c_max[0]), axis=1) 
+    if not np.any(in_box_mask):
+        return np.zeros((points.shape[0], 1), dtype=bool)
+    candidates = points[in_box_mask] 
+
+    face_indices = np.array([
+        [0, 1, 2], [4, 5, 6], [0, 3, 7], 
+        [1, 2, 6], [0, 4, 5], [3, 2, 6]
+    ])
+
+    p0 = corners[:, face_indices[:, 0]]  # (1, 6, 3)
+    p1 = corners[:, face_indices[:, 1]]
+    p2 = corners[:, face_indices[:, 2]]
+
+    # Compute normals (Only done once per config, very fast)
+    normals = np.cross(p1 - p0, p2 - p0, axis=-1)
+    normals /= (np.linalg.norm(normals, axis=-1, keepdims=True) + 1e-9)
+    
+    d = -np.sum(normals * p0, axis=-1)  # (1, 6)
+    centroids = np.mean(corners, axis=1)  
+    point_sides = (
+        np.sum(candidates[:, None, None, :] * normals[None, :, :, :], axis=-1) 
+        + d[None, :, :]
+    )
+    
+    centroid_sides = (
+        np.sum(centroids[None, :, None, :] * normals[None, :, :, :], axis=-1)
+        + d[None, :, :]
+    )
+    
+    # (K, 1, 6)
+    is_outside_face = (point_sides * centroid_sides) < -1e-9
+    candidate_inside = ~np.any(is_outside_face, axis=2) 
+    final_mask = np.zeros((points.shape[0], 1), dtype=bool)
+    final_mask[in_box_mask] = candidate_inside
+
+    return final_mask
+
+def get_uniform_field(detector, use_symmetry=True):
+    from lib.magnet_simulations import RESOL_DEF, construct_grid
+    import time
+    resol = RESOL_DEF
+    dx = detector['dx']*100  # in cm
+    dy = detector['dy']*100  # in cm
+    dz = detector['dz']*100  # in cm
+    max_x = int((dx // resol[0]) * resol[0])
+    max_y = int((dy // resol[1]) * resol[1])
+    max_z = int(((dz+200) // resol[2]) * resol[2])
+    limits_quadrant = ((0, 0, -50), (max_x+50,max_y+50, max_z))
+    points = construct_grid(limits=limits_quadrant, resol=resol)
+    points = np.column_stack([points[i].ravel() for i in range(3)])
+    field_map = np.zeros_like(points)
+    for magnet in detector['magnets']:
+        if use_symmetry: components = magnet['components'][:3]
+        else: components = magnet['components']
+        for component in components:
+            t0 = time.time()
+            field_uni = np.array(component['field'])  # in Tesla
+            corners = component['corners']
+            dz = component['dz']
+            z_center = component['z_center'] 
+            mag_corners = expand_corners(corners, dz, z_center)
+            t1 = time.time()
+            print("TIME EXPAND:", t1 - t0)
+            inside = is_inside(points, mag_corners.reshape(1,8,3)).reshape(-1)
+            t2 = time.time()
+            print("TIME INSIDE:", t2-t1)
+            print("SHAPES:", inside.shape, field_map.shape, field_uni.shape)
+            field_map[inside] += field_uni 
+            print("ADDED FIELD FOR COMPONENT, took ", time.time()-t2)
+
+    return {'B': field_map,
+                'range_x': [limits_quadrant[0][0],limits_quadrant[1][0], RESOL_DEF[0]],
+                'range_y': [limits_quadrant[0][1],limits_quadrant[1][1], RESOL_DEF[1]],
+                'range_z': [limits_quadrant[0][2],limits_quadrant[1][2], RESOL_DEF[2]]}
