@@ -236,7 +236,7 @@ def run(params,
                         (out_position[:,1].abs() < sensitive_plane['dy']/2) & \
                         (out_position[:,2] >= (sensitive_plane['position'] - sensitive_plane['dz']/2)) #& \
                         #(out_position[:,2] <= (sensitive_plane['position'] + sensitive_plane['dz']/2))
-
+        print("Number of outputs before selection:", out_momenta.shape[0])
         out_momenta = out_momenta[in_sens_plane]
         out_position = out_position[in_sens_plane]
         muons_charge = muons_charge[in_sens_plane].int()
@@ -252,7 +252,8 @@ def run(params,
         'x': out_position[:,0],
         'y': out_position[:,1],
         'z': out_position[:,2],
-        'pdg_id': muons_charge*(-13)
+        'pdg_id': muons_charge*(-13),
+        'in_sens_plane': in_sens_plane
     }
     if muons.shape[1]>7:
         output['weight'] = weights
@@ -303,6 +304,7 @@ if __name__ == '__main__':
         raise ValueError(f"Invalid params: {args.params}. Must be a valid parameter name or a file path. \
                          Avaliable names: {', '.join(params_lib.params.keys())}.")
     params = np.asarray(params).reshape(-1, 15)
+    if args.params.startswith("stellatry"): use_diluted = True
     time0 = time.time()
     if args.input_file is not None:
         input_file = args.input_file
@@ -329,7 +331,7 @@ if __name__ == '__main__':
     t_run_start = time.time()
     output = run(params, muons, sensitive_film_params, 
                  histogram_dir=args.histogram_dir, n_steps=args.n_steps, 
-                 SmearBeamRadius=args.SmearBeamRadius, fSC_mag=False, NI_from_B=True, use_diluted=False, add_cavern=args.add_cavern,
+                 SmearBeamRadius=args.SmearBeamRadius, fSC_mag=False, NI_from_B=True, use_diluted=use_diluted, add_cavern=args.add_cavern,
                  field_map_file= None, SND = args.SND,
                  save_dir="data/outputs/outputs_cuda.pkl")
     print(f"Run completed in {time.time() - t_run_start:.2f} seconds.")

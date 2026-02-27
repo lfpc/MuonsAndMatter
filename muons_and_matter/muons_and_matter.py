@@ -6,6 +6,8 @@ from bin.plot_magnet import construct_and_plot, plot_fields
 from time import time
 import h5py
 
+np.bool = bool
+
 def run(muons, 
     params, 
     input_dist:float = None,
