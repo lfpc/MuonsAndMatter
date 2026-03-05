@@ -1,6 +1,6 @@
 import json
 import numpy as np
-from lib.ship_muon_shield_customfield import get_design_from_params, initialize_geant4, get_field, estimate_electrical_cost, RESOL_DEF
+from MuonsAndMatter.muons_and_matter.lib.ship_muon_shield import get_design_from_params, initialize_geant4, get_field, estimate_electrical_cost, RESOL_DEF
 from muon_slabs import simulate_muon, collect, kill_secondary_tracks, collect_from_sensitive
 from bin.plot_magnet import construct_and_plot, plot_fields
 from time import time
