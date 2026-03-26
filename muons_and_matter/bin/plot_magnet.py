@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from MuonsAndMatter.muons_and_matter.lib.ship_muon_shield import get_design_from_params
+from lib.ship_muon_shield import get_design_from_params
 from lib.magnet_simulations import get_symmetry
 from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
 import matplotlib.cm as cm

@@ -38,7 +38,7 @@ def get_fixed_params(yoke_type = 'Mag1', mesh_size_parameter = 0.15):
     }
 
 def get_magnet_params(params, 
-                     Ymgap:float = 0.15,
+                     Ymgap:float = 0.0,
                      yoke_type:str = 'Mag1',
                      resol = RESOL_DEF,
                      use_B_goal:bool = False,
@@ -47,8 +47,8 @@ def get_magnet_params(params,
                      use_diluted = False,
                      mesh_size_parameter = 0.15):
 
-    ratio_yoke_1 = params[8]
-    ratio_yoke_2 = params[9]
+    x_yoke_1 = params[8]
+    x_yoke_2 = params[9]
     B_NI = params[14]
     params = params / 100
     Xmgap_1 = params[12]
@@ -64,10 +64,10 @@ def get_magnet_params(params,
     'Z_len(m)': 2 * params[1],
     'Xcore1(m)': params[2] + Xmgap_1,
     'Xvoid1(m)': params[2] + params[6] + Xmgap_2,
-    'Xyoke1(m)': params[2] + params[6] + ratio_yoke_1 * params[2] + Xmgap_1,
+    'Xyoke1(m)': params[2] + params[6] + x_yoke_1 / 100 + Xmgap_1,
     'Xcore2(m)': params[3] + Xmgap_2,
     'Xvoid2(m)': params[3] + params[7] + Xmgap_2,
-    'Xyoke2(m)': params[3] + params[7] + ratio_yoke_2 * params[3] + Xmgap_2,
+    'Xyoke2(m)': params[3] + params[7] + x_yoke_2 / 100 + Xmgap_2,
     'Ycore1(m)': params[4],
     'Yvoid1(m)': params[4] + Ymgap,
     'Yyoke1(m)': params[4] + params[10] + Ymgap,

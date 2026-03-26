@@ -1,18 +1,20 @@
 
 import json
 import numpy as np
-from MuonsAndMatter.muons_and_matter.lib.ship_muon_shield import create_magnet, initialize_geant4
+from lib.ship_muon_shield import create_magnet, initialize_geant4
 from muon_slabs import simulate_muon, collect, kill_secondary_tracks, collect_from_sensitive
 from plot_magnet import plot_magnet, construct_and_plot
 from time import time
 from lib.reference_designs.params import new_parametrization
+
+
 
 def design_muon_shield(params,simulate_fields = False, field_map_file = None, cores_field:int = 1):
     cm = 1
     tesla = 1
 
 
-    dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, ratio_yokesIn, ratio_yokesOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut, NI = params
+    dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, x_yokeIn, x_yokeOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut, NI = params
     Z = dZ
 
     tShield = {
@@ -21,7 +23,7 @@ def design_muon_shield(params,simulate_fields = False, field_map_file = None, co
     }
     if field_map_file is not None or simulate_fields: 
         simulate_fields = (not exists(field_map_file)) or simulate_fields
-        max_x = max(np.max(dXIn + dXIn * ratio_yokesIn + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokesOut+gapOut+midGapOut))/100
+        max_x = max(np.max(dXIn + x_yokeIn + gapIn+midGapIn), np.max(dXOut + x_yokeOut+gapOut+midGapOut))/100
         max_y = max(np.max(dYIn + dY_yokeIn), np.max(dYOut + dY_yokeOut))/100
         max_x = np.round(max_x,decimals=1).item()
         max_y = np.round(max_y,decimals=1).item()
@@ -42,13 +44,14 @@ def design_muon_shield(params,simulate_fields = False, field_map_file = None, co
     else:
         field_profile = 'uniform'
         magFieldIron_s = [0., ironField_s, 0.]
-        RetField_s = [0., -ironField_s/ratio_yokesIn, 0.]
-        ConRField_s = [-ironField_s/ratio_yokesIn, 0., 0.]
-        ConLField_s = [ironField_s/ratio_yokesIn, 0., 0.]
+        yoke_ratio_in = x_yokeIn / dXIn if dXIn != 0 else 1.0
+        RetField_s = [0., -ironField_s/yoke_ratio_in, 0.]
+        ConRField_s = [-ironField_s/yoke_ratio_in, 0., 0.]
+        ConLField_s = [ironField_s/yoke_ratio_in, 0., 0.]
         fields_s = [magFieldIron_s, RetField_s, ConRField_s, ConLField_s]
 
         create_magnet('mag0', "G4_Fe", tShield, fields_s, field_profile, dXIn, dYIn, dXOut,
-              dYOut, dZ.item(), midGapIn, midGapOut, ratio_yokesIn, ratio_yokesOut,
+              dYOut, dZ.item(), midGapIn, midGapOut, x_yokeIn, x_yokeOut,
               dY_yokeIn, dY_yokeOut, gapIn, gapOut, Z, False, Ymgap=Ymgap)
     field_profile = 'global' if simulate_fields else 'uniform'
     return tShield

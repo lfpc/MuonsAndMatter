@@ -16,6 +16,7 @@ N_PARAMS = 15
 SHIFT = -214
 CAVERN_TRANSITION = 2051.8+SHIFT
 
+
 def estimate_electrical_cost(params,
                              yoke_type,
                              Ymgap = 0.,
@@ -192,8 +193,8 @@ def get_iron_cost(params, Ymgap = 0, material = 'aisi1010.json', materials_direc
     dY2 = params[5]
     gap = params[6]
     gap2 = params[7]
-    ratio_yoke_1 = params[8]
-    ratio_yoke_2 = params[9]
+    x_yoke_1 = params[8]
+    x_yoke_2 = params[9]
     dY_yoke_1 = params[10]
     dY_yoke_2 = params[11]
     X_mgap_1 = params[12]
@@ -224,24 +225,24 @@ def get_iron_cost(params, Ymgap = 0, material = 'aisi1010.json', materials_direc
     volume += compute_solid_volume(corners)
     corners = np.array([
         [X_mgap_1 + dX + gap, 0, 0],
-        [X_mgap_1 + dX + gap + dX * ratio_yoke_1, 0, 0],
-        [X_mgap_1 + dX + gap + dX * ratio_yoke_1, dY + Ymgap, 0],
+        [X_mgap_1 + dX + gap + x_yoke_1, 0, 0],
+        [X_mgap_1 + dX + gap + x_yoke_1, dY + Ymgap, 0],
         [X_mgap_1 + dX + gap, dY + Ymgap, 0],
         [X_mgap_2 + dX2 + gap2, 0, 2 * dZ],
-        [X_mgap_2 + dX2 + gap2 + dX2 * ratio_yoke_2, 0, 2 * dZ],
-        [X_mgap_2 + dX2 + gap2 + dX2 * ratio_yoke_2, dY2 + Ymgap, 2 * dZ],
+        [X_mgap_2 + dX2 + gap2 + x_yoke_2, 0, 2 * dZ],
+        [X_mgap_2 + dX2 + gap2 + x_yoke_2, dY2 + Ymgap, 2 * dZ],
         [X_mgap_2 + dX2 + gap2, dY2 + Ymgap, 2 * dZ],
     ])
     volume += compute_solid_volume(corners)
 
     corners = np.array([
         [X_mgap_1, dY, 0],
-        [X_mgap_1 + dX + gap + dX * ratio_yoke_1, dY, 0],
-        [X_mgap_1 + dX + gap + dX * ratio_yoke_1, dY + dY_yoke_1, 0],
+        [X_mgap_1 + dX + gap + x_yoke_1, dY, 0],
+        [X_mgap_1 + dX + gap + x_yoke_1, dY + dY_yoke_1, 0],
         [X_mgap_1, dY + dY_yoke_1, 0],
         [X_mgap_2, dY2, 2 * dZ],
-        [X_mgap_2 + dX2 + gap2 + dX2 * ratio_yoke_2, dY2, 2 * dZ],
-        [X_mgap_2 + dX2 + gap2 + dX2 * ratio_yoke_2, dY2 + dY_yoke_2, 2 * dZ],
+        [X_mgap_2 + dX2 + gap2 + x_yoke_2, dY2, 2 * dZ],
+        [X_mgap_2 + dX2 + gap2 + x_yoke_2, dY2 + dY_yoke_2, 2 * dZ],
         [X_mgap_2, dY2 + dY_yoke_2, 2 * dZ],
     ])
     volume += compute_solid_volume(corners)
@@ -417,7 +418,7 @@ def CreateDecayVessel(z_start:float = 31):
 def create_magnet(magnetName, medium, tShield,
                   fields,field_profile, dX,
                   dY, dX2, dY2, dZ, middleGap,
-                  middleGap2,ratio_yoke_1, ratio_yoke_2, dY_yoke_1,dY_yoke_2, gap,
+                  middleGap2, x_yoke_1, x_yoke_2, dY_yoke_1,dY_yoke_2, gap,
                   gap2, Z, Ymgap = 0):
     dY += Ymgap #by doing in this way, the gap is filled with iron in Geant4, but simplifies
     coil_gap = gap
@@ -445,7 +446,7 @@ def create_magnet(magnetName, medium, tShield,
     cornersTL = np.array((middleGap + dX,dY,
                             middleGap,
                             dY + dY_yoke_1,
-                            dX + ratio_yoke_1*dX + middleGap + coil_gap,
+                            dX + x_yoke_1 + middleGap + coil_gap,
                             dY + dY_yoke_1,
                             dX + middleGap + coil_gap,
                             dY,
@@ -453,7 +454,7 @@ def create_magnet(magnetName, medium, tShield,
                             dY2,
                             middleGap2,
                             dY2 + dY_yoke_2,
-                            dX2 + ratio_yoke_2*dX2 + middleGap2 + coil_gap2,
+                            dX2 + x_yoke_2 + middleGap2 + coil_gap2,
                             dY2 + dY_yoke_2,
                             dX2 + middleGap2 + coil_gap2,
                             dY2))
@@ -462,17 +463,17 @@ def create_magnet(magnetName, medium, tShield,
                                  -(dY), 
                                  dX + middleGap + gap,
                                 dY, 
-                                dX + ratio_yoke_1*dX + middleGap + gap, 
+                                dX + x_yoke_1 + middleGap + gap, 
                                 dY + dY_yoke_1,
-                                dX + ratio_yoke_1*dX + middleGap + gap, 
+                                dX + x_yoke_1 + middleGap + gap, 
                                 -(dY + dY_yoke_1), 
                                 dX2 + middleGap2 + gap2,
                                 -(dY2), 
                                 dX2 + middleGap2 + gap2, 
                                 dY2,
-                                dX2 + ratio_yoke_2*dX2 + middleGap2 + gap2, 
+                                dX2 + x_yoke_2 + middleGap2 + gap2, 
                                 dY2 + dY_yoke_2, 
-                                dX2 + ratio_yoke_2*dX2 + middleGap2 + gap2,
+                                dX2 + x_yoke_2 + middleGap2 + gap2,
                                 -(dY2 + dY_yoke_2)))
 
     
@@ -601,8 +602,8 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         dYOut = magnet[5]
         gapIn = magnet[6]
         gapOut = magnet[7]
-        ratio_yokesIn = magnet[8]
-        ratio_yokesOut = magnet[9]
+        x_yokeIn = magnet[8]
+        x_yokeOut = magnet[9]
         dY_yokeIn = magnet[10]
         dY_yokeOut = magnet[11]
         midGapIn = magnet[12]
@@ -624,21 +625,22 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
             ironField_s = 5.7 if is_SC else 1.9
             if NI<0:
                 ironField_s = -ironField_s
+            yoke_ratio_in = x_yokeIn / dXIn if dXIn != 0 else 1.0
             magFieldIron_s = [0., ironField_s, 0.]
-            RetField_s = [0., -ironField_s/ratio_yokesIn, 0.]
-            ConRField_s = [-ironField_s/ratio_yokesIn, 0., 0.]
-            ConLField_s = [ironField_s/ratio_yokesIn, 0., 0.]
+            RetField_s = [0., -ironField_s/yoke_ratio_in, 0.]
+            ConRField_s = [-ironField_s/yoke_ratio_in, 0., 0.]
+            ConLField_s = [ironField_s/yoke_ratio_in, 0., 0.]
             fields_s = [magFieldIron_s, RetField_s, ConRField_s, ConLField_s]
 
         create_magnet(f"Mag_{nM}", "G4_Fe", tShield, fields_s, field_profile, dXIn, dYIn, dXOut,
-              dYOut, dZ, midGapIn, midGapOut, ratio_yokesIn, ratio_yokesOut,
+              dYOut, dZ, midGapIn, midGapOut, x_yokeIn, x_yokeOut,
               dY_yokeIn, dY_yokeOut, gapIn, gapOut, Z, Ymgap=Ymgap)
         yoke_type = 'Mag1' if NI>0 else 'Mag3'
         if is_SC: yoke_type = 'Mag2'
-        cost += get_iron_cost([0,dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, ratio_yokesIn, ratio_yokesOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut], Ymgap=Ymgap)        
-        #cost += estimate_electrical_cost(np.array([0,dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, ratio_yokesIn, ratio_yokesOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut, NI]), Ymgap=Ymgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
+        cost += get_iron_cost([0,dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, x_yokeIn, x_yokeOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut], Ymgap=Ymgap)        
+        #cost += estimate_electrical_cost(np.array([0,dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, x_yokeIn, x_yokeOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut, NI]), Ymgap=Ymgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
         Z += dZ
-        max_x = max(max_x, np.max(dXIn + dXIn * ratio_yokesIn + gapIn+midGapIn), np.max(dXOut + dXOut * ratio_yokesOut+gapOut+midGapOut))
+        max_x = max(max_x, np.max(dXIn + x_yokeIn + gapIn+midGapIn), np.max(dXOut + x_yokeOut+gapOut+midGapOut))
         max_y = max(max_y, np.max(dYIn + dY_yokeIn), np.max(dYOut + dY_yokeOut))
         if SND and nM == (n_magnets - 2): 
             print("Adding SND after magnet", nM)

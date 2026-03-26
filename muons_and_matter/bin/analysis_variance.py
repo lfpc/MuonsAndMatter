@@ -1,11 +1,11 @@
 
 import json
 import numpy as np
-from MuonsAndMatter.muons_and_matter.lib.ship_muon_shield import get_design_from_params, get_field
+from lib.ship_muon_shield import get_design_from_params, get_field
 from muon_slabs import simulate_muon, initialize, collect, kill_secondary_tracks, collect_from_sensitive
 from plot_magnet import plot_magnet, construct_and_plot
 from time import time
-from MuonsAndMatter.muons_and_matter.muons_and_matter import run
+from muons_and_matter import run
 
 
 DEF_INPUT_FILE = 'data/inputs.pkl'#'data/oliver_data_enriched.pkl'

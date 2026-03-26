@@ -39,12 +39,27 @@ def get_cavern_from_detector(detector):
     ], dtype=torch.float32)
 
 
-def get_magnetic_field_from_detector(detector):
-    mag_dict = detector['global_field_map']
-    if isinstance(mag_dict['B'], str):
-        with h5py.File(mag_dict['B'], 'r') as f:
-            mag_dict['B'] = f['B'][:]
-    return mag_dict
+def get_magnetic_field_from_detector(detector, use_symmetry=True):
+    """Extract magnetic field from detector dict.
+
+    Returns either a field map dict (for FEM-simulated fields) or a tensor
+    of shape (N_arb8s, 3) with uniform [Bx, By, Bz] per ARB8.
+    """
+    if 'global_field_map' in detector and detector['global_field_map']:
+        # Field map mode
+        mag_dict = detector['global_field_map']
+        if isinstance(mag_dict['B'], str):
+            with h5py.File(mag_dict['B'], 'r') as f:
+                mag_dict['B'] = f['B'][:]
+        return mag_dict
+    else:
+        # Uniform field mode: extract field vectors from each component
+        all_fields = []
+        for magnet in detector['magnets']:
+            components = magnet['components'][:3] if use_symmetry else magnet['components']
+            for comp in components:
+                all_fields.append(comp['field'])
+        return torch.tensor(all_fields, dtype=torch.float32)
 
 
 def load_histogram(filepath):
@@ -77,6 +92,7 @@ def run_from_params(
     SND=False,
     cores_field=8,
     return_all=False,
+    SmearBeamRadius=0.0,
     seed=0,
     device='cuda',
 ):
@@ -112,6 +128,7 @@ def run_from_params(
 
     # === SETUP (done once, regardless of number of sensitive planes) ===
     use_symmetry = True
+    assert SmearBeamRadius == 0.0, "Smearing not implemented in this version. Please set SmearBeamRadius=0.0"
 
     detector = get_design_from_params(
         params=params,
@@ -130,7 +147,7 @@ def run_from_params(
     )
     corners = get_corners_from_detector(detector, use_symmetry=use_symmetry)
     cavern = get_cavern_from_detector(detector)
-    mag_field = get_magnetic_field_from_detector(detector)
+    mag_field = get_magnetic_field_from_detector(detector, use_symmetry=use_symmetry)
     print(f"Detector + field setup took {time.time() - t0:.2f} seconds.")
 
     # Load material histograms
