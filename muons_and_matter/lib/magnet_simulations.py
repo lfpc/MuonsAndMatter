@@ -12,7 +12,11 @@ import pandas as pd
 from scipy.spatial import cKDTree
 from scipy.interpolate import griddata, Rbf as RbfInterpolator
 import gzip, pickle
-import snoopy
+try: 
+    import snoopy
+except:
+    print("Warning: snoopy is not installed. The code will run but you won't be able to compute the magnetic field. Only for uniform fields.")
+
 import multiprocessing as mp
 import h5py
 
@@ -55,6 +59,7 @@ def get_magnet_params(params,
     Xmgap_2 = params[13]
     d = get_fixed_params(yoke_type, mesh_size_parameter = mesh_size_parameter)
     d.update({
+    'diluted': int(use_diluted),
     'resol_x(m)': resol[0] / 100,
     'resol_y(m)': resol[1] / 100,
     'resol_z(m)': resol[2] / 100,
@@ -79,7 +84,7 @@ def get_magnet_params(params,
         if materials_directory is None:
             materials_directory = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
         d['NI(A)'] = snoopy.get_NI(abs(B_NI), pd.DataFrame([d]),0, materials_directory = materials_directory)[0].item()
-        d['NI(A)'] = min(d['NI(A)'], 4e6)
+        d['NI(A)'] = min(d['NI(A)'], 5e6)
         if (B_NI > 0 and d['yoke_type'] == 'Mag3') or (B_NI < 0 and d['yoke_type'] == 'Mag1'):
             d['NI(A)'] = -d['NI(A)']
     elif use_diluted: d['NI(A)'] = B_NI
@@ -165,18 +170,18 @@ def get_grid_data(points: np.array, B: np.array, new_points: tuple, method='near
     print(f'Gridding / Interpolation time ({method}) = {time() - t1:.4f} sec')
     return new_points_stacked, new_B
 
-def get_vector_field(magn_params, materials_dir, use_diluted=False):
+def get_vector_field(magn_params, materials_dir):
     if 'Mag2' in magn_params['yoke_type']:
         points, B, M_i, M_c, Q, J = snoopy.get_vector_field_ncsc(magn_params, 0, materials_directory=materials_dir)
     elif magn_params['yoke_type'][0] == 'Mag1':
-        points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_1(magn_params, 0, materials_directory=materials_dir, use_diluted_steel=use_diluted)
+        points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_1(magn_params, 0, materials_directory=materials_dir)#, use_diluted_steel=use_diluted)
     elif magn_params['yoke_type'][0] == 'Mag3':
-        points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_3(magn_params, 0, materials_directory=materials_dir, use_diluted_steel=use_diluted)
+        points, B, M_i, M_c, Q, J = snoopy.get_vector_field_mag_3(magn_params, 0, materials_directory=materials_dir)#, use_diluted_steel=use_diluted)
     else: raise ValueError(f'Invalid yoke type - Received yoke_type {magn_params["yoke_type"][0]}')
     return points, B.round(4), M_i, M_c, Q, J
 
 def run_fem(magn_params:dict,
-            materials_dir = None, use_diluted = False):
+            materials_dir = None):
     """Runs the finite element method to compute the magnetic field.
     Parameters:
     magn_params (dict): Dictionary containing the magnets parameters.
@@ -186,7 +191,7 @@ def run_fem(magn_params:dict,
     """
     materials_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
     start = time()
-    points, B, M_i, M_c, Q, J = get_vector_field(magn_params, materials_dir, use_diluted=use_diluted)
+    points, B, M_i, M_c, Q, J = get_vector_field(magn_params, materials_dir)
     #C_i, C_c, C_edf = snoopy.compute_prices(magn_params, 0, M_i, M_c, Q, materials_directory = materials_dir)
     #cost = C_i + C_c + C_edf
     end = time()
@@ -202,7 +207,6 @@ def run(magn_params:dict,
         output_file:str = './outputs',
         apply_symmetry:bool = False,
         cores:int = 1,
-        use_diluted =  False
         ):
     """Simulates the magnetic field based on given parameters and performs various operations such as applying symmetry,
     plotting results, and saving results.
@@ -223,7 +227,7 @@ def run(magn_params:dict,
     limits_quadrant = ((d_space[0][0], d_space[1][0], d_space[2][0]), (d_space[0][1],d_space[1][1], d_space[2][1]))
     resol = RESOL_DEF
     points = construct_grid(limits=limits_quadrant, resol=resol)
-    params_split = [({k: [v[i]] for k, v in magn_params.items()}, points, use_diluted) for i in range(0, n_magnets)]
+    params_split = [({k: [v[i]] for k, v in magn_params.items()}, points) for i in range(0, n_magnets)]
     if n_magnets>1:
         if params_split[1][0]['yoke_type'][0] == 'Mag2':
             for k in magn_params.keys():
@@ -272,10 +276,11 @@ def simulate_field(params,
             Ymgap = 0.; 
             yoke_type = 'Mag3' if mag_params[14]<0 else 'Mag1'
         p = get_magnet_params(mag_params, Ymgap=Ymgap, use_B_goal=NI_from_B_goal, yoke_type=yoke_type, resol = resol, use_diluted = use_diluted)
+        assert False, p
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)']
-    fields = run(all_params.to_dict(orient='list'), d_space=d_space, apply_symmetry=False, cores=cores, use_diluted = use_diluted)
+    fields = run(all_params.to_dict(orient='list'), d_space=d_space, apply_symmetry=False, cores=cores)
     fields['points'][:,2] += Z_init / 100
     print('Magnetic field simulation took', time()-t1, 'seconds')
 

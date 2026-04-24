@@ -82,7 +82,7 @@ def run_from_params(
     sensitive_plane={'dz': 0.02, 'dx': 4, 'dy': 6, 'position': 82.0},
     histogram_dir='data',
     save_dir=None,
-    n_steps=500,
+    n_steps=5000,
     fSC_mag=False,
     field_map_file=None,
     NI_from_B=True,
@@ -256,8 +256,7 @@ if __name__ == '__main__':
                         help='Maximum number of muons to load (0 = all)')
     parser.add_argument('--n_steps', type=int, default=5000,
                         help='Number of steps for simulation')
-    parser.add_argument('-sens_plane', type=float, default=82.0,
-                        help='Z position of the sensitive plane')
+    parser.add_argument("-sens_plane", type=float, nargs='+', default=[82], help="Position(s) of the sensitive plane in z (m), 0 means no sensitive plane. Can specify multiple values separated by space.")
     parser.add_argument('-uniform_fields', dest='simulate_fields', action='store_false',
                         help='Use uniform fields instead of realistic field maps (FEM)')
     parser.add_argument('-remove_cavern', dest='add_cavern', action='store_false',
@@ -272,6 +271,7 @@ if __name__ == '__main__':
                         f"Available: {', '.join(params_lib.params.keys())}. 'test' = manual input.")
     parser.add_argument('--gpu', dest='gpu', type=int, default=0,
                         help='GPU index to use')
+    parser.add_argument('-NI_from_B', action='store_true', help='Derive NI from B')
     args = parser.parse_args()
 
     # Load params
@@ -303,8 +303,7 @@ if __name__ == '__main__':
 
     # Sensitive plane
     dx, dy = (9.0, 6.0) if args.expanded_sens_plane else (4.0, 6.0)
-    sensitive_film_params = {'dz': 0.01, 'dx': dx, 'dy': dy, 'position': args.sens_plane} \
-        if args.sens_plane > 0 else None
+    sensitive_film_params = [{'dz': 0.0001, 'dx': dx, 'dy': dy, 'position':pos} for pos in args.sens_plane] if args.sens_plane is not None else None
 
     # Run
     t_run_start = time.time()
@@ -314,7 +313,7 @@ if __name__ == '__main__':
         n_steps=args.n_steps,
         fSC_mag=False,
         simulate_fields=args.simulate_fields,
-        NI_from_B=True,
+        NI_from_B=args.NI_from_B,
         use_diluted=args.diluted_iron,
         add_cavern=args.add_cavern,
         field_map_file=None,

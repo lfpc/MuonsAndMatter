@@ -3,10 +3,12 @@ from os import getenv
 import numpy as np
 from lib import magnet_simulations
 from time import time, sleep
-from muon_slabs import initialize
+try: from muon_slabs import initialize
+except ImportError: print("muon_slabs not found. In case Geant4 simulation is needed, please install muon_slabs or use the appropriate container.")
 import json
 import h5py
-from snoopy import RacetrackCoil
+try: from snoopy import RacetrackCoil
+except ImportError: print("snoopy not found. Electrical cost estimation will not work. Please install snoopy or use the appropriate container in case it is needed.")
 
 RESOL_DEF = magnet_simulations.RESOL_DEF
 MATERIALS_DIR = join(getenv('PROJECTS_DIR'),'MuonsAndMatter/data/materials')
@@ -622,9 +624,9 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
             fields_s = [[],[],[]]
         else:
             field_profile = 'uniform'
-            ironField_s = 5.7 if is_SC else 1.9
-            if NI<0:
-                ironField_s = -ironField_s
+            # Uniform-field mode: use the last parameter directly as the target field
+            # strength (and sign), instead of hard-coded defaults.
+            ironField_s = float(NI)
             yoke_ratio_in = x_yokeIn / dXIn if dXIn != 0 else 1.0
             magFieldIron_s = [0., ironField_s, 0.]
             RetField_s = [0., -ironField_s/yoke_ratio_in, 0.]
