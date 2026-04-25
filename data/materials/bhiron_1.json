@@ -1,6 +1,6 @@
 {
-    "material_cost(CHF/kg)": 2.0, 
-    "manufacturing_cost(CHF/kg)": 10.0,
+    "material_cost(oo/kg)": 2.0, 
+    "manufacturing_cost(oo/kg)": 10.0,
     "density(g/m3)": 7.874e6,
     "BH_data":{
         "B(T)": [0,

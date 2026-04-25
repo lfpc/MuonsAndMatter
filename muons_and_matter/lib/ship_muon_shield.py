@@ -42,8 +42,8 @@ def estimate_electrical_cost(params,
     ins = mag_params['insulation(mm)']*1e-3
     J_tar = mag_params['J_tar(A/mm2)']*1e6
     if J_tar<0:
-        kappa_cu = conductor_material_data["material_cost(CHF/kg)"]
-        kappa_cu += conductor_material_data["manufacturing_cost(CHF/kg)"]
+        kappa_cu = conductor_material_data["material_cost(oo/kg)"]
+        kappa_cu += conductor_material_data["manufacturing_cost(oo/kg)"]
         dens = conductor_material_data["density(g/m3)"]
         rho = conductor_material_data["resistivity(Ohm.m)"]
         J_tar = np.sqrt(kappa_cu*dens*1e-3/electricity_costs/rho)
@@ -178,8 +178,8 @@ def estimate_electrical_cost(params,
     Q = current*current*turn_perimeter*conductor_material_data['resistivity(Ohm.m)']/A_cu
 
     
-    C_coil = 1e-3*M_coil*(conductor_material_data["material_cost(CHF/kg)"]
-                     +  conductor_material_data["manufacturing_cost(CHF/kg)"])
+    C_coil = 1e-3*M_coil*(conductor_material_data["material_cost(oo/kg)"]
+                     +  conductor_material_data["manufacturing_cost(oo/kg)"])
     
     C_edf = Q*electricity_costs
 
@@ -250,8 +250,8 @@ def get_iron_cost(params, Ymgap = 0, material = 'aisi1010.json', materials_direc
     volume += compute_solid_volume(corners)
     
     M_iron = 4*volume*density
-    C_iron = M_iron*(iron_material_data["material_cost(CHF/kg)"]
-                     +  iron_material_data["manufacturing_cost(CHF/kg)"]) 
+    C_iron = M_iron*(iron_material_data["material_cost(oo/kg)"]
+                     +  iron_material_data["manufacturing_cost(oo/kg)"]) 
     return C_iron
 
 

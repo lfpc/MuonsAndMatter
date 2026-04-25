@@ -81,14 +81,16 @@ def get_magnet_params(params,
     'Yyoke2(m)': params[5] + params[11] + Ymgap
     })
     if use_B_goal:
+        #Setting B_goal(T) as 0.0 make it to use the NI(A) as calculated here. To use the implementation of get_NI inside get_vector_field, set the B_goal value to B_goal
+        d['B_goal(T)'] = 0.0 #B_NI
         if materials_directory is None:
             materials_directory = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data/materials')
-        d['NI(A)'] = snoopy.get_NI(abs(B_NI), pd.DataFrame([d]),0, materials_directory = materials_directory)[0].item()
+        d['NI(A)'] = snoopy.get_NI(abs(B_NI), pd.DataFrame([d]),0, materials_directory = materials_directory, use_diluted_steel = use_diluted)[0].item()
         d['NI(A)'] = min(d['NI(A)'], 5e6)
         if (B_NI > 0 and d['yoke_type'] == 'Mag3') or (B_NI < 0 and d['yoke_type'] == 'Mag1'):
             d['NI(A)'] = -d['NI(A)']
     elif use_diluted: d['NI(A)'] = B_NI
-    else: d['NI(A)'] = abs(B_NI)
+    else: d['NI(A)'] = abs(B_NI); d['B_goal(T)'] = 0.0
 
     if use_diluted and d['yoke_type'] == 'Mag3': 
         d['yoke_type'] = 'Mag1'
@@ -198,8 +200,8 @@ def run_fem(magn_params:dict,
     print('FEM Computation time = {} sec'.format(end - start))
     return {'points':points, 'B':B}
 
-def simulate_and_grid(params, points, use_diluted = False):
-    return get_grid_data(**run_fem(params, use_diluted = use_diluted), new_points=points)[1]
+def simulate_and_grid(params, points):
+    return get_grid_data(**run_fem(params), new_points=points)[1]
 
 def run(magn_params:dict,
         d_space = (((0.,4.), (0.,4.), (-1, 30.))),
@@ -275,8 +277,8 @@ def simulate_field(params,
         else: 
             Ymgap = 0.; 
             yoke_type = 'Mag3' if mag_params[14]<0 else 'Mag1'
-        p = get_magnet_params(mag_params, Ymgap=Ymgap, use_B_goal=NI_from_B_goal, yoke_type=yoke_type, resol = resol, use_diluted = use_diluted)
-        assert False, p
+        if i==0 and use_diluted: print("WARNING: The first magnet is assumed to be the Hadron absorber and, hence, it is not diluted. If you want to use diluted steel for the first magnet, please set use_diluted to True and move the Hadron absorber parameters to the second row of the input parameters. This code should be adapted in the future to allow for diluted steel in the first magnet if needed.")
+        p = get_magnet_params(mag_params, Ymgap=Ymgap, use_B_goal=NI_from_B_goal, yoke_type=yoke_type, resol = resol, use_diluted = use_diluted if i>0 else False)
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)']
