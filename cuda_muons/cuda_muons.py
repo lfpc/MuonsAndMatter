@@ -130,6 +130,8 @@ def run(params,
         SmearBeamRadius=0.0,
         fSC_mag = False,
         field_map_file = None,
+        save_field_map = False,
+        RL_multiprocessing = False,
         NI_from_B = True,
         use_diluted = False,
         add_cavern = True,
@@ -141,7 +143,7 @@ def run(params,
             output = run(params, muons, sensitive_plane=plane,
                          histogram_dir=histogram_dir, n_steps=n_steps,
                          SmearBeamRadius=SmearBeamRadius, fSC_mag=fSC_mag,
-                         field_map_file=field_map_file, NI_from_B=NI_from_B,
+                         field_map_file=field_map_file, save_field_map=save_field_map,RL_multiprocessing=RL_multiprocessing, NI_from_B=NI_from_B,
                          use_diluted=use_diluted, add_cavern=add_cavern,
                          SND = SND, return_all=return_all, seed=seed)
             muons = torch.stack([output['px'], output['py'], output['pz'],
@@ -177,9 +179,10 @@ def run(params,
     use_symmetry = True
     detector = get_design_from_params(params = params,
                       fSC_mag = fSC_mag,
-                      simulate_fields=True,
+                      simulate_fields=True if field_map_file == None else False,
                       sensitive_film_params=None,
                       field_map_file = field_map_file,
+                      save_field_map = save_field_map,
                       add_cavern = add_cavern,
                       add_target = True,
                       sensitive_decay_vessel = False,
@@ -187,7 +190,7 @@ def run(params,
                       NI_from_B = NI_from_B,
                       use_diluted = use_diluted,
                       SND = SND,
-                      cores_field = 8)
+                      cores_field = 8 if not RL_multiprocessing else 1)
     corners = get_corners_from_detector(detector, use_symmetry=use_symmetry)
     cavern = get_cavern(detector)
     mag_dict = get_magnetic_field(detector)
@@ -272,7 +275,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--h',dest = 'histogram_dir', type=str, default='cuda_muons/data/',
                         help='Path to the histogram file')
-    parser.add_argument('-muons', '--f', dest='input_file', type=str, default="data/muons/full_sample_after_target.h5",
+    parser.add_argument('-muons', '--f', dest='input_file', type=str, default="/disk/users/ghijan/full_sample_after_target.h5",
                         help='Path to input muon file (.npy, .pkl, .h5). If not provided a synthetic example will be used.')
     parser.add_argument('-n_muons', '--n', dest='n_muons', type=int, default=0,
                         help='Maximum number of muons to load from the input file; 0 means all')
@@ -290,6 +293,7 @@ if __name__ == '__main__':
     parser.add_argument("-params", type=str, default='tokanut_v5', help="Magnet parameters configuration - name or file path. Available names: " + ', '.join(params_lib.params.keys()) + ". If 'test', will prompt for input.")
     parser.add_argument('-SmearBeamRadius', type=float, default=0.0,
                         help='Radius of Ring effect applied to input')
+    parser.add_argument("-field_file", type=str, default=None, help="Path to save field map file") 
     args = parser.parse_args()
     
     if args.params == 'test':
@@ -324,15 +328,20 @@ if __name__ == '__main__':
                 weight = f['weight'][: args.n_muons] if args.n_muons > 0 else f['weight'][:]
                 muons = np.stack([px, py, pz, x, y, z, pdg, weight], axis=1).astype(np.float64)
     print(f"Loaded {muons.shape[0]} muons. Took {time.time() - time0:.2f} seconds to load.")
-    if args.expanded_sens_plane and args.add_cavern: dx,dy = 9.,6. 
-    elif args.expanded_sens_plane: dx,dy = 9.,6.#14,14
+    if args.expanded_sens_plane and args.add_cavern: dx,dy = 4.0,6. 
+    elif args.expanded_sens_plane: dx,dy = 4.0,6.#14,14
     else: dx, dy = 4.0, 6.0
-    sensitive_film_params = {'dz': 0.01, 'dx': dx, 'dy': dy, 'position':args.sens_plane} if args.sens_plane >0 else None
+    sensitive_film_params = {'dz': 0.02, 'dx': dx, 'dy': dy, 'position':args.sens_plane} if args.sens_plane >0 else None
     t_run_start = time.time()
+    ###{Compute cost:
+    from lib.ship_muon_shield_customfield import design_muon_shield
+    tShield=design_muon_shield(params,fSC_mag = False, simulate_fields = True if args.field_file == None else False, field_map_file = args.field_file, cores_field = 8, NI_from_B = True, use_diluted = use_diluted, SND = args.SND)
+    print(f"Cost: {tShield['cost']}")
+    ###}
     output = run(params, muons, sensitive_film_params, 
                  histogram_dir=args.histogram_dir, n_steps=args.n_steps, 
                  SmearBeamRadius=args.SmearBeamRadius, fSC_mag=False, NI_from_B=True, use_diluted=use_diluted, add_cavern=args.add_cavern,
-                 field_map_file= None, SND = args.SND,
+                 field_map_file= args.field_file, SND = args.SND,
                  save_dir="data/outputs/outputs_cuda.pkl")
     print(f"Run completed in {time.time() - t_run_start:.2f} seconds.")
     if args.plot:

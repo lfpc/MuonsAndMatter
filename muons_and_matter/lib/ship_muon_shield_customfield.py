@@ -257,11 +257,12 @@ def get_field(resimulate_fields = False,
             params = None,
             file_name = None,
             only_grid_params = False,
+            save_field_map=False,
             **kwargs_field):
     '''Returns the field map for the given parameters. If from_file is True, the field map is loaded from the file_name.'''
     if resimulate_fields:
         d_space = kwargs_field['d_space']
-        fields = magnet_simulations.simulate_field(params, file_name = file_name,**kwargs_field)['B']
+        fields = magnet_simulations.simulate_field(params, file_name = file_name,save_field_map=save_field_map,**kwargs_field)['B']
     elif exists(file_name):
         print('Using field map from file', file_name)
         with h5py.File(file_name, 'r') as f:
@@ -577,7 +578,7 @@ def construct_block(medium, tShield,field_profile, length):
     tShield['magnets'].append(Block)
 
 
-def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1, NI_from_B = True, use_diluted = False, SND = False):
+def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, save_field_map=False, cores_field:int = 1, NI_from_B = True, use_diluted = False, SND = False):
 
     n_magnets = len(params)
     length = (params[:,:0].sum() + 2*params[:,1].sum()).item()
@@ -679,7 +680,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         field_map = get_field(simulate_fields,np.asarray(params),
                               Z_init = 0, fSC_mag=fSC_mag, 
                               resol = resol, d_space = d_space,
-                              file_name=field_map_file, only_grid_params=True, NI_from_B_goal = NI_from_B,
+                              file_name=field_map_file, save_field_map=save_field_map, only_grid_params=True, NI_from_B_goal = NI_from_B,
                               cores = min(cores_field,n_magnets), use_diluted = use_diluted)
         tShield['global_field_map'] = field_map
 
@@ -693,6 +694,7 @@ def get_design_from_params(params,
                            force_remove_magnetic_field = False,
                            simulate_fields = False,
                            field_map_file = None,
+                           save_field_map = False,
                            sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':82},
                            add_cavern:bool = True,
                            add_target:bool = True,
@@ -704,7 +706,7 @@ def get_design_from_params(params,
                            SND = False):
     params = np.round(params, 2)
     assert params.shape[-1] == 15
-    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, NI_from_B = NI_from_B, use_diluted=use_diluted, SND=SND)
+    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, save_field_map=save_field_map, cores_field=cores_field, NI_from_B = NI_from_B, use_diluted=use_diluted, SND=SND)
     
     World_dZ = 200
     World_dX = World_dY = 20 if add_cavern else 15

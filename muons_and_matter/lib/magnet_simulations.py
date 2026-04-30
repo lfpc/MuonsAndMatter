@@ -229,8 +229,15 @@ def run(magn_params:dict,
             for k in magn_params.keys():
                 params_split[0][0][k] += params_split[1][0][k]
             params_split.pop(1)
-    with mp.Pool(cores) as pool:
-      B = pool.starmap(simulate_and_grid, params_split)
+    print(f"Number of cores: {cores}")
+    start = time()
+    if cores > 1:
+        with mp.Pool(cores) as pool:
+            B = pool.starmap(simulate_and_grid, params_split)
+    else:
+        B = [simulate_and_grid(*args) for args in params_split]
+    end = time()
+    print(f"Magnetic field simulations time: {end-start}")
     B = np.sum(B, axis=0)
 
     points = np.column_stack([points[i].ravel() for i in range(3)])
@@ -251,7 +258,8 @@ def simulate_field(params,
               NI_from_B_goal:bool = True,
               file_name = 'data/outputs/fields.pkl',
               cores = 1,
-              use_diluted = False):
+              use_diluted = False,
+              save_field_map=False):
     
     '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
     t1 = time()
@@ -279,8 +287,8 @@ def simulate_field(params,
     fields['points'][:,2] += Z_init / 100
     print('Magnetic field simulation took', time()-t1, 'seconds')
 
-    if file_name is not None:
-        all_params.to_csv(os.path.join(os.path.dirname(file_name), 'magnet_params.csv'), index=False)
+    if file_name is not None and save_field_map:
+        #all_params.to_csv(os.path.join(os.path.dirname(file_name), 'magnet_params.csv'), index=False)
         time_str = time()
         with h5py.File(file_name, "w") as f:
             if '_mm' in file_name: f.create_dataset("points", data=fields['points'].astype(np.float16), compression=None)
