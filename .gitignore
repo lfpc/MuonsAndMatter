@@ -22,5 +22,7 @@ cuda_muons/data/*.pkl
 !cuda_muons/data/alias_histograms*.pkl
 cuda_muons/data/*.npy
 cuda_muons/data/*.h5
+cuda_muons/faster_muons_torch/build/*
 cuda_muons/plots/*
+cuda_muons/geant4/*
 *.egg-info

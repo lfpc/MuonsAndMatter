@@ -10,7 +10,7 @@ from matplotlib.animation import FuncAnimation
 import os
 from copy import deepcopy
 import argparse
-from MuonsAndMatter.muons_and_matter.muons_and_matter import run, split_array
+from muons_and_matter import run, split_array
 from plot_magnet import construct_and_plot
 
 

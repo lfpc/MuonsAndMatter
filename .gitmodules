@@ -1,3 +1,6 @@
 [submodule "cpp/external/jsoncpp"]
 	path = cpp/external/jsoncpp
 	url = https://github.com/open-source-parsers/jsoncpp.git
+[submodule "cuda_muons"]
+	path = cuda_muons
+	url = https://github.com/lfpc/cuda_muons

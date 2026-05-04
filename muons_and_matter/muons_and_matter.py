@@ -1,6 +1,6 @@
 import json
 import numpy as np
-from lib.ship_muon_shield_customfield import get_design_from_params, initialize_geant4, get_field, estimate_electrical_cost, RESOL_DEF
+from lib.ship_muon_shield import get_design_from_params, initialize_geant4, get_field, estimate_electrical_cost, RESOL_DEF
 from muon_slabs import simulate_muon, collect, kill_secondary_tracks, collect_from_sensitive
 from bin.plot_magnet import construct_and_plot, plot_fields
 from time import time
@@ -185,7 +185,7 @@ if __name__ == '__main__':
     parser.add_argument("-SC_mag", action='store_true', help="Use hybrid magnets instead of warm")
     parser.add_argument("-save_data", action='store_true', help="Save simulation results to output file")
     parser.add_argument("-return_nan", action='store_true', help="Return zeros for muons that don't hit the sensitive film")
-    parser.add_argument("-use_diluted", action = 'store_true', help="Use diluted field map")
+    parser.add_argument("-diluted_iron", action = 'store_true', help="Use diluted field map")
     parser.add_argument("-keep_tracks_of_hits", action='store_true', help="Store full tracks of muons that hit the sensitive film")
     parser.add_argument("-use_B_goal", action='store_true', help="Use B goal for the field map")
     parser.add_argument("-expanded_sens_plane", action='store_true', help="Use big sensitive plane")
@@ -232,7 +232,7 @@ if __name__ == '__main__':
         args.field_file = None
     else:
         core_fields = 8
-        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, None, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet, NI_from_B=args.use_B_goal, use_diluted = args.use_diluted)
+        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, None, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet, NI_from_B=args.use_B_goal, use_diluted = args.diluted_iron, SND = False)
     t2_fem = time()
 
     if input_file.endswith('.npy'):
@@ -281,7 +281,7 @@ if __name__ == '__main__':
                               add_decay_vessel=args.decay_vessel,
                               keep_tracks_of_hits=args.keep_tracks_of_hits, 
                               extra_magnet=args.extra_magnet,
-                              use_diluted = args.use_diluted,
+                              use_diluted = args.diluted_iron,
                               SND  = args.SND,
                               minimum_hits = args.n_hits)
 
