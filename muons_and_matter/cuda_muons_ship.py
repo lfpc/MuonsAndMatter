@@ -85,6 +85,8 @@ def run_from_params(
     n_steps=5000,
     fSC_mag=False,
     field_map_file=None,
+    save_field_map = False,
+    RL_multiprocessing = False,
     NI_from_B=True,
     use_diluted=False,
     add_cavern=True,
@@ -136,6 +138,7 @@ def run_from_params(
         simulate_fields=simulate_fields,
         sensitive_film_params=None,
         field_map_file=field_map_file,
+        save_field_map = save_field_map,
         add_cavern=add_cavern,
         add_target=False,
         sensitive_decay_vessel=False,
@@ -143,7 +146,7 @@ def run_from_params(
         NI_from_B=NI_from_B,
         use_diluted=use_diluted,
         SND=SND,
-        cores_field=cores_field,
+        cores_field=cores_field if not RL_multiprocessing else 1,
     )
     corners = get_corners_from_detector(detector, use_symmetry=use_symmetry)
     cavern = get_cavern_from_detector(detector)
@@ -250,7 +253,7 @@ if __name__ == '__main__':
     parser.add_argument('--h', dest='histogram_dir', type=str, default='cuda_muons/data/',
                         help='Path to the histogram file')
     parser.add_argument('-muons', '--f', dest='input_file', type=str,
-                        default='data/muons/full_sample_after_target.h5',
+                        default='/disk/users/ghijan/full_sample_after_target.h5',
                         help='Path to input muon file (.npy, .pkl, .h5).')
     parser.add_argument('-n_muons', '--n', dest='n_muons', type=int, default=0,
                         help='Maximum number of muons to load (0 = all)')
@@ -302,8 +305,13 @@ if __name__ == '__main__':
     print(f"Loaded {muons.shape[0]} muons. Took {time.time() - time0:.2f} seconds.")
 
     # Sensitive plane
-    dx, dy = (9.0, 6.0) if args.expanded_sens_plane else (4.0, 6.0)
-    sensitive_film_params = [{'dz': 0.0001, 'dx': dx, 'dy': dy, 'position':pos} for pos in args.sens_plane] if args.sens_plane is not None else None
+    dx, dy = (4.0, 6.0) if args.expanded_sens_plane else (4.0, 6.0)
+    sensitive_film_params = [{'dz': 0.02, 'dx': dx, 'dy': dy, 'position':pos} for pos in args.sens_plane] if args.sens_plane is not None else None
+    ###{Compute cost:
+    from lib.ship_muon_shield import design_muon_shield
+    tShield=design_muon_shield(params,fSC_mag = False, simulate_fields = True, cores_field = 8, NI_from_B = True, use_diluted = args.params.startswith("stellatry"), SND = args.SND)
+    print(f"Cost: {tShield['cost']}")
+    ###}
 
     # Run
     t_run_start = time.time()
