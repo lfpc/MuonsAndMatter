@@ -255,7 +255,7 @@ def simulate_field(params,
               d_space = (((0.,400.), (0.,400.), (-100, 300.))),
               resol = RESOL_DEF,
               NI_from_B_goal:bool = True,
-              file_name = 'data/outputs/fields.pkl',
+              file_name = 'data/outputs/fields.h5',
               cores = 1,
               use_diluted = False):
     
