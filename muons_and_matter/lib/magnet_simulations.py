@@ -257,7 +257,8 @@ def simulate_field(params,
               NI_from_B_goal:bool = True,
               file_name = 'data/outputs/fields.h5',
               cores = 1,
-              use_diluted = False):
+              use_diluted = False,
+              apply_symmetry = False):
     
     '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
     t1 = time()
@@ -282,7 +283,7 @@ def simulate_field(params,
         p['Z_pos(m)'] = Z_pos
         all_params = pd.concat([all_params, pd.DataFrame([p])], ignore_index=True)
         Z_pos += p['Z_len(m)']
-    fields = run(all_params.to_dict(orient='list'), d_space=d_space, apply_symmetry=False, cores=cores)
+    fields = run(all_params.to_dict(orient='list'), d_space=d_space, apply_symmetry=apply_symmetry, cores=cores)
     fields['points'][:,2] += Z_init / 100
     print('Magnetic field simulation took', time()-t1, 'seconds')
 
