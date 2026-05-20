@@ -7,10 +7,11 @@ import os
 from lib.ship_muon_shield import get_design_from_params
 import lib.reference_designs.params as params_lib
 from cuda_muons import set_environment, propagate_muons_with_cuda
+from bin.plot_magnet import construct_and_plot, plot_fields
 
 assert torch.cuda.is_available(), f"CUDA is not available. Torch version: {torch.__version__} \n Torch cuda version: {print(torch.version.cuda)}"
 
-
+from lib.magnet_simulations import get_symmetry
 
 
 def get_corners_from_detector(detector, use_symmetry=True):
@@ -51,6 +52,11 @@ def get_magnetic_field_from_detector(detector, use_symmetry=True):
         if isinstance(mag_dict['B'], str):
             with h5py.File(mag_dict['B'], 'r') as f:
                 mag_dict['B'] = f['B'][:]
+        if not use_symmetry:
+            raise ValueError("Not correctly implemented, mag_dict gives ranges not points. Please set use_symmetry=True when using field maps.")
+            points,B = get_symmetry(mag_dict['points'], mag_dict['B'])
+            mag_dict['points'] = points
+            mag_dict['B'] = B
         return mag_dict
     else:
         # Uniform field mode: extract field vectors from each component
@@ -128,7 +134,6 @@ def run_from_params(
     if not torch.is_tensor(muons):
         muons = torch.from_numpy(muons).float()
 
-    # === SETUP (done once, regardless of number of sensitive planes) ===
     use_symmetry = True
     assert SmearBeamRadius == 0.0, "Smearing not implemented in this version. Please set SmearBeamRadius=0.0"
 
@@ -142,7 +147,6 @@ def run_from_params(
         add_cavern=add_cavern,
         add_target=False,
         sensitive_decay_vessel=False,
-        extra_magnet=False,
         NI_from_B=NI_from_B,
         use_diluted=use_diluted,
         SND=SND,
@@ -152,6 +156,7 @@ def run_from_params(
     cavern = get_cavern_from_detector(detector)
     mag_field = get_magnetic_field_from_detector(detector, use_symmetry=use_symmetry)
     print(f"Detector + field setup took {time.time() - t0:.2f} seconds.")
+
 
     # Load material histograms
     iron_hists, step_length = load_histogram(os.path.join(histogram_dir, 'alias_histograms_G4_Fe.pkl'))
@@ -221,6 +226,7 @@ def run_from_params(
         # Feed outputs as inputs for the next plane
         muons_positions = out_position
         muons_momenta = out_momenta
+    
 
     # === Build output dict ===
     out_position = out_position.cpu()
@@ -259,14 +265,14 @@ if __name__ == '__main__':
                         help='Maximum number of muons to load (0 = all)')
     parser.add_argument('--n_steps', type=int, default=5000,
                         help='Number of steps for simulation')
-    parser.add_argument("-sens_plane", type=float, nargs='+', default=[82], help="Position(s) of the sensitive plane in z (m), 0 means no sensitive plane. Can specify multiple values separated by space.")
+    parser.add_argument("-sens_plane", type=float, nargs='+', default=[82, 91], help="Position(s) of the sensitive plane in z (m), 0 means no sensitive plane. Can specify multiple values separated by space.")
     parser.add_argument('-uniform_fields', dest='simulate_fields', action='store_false',
                         help='Use uniform fields instead of realistic field maps (FEM)')
     parser.add_argument('-remove_cavern', dest='add_cavern', action='store_false',
                         help='Remove the cavern from simulation')
     parser.add_argument('-expanded_sens_plane', action='store_true',
                         help='Use extended sensitive plane dimensions')
-    parser.add_argument('-plot', action='store_true', help='Plot histograms')
+    parser.add_argument('-plot_data', action='store_true', help='Plot histograms')
     parser.add_argument('-SND', action='store_true', help='Use SND detector geometry')
     parser.add_argument('-diluted_iron', action='store_true', help='Use diluted field map')
     parser.add_argument('-params', type=str, default='tokanut_v5',
@@ -331,7 +337,7 @@ if __name__ == '__main__':
     )
     print(f"Run completed in {time.time() - t_run_start:.2f} seconds.")
 
-    if args.plot:
+    if args.plot_data:
         import matplotlib.pyplot as plt
         out_dir = 'plots/outputs'
         os.makedirs(out_dir, exist_ok=True)

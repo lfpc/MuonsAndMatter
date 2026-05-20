@@ -533,10 +533,10 @@ def create_magnet(magnetName, medium, tShield,
 
     if field_profile == 'uniform':
         CreateArb8(magnetName + str1L, medium, dZ, cornersMainL, fields[0], field_profile, theMagnet, Z)
-        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, fields[0], field_profile, theMagnet, Z)
-        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, fields[1], field_profile, theMagnet, Z)
-        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, fields[1], field_profile, theMagnet, Z)
         CreateArb8(magnetName + str8, medium, dZ, cornersTL, fields[3], field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str2, medium, dZ, cornersMainSideL, fields[1], field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str1R, medium, dZ, cornersMainR, fields[0], field_profile, theMagnet, Z)
+        CreateArb8(magnetName + str3, medium, dZ, cornersMainSideR, fields[1], field_profile, theMagnet, Z)
         CreateArb8(magnetName + str9, medium, dZ, cornersTR, fields[2], field_profile, theMagnet, Z)
         CreateArb8(magnetName + str10, medium, dZ, cornersBL, fields[2], field_profile, theMagnet, Z)
         CreateArb8(magnetName + str11, medium, dZ, cornersBR, fields[3], field_profile, theMagnet, Z)
@@ -628,11 +628,16 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
             # Uniform-field mode: use the last parameter directly as the target field
             # strength (and sign), instead of hard-coded defaults.
             ironField_s = float(NI)
-            yoke_ratio_in = x_yokeIn / dXIn if dXIn != 0 else 1.0
+            #dilution_yoke = x_yokeIn / dXIn if dXIn != 0 else 1.0
+            #dilution_vertical_yoke = dY_yokeIn / dXIn if dYIn != 0 else 1.0
+            dilution_yoke = (x_yokeIn +x_yokeOut)/(dXIn+dXOut) if dXIn != 0 else 1.0
+            dilution_vertical_yoke = (dY_yokeIn + dY_yokeOut)/(dXIn + dXOut) if dXIn != 0 else 1.0
+            if ironField_s<0 and not use_diluted:
+                ironField_s *= dilution_yoke 
             magFieldIron_s = [0., ironField_s, 0.]
-            RetField_s = [0., -ironField_s/yoke_ratio_in, 0.]
-            ConRField_s = [-ironField_s/yoke_ratio_in, 0., 0.]
-            ConLField_s = [ironField_s/yoke_ratio_in, 0., 0.]
+            RetField_s = [0., -ironField_s/dilution_yoke, 0.]
+            ConRField_s = [-ironField_s/dilution_vertical_yoke, 0., 0.]
+            ConLField_s = [ironField_s/dilution_vertical_yoke, 0., 0.]
             fields_s = [magFieldIron_s, RetField_s, ConRField_s, ConLField_s]
 
         create_magnet(f"Mag_{nM}", "G4_Fe", tShield, fields_s, field_profile, dXIn, dYIn, dXOut,
@@ -705,7 +710,6 @@ def get_design_from_params(params,
                            add_target:bool = True,
                            sensitive_decay_vessel:bool = False,
                            cores_field:int = 1,
-                           extra_magnet = False,
                            NI_from_B = True, 
                            use_diluted = False,
                            SND = False):

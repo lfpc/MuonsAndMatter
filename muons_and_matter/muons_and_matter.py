@@ -24,7 +24,6 @@ def run(muons,
     add_target:bool = True,
     add_decay_vessel:bool = False,
     keep_tracks_of_hits = False,
-    extra_magnet = False,
     NI_from_B = True,
     use_diluted = False,
     SND = False,
@@ -55,7 +54,6 @@ def run(muons,
     SmearBeamRadius (float, optional): Radius in cm for beam smearing. Defaults to 5cm.
     add_target (bool, optional): Include target geometry in simulation. Defaults to True.
     keep_tracks_of_hits (bool, optional): Store full tracks of muons that hit the sensitive film. Defaults to False.
-    extra_magnet (bool, optional): Add an additional small magnet to the configuration. Defaults to False.
     NI_from_B (bool, optional): Calculate current from the magnetic field (B_goal). Defaults to True.
     use_diluted (bool, optional): Use diluted iron configuration. Defaults to False.
     SND (bool, optional): Implement SND (if there is space). Defaults to False.
@@ -77,7 +75,6 @@ def run(muons,
                       add_cavern = add_cavern,
                       add_target = add_target,
                       sensitive_decay_vessel = add_decay_vessel,
-                      extra_magnet=extra_magnet,
                       NI_from_B = NI_from_B,
                       use_diluted = use_diluted,
                       SND = SND)
@@ -189,7 +186,6 @@ if __name__ == '__main__':
     parser.add_argument("-keep_tracks_of_hits", action='store_true', help="Store full tracks of muons that hit the sensitive film")
     parser.add_argument("-use_B_goal", action='store_true', help="Use B goal for the field map")
     parser.add_argument("-expanded_sens_plane", action='store_true', help="Use big sensitive plane")
-    parser.add_argument("-extra_magnet", action='store_true', help="Add an additional small magnet to the configuration (old designs)")
     parser.add_argument("-angle", type=float, default=90, help="Azimuthal viewing angle for 3D plot")
     parser.add_argument("-elev", type=float, default=90, help="Elevation viewing angle for 3D plot")
     parser.add_argument("-SND", action='store_true', help="Use SND configuration")
@@ -232,7 +228,7 @@ if __name__ == '__main__':
         args.field_file = None
     else:
         core_fields = 8
-        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, None, False, True, cores_field=core_fields, extra_magnet=args.extra_magnet, NI_from_B=args.use_B_goal, use_diluted = args.diluted_iron, SND = False)
+        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, None, False, True, cores_field=core_fields, NI_from_B=args.use_B_goal, use_diluted = args.diluted_iron, SND = False)
     t2_fem = time()
 
     if input_file.endswith('.npy'):
@@ -280,7 +276,6 @@ if __name__ == '__main__':
                               add_target=args.add_target, 
                               add_decay_vessel=args.decay_vessel,
                               keep_tracks_of_hits=args.keep_tracks_of_hits, 
-                              extra_magnet=args.extra_magnet,
                               use_diluted = args.diluted_iron,
                               SND  = args.SND,
                               minimum_hits = args.n_hits)
