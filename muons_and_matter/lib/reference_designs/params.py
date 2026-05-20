@@ -196,3 +196,6 @@ params = {
     # 41608 Hz(n=2869) if 90.41 -> 20 (M[5][Y_yoke])
     }
 
+for i in range(len(params["stellatryon_TRY4"])):
+    params["stellatryon_TRY4"][i][8]*=params["stellatryon_TRY4"][i][2]
+    params["stellatryon_TRY4"][i][9]*=params["stellatryon_TRY4"][i][3]

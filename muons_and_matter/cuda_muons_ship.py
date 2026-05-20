@@ -309,7 +309,7 @@ if __name__ == '__main__':
     sensitive_film_params = [{'dz': 0.02, 'dx': dx, 'dy': dy, 'position':pos} for pos in args.sens_plane] if args.sens_plane is not None else None
     ###{Compute cost:
     from lib.ship_muon_shield import design_muon_shield
-    tShield=design_muon_shield(params,fSC_mag = False, simulate_fields = True, cores_field = 8, NI_from_B = True, use_diluted = args.params.startswith("stellatry"), SND = args.SND)
+    tShield=design_muon_shield(params,fSC_mag = False, simulate_fields = True, cores_field = 8, NI_from_B = args.NI_from_B, use_diluted = args.params.startswith("stellatry"), SND = args.SND)
     print(f"Cost: {tShield['cost']}")
     ###}
 
