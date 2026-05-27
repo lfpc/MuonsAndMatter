@@ -648,7 +648,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         #cost += estimate_electrical_cost(np.array([0,dZ, dXIn, dXOut, dYIn, dYOut, gapIn, gapOut, x_yokeIn, x_yokeOut, dY_yokeIn, dY_yokeOut, midGapIn, midGapOut, NI]), Ymgap=Ymgap, yoke_type=yoke_type, NI_from_B=NI_from_B)
         Z += dZ
         max_x = max(max_x, np.max(dXIn + x_yokeIn + gapIn+midGapIn), np.max(dXOut + x_yokeOut+gapOut+midGapOut))
-        max_y = max(max_y, np.max(dYIn + dY_yokeIn), np.max(dYOut + dY_yokeOut))
+        max_y = max(max_y, np.max(dYIn + dY_yokeIn + Ymgap), np.max(dYOut + dY_yokeOut + Ymgap))
         if SND and nM == (n_magnets - 2): 
             print("Adding SND after magnet", nM)
             if (midGapIn >= 30) and (midGapOut >= 30):
