@@ -391,13 +391,13 @@ def construct_and_plot(muons,
         phi, 
         fSC_mag:bool = True,
         sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':83.2},
-        simulate_fields = False,
+        field_mode = 'uniform',
         field_map_file = None,
         decay_vessel:bool = False,
         cavern = True,
         SND = False,
         **kwargs_plot):
-    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, simulate_fields=simulate_fields, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params, add_cavern=cavern, sensitive_decay_vessel=decay_vessel, SND = SND)
+    detector = get_design_from_params(params = phi,fSC_mag = fSC_mag, field_mode=field_mode, field_map_file = field_map_file, sensitive_film_params=sensitive_film_params, add_cavern=cavern, sensitive_decay_vessel=decay_vessel, SND = SND)
     plot_magnet(detector,
                 muon_data = muons, 
                 sensitive_film_position = [sens['position'] for sens in sensitive_film_params],#sensitive_film_params['position'], 
@@ -655,7 +655,7 @@ if __name__ == "__main__":
         [10,244.28,9.81, 47.60, 19.59, 164.19, 2.00, 2.05, 1.00, 0.89, 9.81, 42.16, 0.10, 0.10, -1.9]
     ])
     sens_plane = [{'dz': 0.01, 'dx': 4, 'dy': 6, 'position':82}]
-    detector = get_design_from_params(params = phi,fSC_mag = False, simulate_fields=False, field_map_file = None, sensitive_film_params=None, add_cavern=False,add_target = False,  sensitive_decay_vessel=None, SND = False)
+    detector = get_design_from_params(params = phi,fSC_mag = False, field_mode='uniform', field_map_file = None, sensitive_film_params=None, add_cavern=False,add_target = False,  sensitive_decay_vessel=None, SND = False)
     N = 10
     px = np.random.normal(0,5,N)
     py = np.random.normal(0,5,N)

@@ -255,25 +255,34 @@ def get_iron_cost(params, Ymgap = 0, material = 'aisi1010.json', materials_direc
     return C_iron
 
 
-def get_field(resimulate_fields = False,
+def get_field(field_mode = 'read_file',
             params = None,
             file_name = None,
             only_grid_params = False,
             **kwargs_field):
-    '''Returns the field map for the given parameters. If from_file is True, the field map is loaded from the file_name.'''
-    if resimulate_fields:
+    '''Returns the field map for the given parameters.
+    field_mode='simulate': simulates the field with snoopy (saved to file_name if given).
+    field_mode='read_file': loads the field map from file_name (never simulates).
+    d_space (in kwargs_field and in the file) has rows of [min, max, step] (cm) for x, y and z.'''
+    if field_mode == 'simulate':
         d_space = kwargs_field['d_space']
         fields = magnet_simulations.simulate_field(params, file_name = file_name,**kwargs_field)['B']
-    elif exists(file_name):
+    elif field_mode == 'read_file':
+        if file_name is None or not exists(file_name):
+            raise FileNotFoundError(f"field_mode='read_file' requires an existing field map file. Got {file_name}")
         print('Using field map from file', file_name)
         with h5py.File(file_name, 'r') as f:
-            fields = f["B"][:]
+            n_points = f["B"].shape[0]
+            fields = f["B"][:] if (not only_grid_params) else None
             d_space = f["d_space"][:].tolist()
+        magnet_simulations.check_d_space(d_space, n_points, file_name)
+    else:
+        raise ValueError(f"get_field: field_mode must be 'read_file' or 'simulate'. Got '{field_mode}'")
     if only_grid_params: 
         fields = {'B': file_name if file_name is not None else fields,
-                'range_x': [d_space[0][0],d_space[0][1], RESOL_DEF[0]],
-                'range_y': [d_space[1][0],d_space[1][1], RESOL_DEF[1]],
-                'range_z': [d_space[2][0],d_space[2][1], RESOL_DEF[2]]}
+                'range_x': list(d_space[0]),
+                'range_y': list(d_space[1]),
+                'range_z': list(d_space[2])}
     return fields
 
 
@@ -579,7 +588,11 @@ def construct_block(medium, tShield,field_profile, length):
     tShield['magnets'].append(Block)
 
 
-def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map_file = None, cores_field:int = 1, NI_from_B = True, use_diluted = False, SND = False):
+def design_muon_shield(params,fSC_mag = True, field_mode = 'uniform', field_map_file = None, cores_field:int = 1, NI_from_B = True, use_diluted = False, SND = False):
+    '''field_mode: 'uniform' (uniform field per ARB8), 'read_file' (field map from field_map_file)
+    or 'simulate' (FEM field map with snoopy, saved to field_map_file if given).'''
+    if field_mode not in ('uniform', 'read_file', 'simulate'):
+        raise ValueError(f"Unknown field_mode '{field_mode}'. Must be 'uniform', 'read_file' or 'simulate'.")
 
     n_magnets = len(params)
     length = (params[:,:0].sum() + 2*params[:,1].sum()).item()
@@ -619,7 +632,7 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
         Ymgap = SC_Ymgap if is_SC else 0
         Z += zgap + dZ
 
-        if simulate_fields or field_map_file is not None:
+        if field_mode != 'uniform':
             field_profile = 'global'
             fields_s = [[],[],[]]
         else:
@@ -679,29 +692,29 @@ def design_muon_shield(params,fSC_mag = True, simulate_fields = False, field_map
                 print("No space for the SND: midGapIn[5] <= 30 or midGapOut[5] <= 30, got", midGapIn, midGapOut)
     tShield['dx'] = max_x / 100
     tShield['dy'] = max_y / 100
-    if field_map_file is not None or simulate_fields: 
-        simulate_fields = simulate_fields or (not exists(field_map_file))
+    if field_mode != 'uniform':
         resol = RESOL_DEF
-        max_x = int((max_x.item() // resol[0]) * resol[0])
-        max_y = int((max_y.item() // resol[1]) * resol[1])
-        d_space = ((0,max_x+50), (0,max_y+50), (-50, int(((length+200) // resol[2]) * resol[2])))
+        # rows of [min, max, step] in cm (only used when simulating; read_file takes it from the file)
+        d_space = (magnet_simulations.snap_to_grid(0, float(max_x) + 50, resol[0]),
+                   magnet_simulations.snap_to_grid(0, float(max_y) + 50, resol[1]),
+                   magnet_simulations.snap_to_grid(-50, length + 200, resol[2]))
 
-        field_map = get_field(simulate_fields,np.asarray(params),
+        field_map = get_field(field_mode,np.asarray(params),
                               Z_init = 0, fSC_mag=fSC_mag, 
-                              resol = resol, d_space = d_space,
+                              d_space = d_space,
                               file_name=field_map_file, only_grid_params=True, NI_from_B_goal = NI_from_B,
                               cores = min(cores_field,n_magnets), use_diluted = use_diluted)
         tShield['global_field_map'] = field_map
 
     tShield['cost'] = cost
-    field_profile = 'global' if simulate_fields else 'uniform'
+    field_profile = 'global' if field_mode != 'uniform' else 'uniform'
     return tShield
 
 
 def get_design_from_params(params, 
                            fSC_mag:bool = True, 
                            force_remove_magnetic_field = False,
-                           simulate_fields = False,
+                           field_mode = 'uniform',
                            field_map_file = None,
                            sensitive_film_params:dict = {'dz': 0.01, 'dx': 4, 'dy': 6,'position':82},
                            add_cavern:bool = True,
@@ -713,7 +726,7 @@ def get_design_from_params(params,
                            SND = False):
     params = np.round(params, 2)
     assert params.shape[-1] == 15
-    shield = design_muon_shield(params, fSC_mag, simulate_fields = simulate_fields, field_map_file = field_map_file, cores_field=cores_field, NI_from_B = NI_from_B, use_diluted=use_diluted, SND=SND)
+    shield = design_muon_shield(params, fSC_mag, field_mode = field_mode, field_map_file = field_map_file, cores_field=cores_field, NI_from_B = NI_from_B, use_diluted=use_diluted, SND=SND)
     
     World_dZ = 200
     World_dX = World_dY = 20 if add_cavern else 15
@@ -721,7 +734,7 @@ def get_design_from_params(params,
     if add_cavern: shield["cavern"] = CreateCavern(CAVERN_TRANSITION/100, length = World_dZ)
     if add_target: 
         shield['target'] = CreateTarget(z_start=SHIFT)
-        construct_block("G4_Fe", shield, 'global' if simulate_fields else 'uniform',  -(SHIFT+100*shield['target']['length']))
+        construct_block("G4_Fe", shield, 'global' if field_mode != 'uniform' else 'uniform',  -(SHIFT+100*shield['target']['length']))
     if sensitive_decay_vessel: shield['sensitive_box'] = CreateDecayVessel(z_start=3312+SHIFT)
     
     if force_remove_magnetic_field:
@@ -779,7 +792,7 @@ if __name__ == '__main__':
     fSC_mag = False
     core_field = 8
     use_diluted =  False
-    detector = get_design_from_params(params, simulate_fields=True,field_map_file = file_map_file, add_cavern=True, cores_field=core_field, fSC_mag = fSC_mag, use_diluted = use_diluted)
+    detector = get_design_from_params(params, field_mode='simulate',field_map_file = file_map_file, add_cavern=True, cores_field=core_field, fSC_mag = fSC_mag, use_diluted = use_diluted)
     t1_init = time()
     
     output_data = initialize_geant4(detector)

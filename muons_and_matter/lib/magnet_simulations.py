@@ -22,6 +22,25 @@ import h5py
 
 SC_Ymgap = 15
 RESOL_DEF = (2,2,5)
+
+
+def snap_to_grid(lo, hi, step):
+    """Row [lo, hi', step] of d_space, with hi' <= hi the largest bound such that (hi' - lo) is a whole number of steps."""
+    n = int(np.floor((hi - lo) / step + 1e-6))  # tolerance against float noise, e.g. 7.0 // 0.1 = 69
+    return (lo, round(lo + n * step, 6), step)
+
+
+def check_d_space(d_space, n_points, file_name):
+    """Check that each d_space row [min, max, step] spans a whole number of steps and matches the number of points in B."""
+    for axis, row in zip('xyz', d_space):
+        n_steps = (row[1] - row[0]) / row[2]
+        if abs(n_steps - round(n_steps)) > 1e-3:
+            raise ValueError(f"Field map {file_name}: {axis} range [{row[0]}, {row[1]}] is not a whole number of steps "
+                             f"of {row[2]} ({n_steps:.4f}). Geant4 and CUDA would read different grid positions.")
+    n_expected = np.prod([int(round((row[1] - row[0]) / row[2])) + 1 for row in d_space])
+    if n_expected != n_points:
+        raise ValueError(f"Field map {file_name} has {n_points} points, but d_space={d_space} implies {n_expected}.")
+
 def get_fixed_params(yoke_type = 'Mag1', mesh_size_parameter = 0.15):
     SC = (yoke_type == 'Mag2')
     return {
@@ -203,7 +222,7 @@ def simulate_and_grid(params, points):
     return get_grid_data(**run_fem(params), new_points=points)[1]
 
 def run(magn_params:dict,
-        d_space = (((0.,4.), (0.,4.), (-1, 30.))),
+        d_space = (((0.,4.,RESOL_DEF[0]), (0.,4.,RESOL_DEF[1]), (-1, 30.,RESOL_DEF[2]))),
         save_results:bool = False,
         output_file:str = './outputs',
         apply_symmetry:bool = False,
@@ -217,7 +236,8 @@ def run(magn_params:dict,
     apply_symmetry (bool, optional): Whether to apply symmetry to the computed magnetic field. Defaults to False.
     plot_results (bool, optional): Whether to plot the results. Defaults to False.
     save_results (bool, optional): Whether to save the results to a file. Defaults to False.
-    d_space (tuple, optional): Dimensions of the space returned. Since the problem is symmetric, it must be in the form (dx,dy,(-z_i,z_f)).
+    d_space (tuple, optional): Grid of the space returned, as rows of [min, max, step] (cm) for x, y and z.
+    Since the problem is symmetric, only the first quadrant (x, y >= 0) is needed.
     Defaults to ((3.5, 4.5, (-15., 15.))).
     Returns:
     dict: A dictionary containing the computed points and magnetic field 'B'.
@@ -226,7 +246,7 @@ def run(magn_params:dict,
     n_magnets = len(magn_params['yoke_type'])
     print('Starting simulation for {} magnets'.format(n_magnets))
     limits_quadrant = ((d_space[0][0], d_space[1][0], d_space[2][0]), (d_space[0][1],d_space[1][1], d_space[2][1]))
-    resol = RESOL_DEF
+    resol = (d_space[0][2], d_space[1][2], d_space[2][2])
     points = construct_grid(limits=limits_quadrant, resol=resol)
     params_split = [({k: [v[i]] for k, v in magn_params.items()}, points) for i in range(0, n_magnets)]
     if n_magnets>1:
@@ -251,16 +271,17 @@ def run(magn_params:dict,
 def simulate_field(params,
               Z_init = 0,
               fSC_mag:bool = True,
-              d_space = (((0.,400.), (0.,400.), (-100, 300.))),
-              resol = RESOL_DEF,
+              d_space = (((0.,400.,RESOL_DEF[0]), (0.,400.,RESOL_DEF[1]), (-100, 300.,RESOL_DEF[2]))),
               NI_from_B_goal:bool = True,
               file_name = 'data/outputs/fields.h5',
               cores = 1,
               use_diluted = False,
               apply_symmetry = False):
     
-    '''Simulates the magnetic field for the given parameters. If save_fields is True, the fields are saved to data/outputs/fields.pkl'''
+    '''Simulates the magnetic field for the given parameters. If file_name is not None, the fields are saved there.
+    d_space: rows of [min, max, step] (cm) for x, y and z.'''
     t1 = time()
+    resol = (d_space[0][2], d_space[1][2], d_space[2][2])
     all_params = pd.DataFrame()
     Z_pos = 0.
     SC_threshold = 3.0 if NI_from_B_goal else 1e6
@@ -292,8 +313,7 @@ def simulate_field(params,
         with h5py.File(file_name, "w") as f:
             if '_mm' in file_name: f.create_dataset("points", data=fields['points'].astype(np.float16), compression=None)
             f.create_dataset("B", data=fields['B'].astype(np.float16), compression=None)
-            d_space = ((d_space[0][0],d_space[0][1], RESOL_DEF[0]),(d_space[1][0],d_space[1][1], RESOL_DEF[1]),(d_space[2][0],d_space[2][1], RESOL_DEF[2]))
-            f.create_dataset("d_space", data=np.array(d_space, dtype=np.int16), compression=None)
+            f.create_dataset("d_space", data=np.array(d_space, dtype=np.float32), compression=None)
         print('Fields saved to', file_name)
         print('Saving took', time() - time_str, 'seconds')
     return fields
@@ -309,7 +329,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     params = np.array([[0,115.50,50.00, 50.00, 119.00, 119.00, 2.00, 2.00, 1.0, 1.0, 50.00, 50.00, 0.00, 0.00, 1.9]])
     params = np.round(params, 2)
-    f = simulate_field(params, Z_init = 0, fSC_mag=args.hybrid,d_space = (((0.,150.), (0.,150.), (-50, 300.))), NI_from_B_goal=True, cores = 1, use_diluted = args.use_diluted)
+    f = simulate_field(params, Z_init = 0, fSC_mag=args.hybrid,d_space = (((0.,150.,RESOL_DEF[0]), (0.,150.,RESOL_DEF[1]), (-50, 300.,RESOL_DEF[2]))), NI_from_B_goal=True, cores = 1, use_diluted = args.use_diluted)
     fields = f["B"][:]
     points = f["points"][:]
     plot_fields(points,fields)

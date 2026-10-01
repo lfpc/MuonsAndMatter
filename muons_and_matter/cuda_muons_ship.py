@@ -94,7 +94,7 @@ def run_from_params(
     NI_from_B=True,
     use_diluted=False,
     add_cavern=True,
-    simulate_fields=False,
+    field_mode='uniform',
     SND=False,
     cores_field=8,
     return_all=False,
@@ -112,11 +112,14 @@ def run_from_params(
         save_dir: If provided, save output to this path.
         n_steps: Number of propagation steps.
         fSC_mag: Whether superconducting magnets are used.
-        field_map_file: Path to field map file (only used if simulate_fields=True).
+        field_map_file: Path to field map file. Loaded if field_mode='read_file',
+                        saved to (if given) if field_mode='simulate'.
         NI_from_B: Whether NI is derived from B (affects SC threshold).
         use_diluted: Whether to use diluted steel in FEM simulation.
         add_cavern: Whether to include cavern geometry.
-        simulate_fields: If True, use FEM-simulated field map (slow).
+        field_mode: 'uniform' (uniform field per ARB8 block, fast),
+                    'read_file' (load field map from field_map_file),
+                    'simulate' (FEM-simulated field map, slow, requires snoopy).
         SND: Use SND detector geometry.
         cores_field: Number of CPU cores for field simulation.
         return_all: If True, return all muons; if False, filter by sensitive plane.
@@ -138,7 +141,7 @@ def run_from_params(
     detector = get_design_from_params(
         params=params,
         fSC_mag=fSC_mag,
-        simulate_fields=simulate_fields,
+        field_mode=field_mode,
         sensitive_film_params=None,
         field_map_file=field_map_file,
         add_cavern=add_cavern,
@@ -263,8 +266,12 @@ if __name__ == '__main__':
     parser.add_argument('--n_steps', type=int, default=5000,
                         help='Number of steps for simulation')
     parser.add_argument("-sens_plane", type=float, nargs='+', default=[82, 91], help="Position(s) of the sensitive plane in z (m), 0 means no sensitive plane. Can specify multiple values separated by space.")
-    parser.add_argument('-uniform_fields', dest='simulate_fields', action='store_false',
-                        help='Use uniform fields instead of realistic field maps (FEM)')
+    parser.add_argument('-field_mode', type=str, default='simulate', choices=['uniform', 'read_file', 'simulate'],
+                        help="Magnetic field: 'uniform' (uniform field per ARB8 block), 'read_file' (load field map "
+                             "from -field_file), 'simulate' (FEM field map with snoopy, slow; saved to -field_file if given)")
+    parser.add_argument('-field_file', type=str, default=None,
+                        help="Field map h5 file (datasets 'B' and 'd_space'). Read with -field_mode read_file, "
+                             "written with -field_mode simulate.")
     parser.add_argument('-remove_cavern', dest='add_cavern', action='store_false',
                         help='Remove the cavern from simulation')
     parser.add_argument('-expanded_sens_plane', action='store_true',
@@ -278,7 +285,12 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', dest='gpu', type=int, default=0,
                         help='GPU index to use')
     parser.add_argument('-NI_from_B', action='store_true', help='Derive NI from B')
+    parser.add_argument('--save_dir', type=str, default=None,
+                        help='If provided, save output to this path (pickle file), '
+                             'e.g. data/outputs/outputs_cuda.pkl.')
     args = parser.parse_args()
+    if args.field_mode == 'read_file' and args.field_file is None:
+        parser.error("-field_mode read_file requires -field_file")
 
     # Load params
     if args.params == 'test':
@@ -318,13 +330,13 @@ if __name__ == '__main__':
         histogram_dir=args.histogram_dir,
         n_steps=args.n_steps,
         fSC_mag=False,
-        simulate_fields=args.simulate_fields,
+        field_mode=args.field_mode,
         NI_from_B=args.NI_from_B,
         use_diluted=args.diluted_iron,
         add_cavern=args.add_cavern,
-        field_map_file=None,
+        field_map_file=args.field_file,
         SND=args.SND,
-        save_dir='data/outputs/outputs_cuda.pkl',
+        save_dir=args.save_dir,
         device=args.gpu,
     )
     print(f"Run completed in {time.time() - t_run_start:.2f} seconds.")

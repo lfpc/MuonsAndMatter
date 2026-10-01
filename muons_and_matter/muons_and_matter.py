@@ -13,7 +13,7 @@ def run(muons,
     fSC_mag:bool = True,
     sensitive_film_params:dict = [{'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82}],
     add_cavern = True,
-    simulate_fields = False,
+    field_mode = 'uniform',
     field_map_file = None,
     return_nan:bool = False,
     seed:int = None,
@@ -43,8 +43,9 @@ def run(muons,
                            {'dz': 0.01, 'dx': 4, 'dy': 6, 'position': 82}. 
                            If None, the simulation collects all the data from the muons.
     add_cavern (bool, optional): Include cavern geometry in the simulation. Defaults to True.
-    simulate_fields (bool, optional): Flag to simulate (FEM) and use field maps in the simulation. Defaults to False.
-    field_map_file (str, optional): Path to the field map file. Defaults to None.
+    field_mode (str, optional): 'uniform' (uniform field per ARB8), 'read_file' (field map from field_map_file)
+                 or 'simulate' (FEM field map with snoopy, saved to field_map_file). Defaults to 'uniform'.
+    field_map_file (str, optional): Path to the field map file. Required by Geant4 for 'read_file' and 'simulate'. Defaults to None.
     return_nan (bool, optional): If True, returns a list of zeros as the output for muons that do not hit 
                     the sensitive film. Defaults to False.
     seed (int, optional): Seed for random number generation. Defaults to None.
@@ -67,7 +68,7 @@ def run(muons,
     detector = get_design_from_params(params = params,
                       force_remove_magnetic_field= False,
                       fSC_mag = fSC_mag,
-                      simulate_fields=simulate_fields,
+                      field_mode=field_mode,
                       sensitive_film_params=sensitive_film_params,
                       field_map_file = field_map_file,
                       add_cavern = add_cavern,
@@ -171,8 +172,11 @@ if __name__ == '__main__':
     parser.add_argument("-params", type=str, default='tokanut_v5', help="Magnet parameters configuration - name or file path. Available names: " + ', '.join(params_lib.params.keys()) + ". If 'test', will prompt for input.")
     parser.add_argument("--z", type=float, default=None, help="Initial z-position distance for all muons if specified (default is to use from input file)")
     parser.add_argument("-sens_plane", type=float, nargs='+', default=[82], help="Position(s) of the sensitive plane in z (m), 0 means no sensitive plane. Can specify multiple values separated by space.")
-    parser.add_argument("-uniform_fields", dest="real_fields", action='store_false', help="Use uniform fields instead of realistic field maps (FEM)")
-    parser.add_argument("-field_file", type=str, default='data/outputs/fields_mm.h5', help="Path to save field map file") 
+    parser.add_argument("-field_mode", type=str, default='simulate', choices=['uniform', 'read_file', 'simulate'],
+                        help="Magnetic field: 'uniform' (uniform field per ARB8 block), 'read_file' (load field map from -field_file), "
+                             "'simulate' (FEM field map with snoopy, saved to -field_file)")
+    parser.add_argument("-field_file", type=str, default='data/outputs/fields_mm.h5',
+                        help="Field map h5 file (datasets 'B' and 'd_space'). Read with -field_mode read_file, written with -field_mode simulate") 
     parser.add_argument("-shuffle_input", action='store_true', help="Randomly shuffle the input data")
     parser.add_argument("-remove_cavern", dest="add_cavern", action='store_false', help="Remove the cavern from simulation")
     parser.add_argument("-decay_vessel", action='store_true', help="Add decay vessel to the simulation")
@@ -191,6 +195,8 @@ if __name__ == '__main__':
     parser.add_argument("-smear_beam_radius", type=float, default=5., help="Radius in cm for beam smearing")
     parser.add_argument("-n_hits", type=int, default=1, help="Minimum number of hits in sensitive planes to consider a muon as detected")
     args = parser.parse_args()
+    if args.field_mode != 'uniform' and args.field_file is None:
+        parser.error(f"-field_mode {args.field_mode} requires -field_file")
     cores = args.c
     if args.params == 'test':
         params_input = input("Enter the params as a Python list (e.g., [1.0, 2.0, 3.0]): ")
@@ -222,11 +228,14 @@ if __name__ == '__main__':
     sensitive_film_params = [{'dz': 0.0001, 'dx': dx, 'dy': dy, 'position':pos} for pos in args.sens_plane]
     t1_fem = time() 
     detector = None
-    if not args.real_fields:
-        args.field_file = None
-    else:
+    if args.field_mode == 'simulate':
+        # Simulate (and save) the field map once here; the workers then read it from args.field_file
         core_fields = 8
-        detector = get_design_from_params(np.asarray(params), args.SC_mag, False,True, args.field_file, None, False, True, cores_field=core_fields, NI_from_B=args.use_B_goal, use_diluted = args.diluted_iron, SND = False)
+        detector = get_design_from_params(np.asarray(params), args.SC_mag, force_remove_magnetic_field=False,
+                                          field_mode='simulate', field_map_file=args.field_file,
+                                          sensitive_film_params=None, add_cavern=False, add_target=True,
+                                          cores_field=core_fields, NI_from_B=args.use_B_goal, use_diluted = args.diluted_iron, SND = False)
+    worker_field_mode = 'uniform' if args.field_mode == 'uniform' else 'read_file'
     t2_fem = time()
 
     if input_file.endswith('.npy'):
@@ -265,7 +274,7 @@ if __name__ == '__main__':
                               fSC_mag=args.SC_mag, 
                               sensitive_film_params=sensitive_film_params, 
                               add_cavern=args.add_cavern, 
-                              simulate_fields=False, 
+                              field_mode=worker_field_mode, 
                               field_map_file=args.field_file, 
                               return_nan=args.return_nan, 
                               seed=args.seed, 
@@ -312,8 +321,8 @@ if __name__ == '__main__':
             pickle.dump(all_results, f)
         print("Data saved to ", data_file)
     if args.plot_magnet:
-        if args.real_fields: 
-            with h5py.File(detector['global_field_map']['B'], 'r') as f:
+        if args.field_mode != 'uniform': 
+            with h5py.File(args.field_file, 'r') as f:
                 fields = f["B"][:]
                 points = f["points"][:]
             plot_fields(points,fields)
@@ -321,7 +330,7 @@ if __name__ == '__main__':
         if False:#detector is not None:
             plot_magnet(detector, muon_data = all_results, sensitive_film_position = sensitive_film_params['position'], azim = args.angle, elev = args.elev)
         else:
-            result = construct_and_plot(muons = all_results[:1000],phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, simulate_fields=False, field_map_file = None, cavern = False, SND = args.SND, decay_vessel = args.decay_vessel, azim = args.angle, elev = args.elev)
+            result = construct_and_plot(muons = all_results[:1000],phi = params,fSC_mag = args.SC_mag,sensitive_film_params = sensitive_film_params, field_mode='uniform', field_map_file = None, cavern = False, SND = args.SND, decay_vessel = args.decay_vessel, azim = args.angle, elev = args.elev)
         if not args.save_data:
             import matplotlib.pyplot as plt
             if isinstance(all_results, np.ndarray) and all_results.ndim == 2:
