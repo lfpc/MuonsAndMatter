@@ -16,6 +16,7 @@ data/full_sample/*.h5
 data/muons/*.pkl
 data/muons/*.npy
 data/muons/*.h5
+data/*.h5
 data/outputs/*
 data/magnet_params.csv
 cuda_muons/data/*.pkl
@@ -26,3 +27,6 @@ cuda_muons/faster_muons_torch/build/*
 cuda_muons/plots/*
 cuda_muons/geant4/*
 *.egg-info
+
+# Personal notes
+todo.md

@@ -126,6 +126,7 @@ def run_from_params(
                             to a plane 20 cm before the start of the spectrometer field, and then
                             through the sensitive planes with only the spectrometer field (no magnets).
                             All sensitive planes must be after that transition plane.
+                            A map covering negative x and y is used as a full map, without mirroring.
         SND: Use SND detector geometry.
         cores_field: Number of CPU cores for field simulation.
         return_all: If True, return all muons; if False, filter by sensitive plane.
@@ -205,12 +206,25 @@ def run_from_params(
             raise ValueError(f"Sensitive plane(s) at z = {planes_before} m are before the spectrometer transition plane "
                              f"(z = {z_transition:.2f} m, 20 cm before the spectrometer field in {field_spectrometer}). "
                              f"All sensitive planes must be after it.")
+        # A map starting at x = y = 0 is a quadrant map (mirrored, like the magnet field maps). A map covering
+        # negative x and y is a full map: used without mirroring. The spectrometer stage has no magnets, so
+        # the geometry does not need the symmetry either.
+        full_x, full_y = spectrometer_field['range_x'][0] < 0, spectrometer_field['range_y'][0] < 0
+        if full_x != full_y:
+            raise ValueError(f"Spectrometer field {field_spectrometer} covers negative values in only one of x and y "
+                             f"(range_x={spectrometer_field['range_x']}, range_y={spectrometer_field['range_y']}): "
+                             f"it must be either a quadrant map (x, y >= 0) or a full map.")
+        use_symmetry_spectrometer = not full_x
+        if not use_symmetry_spectrometer:
+            print(f"WARNING: the spectrometer field {field_spectrometer} covers negative x and y: it is used as a full "
+                  f"map, without mirroring (use_symmetry=False after the transition plane).")
         environment_spectrometer = set_environment(
             torch.empty((0, 8, 3)), cavern, material_histograms, spectrometer_field, device=device,
         )
         # Huge plane (|x|, |y| < 10 m, where the kernel kills muons anyway) so that no muon is cut here
         planes = [{'dz': 0.0001, 'dx': 20.0, 'dy': 20.0, 'position': z_transition}] + planes
 
+    use_symmetry_stage = use_symmetry
     for i, plane in enumerate(planes):
         is_transition = environment_spectrometer is not None and i == 0
         if muons_positions.shape[0] == 0:
@@ -228,7 +242,7 @@ def run_from_params(
             sens_z,
             n_steps,
             step_length,
-            use_symmetry,
+            use_symmetry_stage,
             seed + i,  # different random numbers for each plane
             device,
         )
@@ -255,6 +269,7 @@ def run_from_params(
         if is_transition:
             print(f"Switching to the spectrometer field from {field_spectrometer}.")
             environment = environment_spectrometer
+            use_symmetry_stage = use_symmetry_spectrometer
     
 
     # === Build output dict ===
