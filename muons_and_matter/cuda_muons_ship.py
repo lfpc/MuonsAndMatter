@@ -4,7 +4,7 @@ import pickle
 import torch
 import h5py
 import os
-from lib.ship_muon_shield import get_design_from_params
+from lib.ship_muon_shield import get_design_from_params, get_field
 import lib.reference_designs.params as params_lib
 from cuda_muons import set_environment, propagate_muons_with_cuda
 from bin.plot_magnet import construct_and_plot, plot_fields
@@ -95,6 +95,7 @@ def run_from_params(
     use_diluted=False,
     add_cavern=True,
     field_mode='uniform',
+    field_spectrometer=None,
     SND=False,
     cores_field=8,
     return_all=False,
@@ -120,6 +121,11 @@ def run_from_params(
         field_mode: 'uniform' (uniform field per ARB8 block, fast),
                     'read_file' (load field map from field_map_file),
                     'simulate' (FEM-simulated field map, slow, requires snoopy).
+        field_spectrometer: Path to a spectrometer field map file (same format as field_map_file).
+                            If given, muons are first propagated (with the magnets and their field)
+                            to a plane 20 cm before the start of the spectrometer field, and then
+                            through the sensitive planes with only the spectrometer field (no magnets).
+                            All sensitive planes must be after that transition plane.
         SND: Use SND detector geometry.
         cores_field: Number of CPU cores for field simulation.
         return_all: If True, return all muons; if False, filter by sensitive plane.
@@ -186,7 +192,27 @@ def run_from_params(
     # === PROPAGATION (per sensitive plane) ===
     planes = sensitive_plane if isinstance(sensitive_plane, list) else [sensitive_plane]
 
+    # Spectrometer field: stop at a transition plane 20 cm before the spectrometer field starts,
+    # then continue with only the spectrometer field (no magnets, muons already went through them).
+    environment_spectrometer = None
+    if field_spectrometer is not None:
+        spectrometer_field = get_field('read_file', file_name=field_spectrometer, only_grid_params=True)
+        with h5py.File(field_spectrometer, 'r') as f:
+            spectrometer_field['B'] = f['B'][:]
+        z_transition = spectrometer_field['range_z'][0] / 100 - 0.2  # cm -> m
+        planes_before = [plane['position'] for plane in planes if plane is not None and plane['position'] <= z_transition]
+        if planes_before:
+            raise ValueError(f"Sensitive plane(s) at z = {planes_before} m are before the spectrometer transition plane "
+                             f"(z = {z_transition:.2f} m, 20 cm before the spectrometer field in {field_spectrometer}). "
+                             f"All sensitive planes must be after it.")
+        environment_spectrometer = set_environment(
+            torch.empty((0, 8, 3)), cavern, material_histograms, spectrometer_field, device=device,
+        )
+        # Huge plane (|x|, |y| < 10 m, where the kernel kills muons anyway) so that no muon is cut here
+        planes = [{'dz': 0.0001, 'dx': 20.0, 'dy': 20.0, 'position': z_transition}] + planes
+
     for i, plane in enumerate(planes):
+        is_transition = environment_spectrometer is not None and i == 0
         if muons_positions.shape[0] == 0:
             print("No muons left to propagate.")
             break
@@ -203,7 +229,7 @@ def run_from_params(
             n_steps,
             step_length,
             use_symmetry,
-            seed,
+            seed + i,  # different random numbers for each plane
             device,
         )
 
@@ -214,7 +240,7 @@ def run_from_params(
                 & (out_position[:, 2] >= (plane['position'] - plane['dz'] / 2))
             )
             print(f"Plane {i} (Z={plane['position']}): {in_sens_plane.sum().item()} muons remaining.")
-            if return_all:
+            if return_all or is_transition:
                 out_momenta[~in_sens_plane] = 0.0
             else:
                 out_momenta = out_momenta[in_sens_plane]
@@ -226,6 +252,9 @@ def run_from_params(
         # Feed outputs as inputs for the next plane
         muons_positions = out_position
         muons_momenta = out_momenta
+        if is_transition:
+            print(f"Switching to the spectrometer field from {field_spectrometer}.")
+            environment = environment_spectrometer
     
 
     # === Build output dict ===
@@ -265,13 +294,15 @@ if __name__ == '__main__':
                         help='Maximum number of muons to load (0 = all)')
     parser.add_argument('--n_steps', type=int, default=5000,
                         help='Number of steps for simulation')
-    parser.add_argument("-sens_plane", type=float, nargs='+', default=[82, 91], help="Position(s) of the sensitive plane in z (m), 0 means no sensitive plane. Can specify multiple values separated by space.")
+    parser.add_argument("-sens_plane", type=float, nargs='+', default=[82, 91], help="Position(s) of the sensitive plane in z (m). Can specify multiple values separated by space.")
     parser.add_argument('-field_mode', type=str, default='simulate', choices=['uniform', 'read_file', 'simulate'],
                         help="Magnetic field: 'uniform' (uniform field per ARB8 block), 'read_file' (load field map "
                              "from -field_file), 'simulate' (FEM field map with snoopy, slow; saved to -field_file if given)")
     parser.add_argument('-field_file', type=str, default=None,
                         help="Field map h5 file (datasets 'B' and 'd_space'). Read with -field_mode read_file, "
                              "written with -field_mode simulate.")
+    parser.add_argument('-field_spectrometer', type=str, default=None,
+                        help="Spectrometer field map h5 file (datasets 'B' and 'd_space'), same format as -field_file.")
     parser.add_argument('-remove_cavern', dest='add_cavern', action='store_false',
                         help='Remove the cavern from simulation')
     parser.add_argument('-expanded_sens_plane', action='store_true',
@@ -282,6 +313,8 @@ if __name__ == '__main__':
     parser.add_argument('-params', type=str, default='tokanut_v5',
                         help='Magnet parameters: name or file path. '
                         f"Available: {', '.join(params_lib.params.keys())}. 'test' = manual input.")
+    parser.add_argument('-seed', type=int, default=0,
+                        help='Random seed for the propagation (plane i uses seed + i). -1 = random seed.')
     parser.add_argument('--gpu', dest='gpu', type=int, default=0,
                         help='GPU index to use')
     parser.add_argument('-NI_from_B', action='store_true', help='Derive NI from B')
@@ -335,8 +368,10 @@ if __name__ == '__main__':
         use_diluted=args.diluted_iron,
         add_cavern=args.add_cavern,
         field_map_file=args.field_file,
+        field_spectrometer=args.field_spectrometer,
         SND=args.SND,
         save_dir=args.save_dir,
+        seed=None if args.seed == -1 else args.seed,
         device=args.gpu,
     )
     print(f"Run completed in {time.time() - t_run_start:.2f} seconds.")

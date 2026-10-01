@@ -595,7 +595,7 @@ def design_muon_shield(params,fSC_mag = True, field_mode = 'uniform', field_map_
         raise ValueError(f"Unknown field_mode '{field_mode}'. Must be 'uniform', 'read_file' or 'simulate'.")
 
     n_magnets = len(params)
-    length = (params[:,:0].sum() + 2*params[:,1].sum()).item()
+    length = (params[:,0].sum() + 2*params[:,1].sum()).item()  # gaps + full lengths of all magnets (cm)
 
     tShield = {
         'dz': length / 100,
